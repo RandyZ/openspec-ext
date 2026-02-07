@@ -84,19 +84,20 @@ Extension ──initial data──> OpenSpec CLI (via child_process)
 
 - Node.js 20.19.0+
 - VSCode 1.85.0+
+- pnpm 8.0.0+ (install with `npm install -g pnpm`)
 - OpenSpec CLI installed (`npm install -g @fission-ai/openspec`)
 
 ### Development Setup (Phase 1 tasks)
 
 ```bash
 # Install dependencies
-npm install
+pnpm install
 
 # Build extension
-npm run build
+pnpm run build
 
 # Watch for changes
-npm run watch
+pnpm run watch
 
 # Run extension
 # Press F5 in VSCode to open Extension Development Host

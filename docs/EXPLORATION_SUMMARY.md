@@ -141,16 +141,16 @@ webview.postMessage({ type: 'updateData', payload: { changes, specs } });
 
 1. **Phase 1.1 - 项目初始化**
    ```bash
-   npm init
-   npm install --save-dev typescript @types/vscode esbuild
-   npm install react react-dom @radix-ui/react-*
+   pnpm init
+   pnpm add -D typescript @types/vscode esbuild
+   pnpm add react react-dom @radix-ui/react-*
    # ... 按照 tasks.md 第 1.1 节
    ```
 
 2. **Phase 1.2 - 开发环境**
    - 配置 TypeScript、ESLint
    - 创建 `.vscode/launch.json` 用于调试
-   - 设置 npm scripts
+   - 设置 pnpm scripts
 
 3. **Phase 2 - CLI 集成**
    - 这是最关键的基础层

@@ -6,18 +6,19 @@ This task list breaks down the MVP implementation into actionable items. Tasks a
 
 ### 1.1 Project Initialization
 - [ ] Create project directory structure
-- [ ] Initialize package.json with dependencies
+- [ ] Initialize package.json with pnpm init
 - [ ] Setup TypeScript configuration (tsconfig.json)
 - [ ] Configure esbuild for extension build
 - [ ] Configure Vite for webview build
 - [ ] Setup Git repository and .gitignore
-- [ ] Create README.md with setup instructions
+- [ ] Create pnpm-workspace.yaml if needed
+- [ ] Create .npmrc to configure pnpm settings
 
 ### 1.2 Development Environment
 - [ ] Setup ESLint and Prettier
 - [ ] Configure VSCode settings for development
 - [ ] Setup launch.json for debugging extension
-- [ ] Create npm scripts for dev, build, watch
+- [ ] Create pnpm scripts for dev, build, watch
 - [ ] Test extension loading in VSCode dev host
 
 ### 1.3 Extension Scaffold

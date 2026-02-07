@@ -4,6 +4,7 @@ schema: spec-driven
 context: |
   Project: OpenSpec VSCode Extension
   Tech stack: TypeScript, React, Node.js, Tailwind CSS, Radix UI, Vite, esbuild
+  Package Manager: pnpm (use pnpm for all dependency management)
   Target: VSCode Extension (independent project)
   
   Architecture decisions:
@@ -11,6 +12,7 @@ context: |
   - Backend: Call openspec CLI via child_process
   - Frontend: React + Tailwind CSS + Radix UI
   - Build: Vite (webview) + esbuild (extension)
+  - Package manager: pnpm (NOT npm or yarn)
   
   Key concepts:
   - OpenSpec has changes (proposals with artifacts) and specs (requirements)
