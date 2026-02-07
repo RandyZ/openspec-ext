@@ -1,20 +1,14 @@
 import * as vscode from 'vscode';
 import { logger } from '../utils/logger';
 import { DataManager } from '../services/dataManager';
-import { DashboardProvider } from '../providers/dashboardProvider';
+import { DashboardViewProvider } from '../providers/dashboardViewProvider';
 
 export class CommandManager {
-  private dashboardProvider: DashboardProvider;
-
   constructor(
     private dataManager: DataManager,
-    private context: vscode.ExtensionContext
-  ) {
-    this.dashboardProvider = new DashboardProvider(
-      dataManager,
-      context.extensionPath
-    );
-  }
+    private context: vscode.ExtensionContext,
+    private dashboardViewProvider: DashboardViewProvider
+  ) {}
 
   /**
    * Register all commands
@@ -40,12 +34,12 @@ export class CommandManager {
   }
 
   /**
-   * Open OpenSpec Dashboard
+   * Open OpenSpec Dashboard (reveal sidebar view)
    */
   private async handleOpenDashboard(): Promise<void> {
     try {
-      logger.info('Opening OpenSpec dashboard...');
-      this.dashboardProvider.show();
+      logger.info('Revealing OpenSpec dashboard view...');
+      this.dashboardViewProvider.reveal();
     } catch (error) {
       logger.error('Failed to open dashboard', error as Error);
       vscode.window.showErrorMessage('Failed to open OpenSpec dashboard');

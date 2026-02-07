@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { initLogger, logger } from './utils/logger';
 import { DataManager } from './services/dataManager';
 import { CommandManager } from './commands/commandManager';
+import { DashboardViewProvider } from './providers/dashboardViewProvider';
 
 let dataManager: DataManager | null = null;
 
@@ -25,8 +26,20 @@ export async function activate(context: vscode.ExtensionContext) {
     dataManager = new DataManager(workspaceRoot);
     await dataManager.initialize();
 
+    // Register dashboard view provider (sidebar)
+    const dashboardViewProvider = new DashboardViewProvider(
+      dataManager,
+      context.extensionPath
+    );
+    context.subscriptions.push(
+      vscode.window.registerWebviewViewProvider(
+        DashboardViewProvider.viewType,
+        dashboardViewProvider
+      )
+    );
+
     // Register commands
-    const commandManager = new CommandManager(dataManager, context);
+    const commandManager = new CommandManager(dataManager, context, dashboardViewProvider);
     commandManager.register();
 
     logger.info('OpenSpec extension activated successfully');

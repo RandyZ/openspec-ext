@@ -23,6 +23,24 @@
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "openspec",
+          "title": "OpenSpec",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "openspec": [
+        {
+          "id": "openspec.dashboardView",
+          "name": "Dashboard",
+          "type": "webview"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "openspec.openDashboard",
