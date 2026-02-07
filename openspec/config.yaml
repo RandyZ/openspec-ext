@@ -1,20 +1,38 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+# Project context
+context: |
+  Project: OpenSpec VSCode Extension
+  Tech stack: TypeScript, React, Node.js, Tailwind CSS, Radix UI, Vite, esbuild
+  Target: VSCode Extension (independent project)
+  
+  Architecture decisions:
+  - Data source: Mixed approach (CLI + File watching + On-demand read)
+  - Backend: Call openspec CLI via child_process
+  - Frontend: React + Tailwind CSS + Radix UI
+  - Build: Vite (webview) + esbuild (extension)
+  
+  Key concepts:
+  - OpenSpec has changes (proposals with artifacts) and specs (requirements)
+  - Artifacts: proposal.md, specs/, design.md, tasks.md
+  - Changes have three states: draft (no tasks), active (incomplete), completed (all done)
+  - Tasks in tasks.md can be toggled [x] / [ ]
+  
+  Reference:
+  - OpenSpec CLI: @/Users/randy/workspace/project/opensource/AI/OpenSpec
+  - Reference VSCode extension: https://github.com/Pimzino/spec-workflow-mcp/tree/main/vscode-extension
+  - Architecture doc: @docs/ARCHITECTURE.md
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+# Per-artifact rules
+rules:
+  proposal:
+    - Keep focused on user value and MVP scope
+    - Clearly separate MVP from Phase 2/3 features
+  design:
+    - Include architecture diagrams using ASCII art
+    - Document message passing between Extension and Webview
+    - Explain key technical decisions
+  tasks:
+    - Break into small, testable chunks
+    - Each task should be completable in 1-2 hours
+    - Group related tasks together
