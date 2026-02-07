@@ -120,92 +120,26 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
    * Generate HTML content for webview
    */
   private getWebviewContent(webview: vscode.Webview): string {
-    // For now, return a simple placeholder
-    // Will be replaced with actual React app later
+    // Get URIs for the built React app
+    const scriptUri = webview.asWebviewUri(
+      vscode.Uri.file(path.join(this.extensionPath, 'dist', 'webview', 'index.js'))
+    );
+    const styleUri = webview.asWebviewUri(
+      vscode.Uri.file(path.join(this.extensionPath, 'dist', 'webview', 'index.css'))
+    );
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource};">
   <title>OpenSpec Dashboard</title>
-  <style>
-    body {
-      font-family: var(--vscode-font-family);
-      color: var(--vscode-foreground);
-      background-color: var(--vscode-editor-background);
-      padding: 12px;
-      margin: 0;
-    }
-    h2 {
-      color: var(--vscode-textLink-foreground);
-      font-size: 16px;
-      margin: 0 0 12px 0;
-    }
-    button {
-      background-color: var(--vscode-button-background);
-      color: var(--vscode-button-foreground);
-      border: none;
-      padding: 6px 12px;
-      cursor: pointer;
-      margin-right: 6px;
-      margin-bottom: 8px;
-      font-size: 12px;
-    }
-    button:hover {
-      background-color: var(--vscode-button-hoverBackground);
-    }
-    #data {
-      margin-top: 12px;
-      white-space: pre-wrap;
-      font-family: monospace;
-      font-size: 11px;
-      background: var(--vscode-textCodeBlock-background);
-      padding: 8px;
-      border-radius: 4px;
-      max-height: 70vh;
-      overflow-y: auto;
-    }
-    .status {
-      font-size: 11px;
-      color: var(--vscode-descriptionForeground);
-      margin-bottom: 8px;
-    }
-  </style>
+  <link rel="stylesheet" href="${styleUri}">
 </head>
 <body>
-  <h2>OpenSpec Dashboard</h2>
-  <div class="status">✅ Backend services active</div>
-  
-  <div>
-    <button onclick="loadData()">Load Data</button>
-    <button onclick="refresh()">Refresh</button>
-  </div>
-
-  <div id="data">Click "Load Data" to start...</div>
-
-  <script>
-    const vscode = acquireVsCodeApi();
-
-    window.addEventListener('message', event => {
-      const message = event.data;
-      
-      if (message.type === 'dashboardData') {
-        document.getElementById('data').textContent = 
-          JSON.stringify(message.data, null, 2);
-      }
-    });
-
-    function loadData() {
-      vscode.postMessage({ type: 'getDashboardData' });
-    }
-
-    function refresh() {
-      vscode.postMessage({ type: 'refresh' });
-    }
-
-    // Auto-load on startup
-    setTimeout(() => loadData(), 100);
-  </script>
+  <div id="root"></div>
+  <script type="module" src="${scriptUri}"></script>
 </body>
 </html>`;
   }
