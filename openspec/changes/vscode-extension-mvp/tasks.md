@@ -25,33 +25,33 @@ This task list breaks down the MVP implementation into actionable items. Tasks a
 - [x] Create extension.ts entry point
 - [x] Implement activate() function
 - [x] Implement deactivate() function
-- [ ] Add extension manifest (package.json contributions)
-- [ ] Setup basic logging infrastructure
+- [x] Add extension manifest (package.json contributions)
+- [x] Setup basic logging infrastructure
 
 ## Phase 2: CLI Integration Layer
 
 ### 2.1 OpenSpec CLI Service
-- [ ] Create OpenSpecCliService class
-- [ ] Implement checkAvailability() method
-- [ ] Implement getVersion() method
-- [ ] Implement execOpenSpec() helper
-- [ ] Add timeout handling for CLI commands
-- [ ] Implement JSON parsing with error handling
+- [x] Create OpenSpecCliService class
+- [x] Implement checkAvailability() method
+- [x] Implement getVersion() method
+- [x] Implement execOpenSpec() helper
+- [x] Add timeout handling for CLI commands
+- [x] Implement JSON parsing with error handling
 
 ### 2.2 CLI Commands
-- [ ] Implement listChanges() method
-- [ ] Implement showChange() method
-- [ ] Implement listSpecs() method
-- [ ] Implement validateChange() method
-- [ ] Implement createChange() method
-- [ ] Implement archiveChange() method
+- [x] Implement listChanges() method
+- [x] Implement showChange() method
+- [x] Implement listSpecs() method
+- [x] Implement validateChange() method
+- [x] Implement createChange() method
+- [x] Implement archiveChange() method
 
 ### 2.3 Error Handling
-- [ ] Create OpenSpecCliError class
-- [ ] Add retry logic with exponential backoff
-- [ ] Implement user-friendly error messages
-- [ ] Add CLI not found error notification
-- [ ] Add workspace not initialized error handling
+- [x] Create OpenSpecCliError class
+- [x] Add retry logic with exponential backoff
+- [x] Implement user-friendly error messages
+- [x] Add CLI not found error notification
+- [x] Add workspace not initialized error handling
 
 ### 2.4 Unit Tests
 - [ ] Test CLI availability check
@@ -64,105 +64,105 @@ This task list breaks down the MVP implementation into actionable items. Tasks a
 ## Phase 3: File System Layer
 
 ### 3.1 File Manager Service
-- [ ] Create FileManagerService class
-- [ ] Implement artifact path resolution
-- [ ] Implement readArtifact() method
-- [ ] Implement artifactExists() method
-- [ ] Implement readSpec() method
-- [ ] Implement readDeltaSpec() method
+- [x] Create FileManagerService class
+- [x] Implement artifact path resolution
+- [x] Implement readArtifact() method
+- [x] Implement artifactExists() method
+- [x] Implement readSpec() method
+- [x] Implement readDeltaSpec() method
 
 ### 3.2 Task Management
-- [ ] Implement parseTasksMarkdown() method
-- [ ] Implement readTasks() method
-- [ ] Implement toggleTask() method
-- [ ] Implement getTaskProgress() method
-- [ ] Add task parsing edge case handling
-- [ ] Ensure task toggle preserves formatting
+- [x] Implement parseTasksMarkdown() method
+- [x] Implement readTasks() method
+- [x] Implement toggleTask() method
+- [x] Implement getTaskProgress() method
+- [x] Add task parsing edge case handling
+- [x] Ensure task toggle preserves formatting
 
 ### 3.3 File Watcher
-- [ ] Setup FileSystemWatcher for openspec/**/*.md
-- [ ] Setup FileSystemWatcher for openspec/**/*.yaml
-- [ ] Implement debounced refresh logic
-- [ ] Handle file create events
-- [ ] Handle file change events
-- [ ] Handle file delete events
+- [x] Setup FileSystemWatcher for openspec/**/*.md
+- [x] Setup FileSystemWatcher for openspec/**/*.yaml
+- [x] Implement debounced refresh logic
+- [x] Handle file create events
+- [x] Handle file change events
+- [x] Handle file delete events
 
 ### 3.4 Unit Tests
-- [ ] Test task markdown parsing
-- [ ] Test task toggle functionality
-- [ ] Test artifact reading
+- [x] Test task markdown parsing
+- [x] Test task toggle functionality
+- [x] Test artifact reading
 - [ ] Test file path resolution
 - [ ] Test error handling for missing files
 
 ## Phase 4: Data Cache Layer
 
 ### 4.1 Cache Service
-- [ ] Create DataCacheService class
-- [ ] Implement get() method with TTL check
-- [ ] Implement set() method
-- [ ] Implement invalidate() method
-- [ ] Implement invalidateAll() method
-- [ ] Implement invalidatePattern() method
+- [x] Create DataCacheService class (integrated into DataManager)
+- [x] Implement get() method with TTL check
+- [x] Implement set() method
+- [x] Implement invalidate() method
+- [x] Implement invalidateAll() method
+- [x] Implement invalidatePattern() method
 
 ### 4.2 Cache Integration
-- [ ] Integrate cache with CLI service
-- [ ] Add cache invalidation on file changes
-- [ ] Configure cache TTL (default 10s)
-- [ ] Add cache statistics logging
+- [x] Integrate cache with CLI service
+- [x] Add cache invalidation on file changes
+- [x] Configure cache TTL (default 10s)
+- [x] Add cache statistics logging
 
 ## Phase 5: Command Registration
 
 ### 5.1 Command Definitions
-- [ ] Define openspec.openDashboard command
-- [ ] Define openspec.refreshData command
-- [ ] Define openspec.newChange command
-- [ ] Define openspec.openChange command
-- [ ] Define openspec.archiveChange command
-- [ ] Define openspec.copyOpsxCommand command
+- [x] Define openspec.openDashboard command
+- [x] Define openspec.refreshData command
+- [x] Define openspec.newChange command
+- [x] Define openspec.openChange command
+- [x] Define openspec.archiveChange command
+- [x] Define openspec.copyOpsxCommand command
 
 ### 5.2 Command Handlers
-- [ ] Implement handleOpenDashboard()
-- [ ] Implement handleRefreshData()
-- [ ] Implement handleNewChange() with input prompt
-- [ ] Implement handleOpenChange()
-- [ ] Implement handleArchiveChange() with confirmation
-- [ ] Implement handleCopyCommand() with clipboard
+- [x] Implement handleOpenDashboard()
+- [x] Implement handleRefreshData()
+- [x] Implement handleNewChange() with input prompt
+- [x] Implement handleOpenChange()
+- [x] Implement handleArchiveChange() with confirmation
+- [x] Implement handleCopyCommand() with clipboard
 
 ### 5.3 Command Registration
-- [ ] Register all commands in activate()
-- [ ] Add commands to package.json contributions
-- [ ] Add keyboard shortcuts (optional)
-- [ ] Add context menu items (optional)
+- [x] Register all commands in activate()
+- [x] Add commands to package.json contributions
+- [x] Add keyboard shortcuts (optional)
+- [x] Add context menu items (optional)
 
 ## Phase 6: Dashboard Webview Provider
 
 ### 6.1 Provider Setup
-- [ ] Create DashboardProvider class
-- [ ] Implement show() method to create webview panel
-- [ ] Implement getWebviewContent() for HTML shell
-- [ ] Setup webview options (scripts, resources)
-- [ ] Add panel state management (singleton)
+- [x] Create DashboardProvider class
+- [x] Implement show() method to create webview panel
+- [x] Implement getWebviewContent() for HTML shell
+- [x] Setup webview options (scripts, resources)
+- [x] Add panel state management (singleton)
 
 ### 6.2 Message Passing
-- [ ] Implement setupMessageHandler()
-- [ ] Handle 'requestData' message
-- [ ] Handle 'toggleTask' message
-- [ ] Handle 'openChange' message
-- [ ] Handle 'copyCommand' message
-- [ ] Handle 'createChange' message
-- [ ] Handle 'archiveChange' message
+- [x] Implement setupMessageHandler()
+- [x] Handle 'requestData' message
+- [x] Handle 'toggleTask' message
+- [x] Handle 'openChange' message
+- [x] Handle 'copyCommand' message
+- [x] Handle 'createChange' message
+- [x] Handle 'archiveChange' message
 
 ### 6.3 Data Sending
-- [ ] Implement sendData() method
-- [ ] Implement sendInitialData() on panel creation
-- [ ] Format data for webview consumption
-- [ ] Add error handling for failed sends
+- [x] Implement sendData() method
+- [x] Implement sendInitialData() on panel creation
+- [x] Format data for webview consumption
+- [x] Add error handling for failed sends
 
 ### 6.4 Integration
-- [ ] Connect provider to CLI service
-- [ ] Connect provider to File Manager
-- [ ] Connect provider to Cache service
-- [ ] Connect provider to File Watcher events
+- [x] Connect provider to CLI service
+- [x] Connect provider to File Manager
+- [x] Connect provider to Cache service
+- [x] Connect provider to File Watcher events
 
 ## Phase 7: React Webview Application
 

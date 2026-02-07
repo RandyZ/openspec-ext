@@ -23,7 +23,29 @@
   ],
   "main": "./dist/extension.js",
   "contributes": {
-    "commands": []
+    "commands": [
+      {
+        "command": "openspec.openDashboard",
+        "title": "OpenSpec: Open Dashboard",
+        "category": "OpenSpec"
+      },
+      {
+        "command": "openspec.refreshData",
+        "title": "OpenSpec: Refresh Data",
+        "category": "OpenSpec",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "openspec.newChange",
+        "title": "OpenSpec: Create New Change",
+        "category": "OpenSpec"
+      },
+      {
+        "command": "openspec.archiveChange",
+        "title": "OpenSpec: Archive Change",
+        "category": "OpenSpec"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "pnpm run build",

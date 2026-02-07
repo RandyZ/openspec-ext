@@ -1,11 +1,52 @@
 import * as vscode from 'vscode';
+import { initLogger, logger } from './utils/logger';
+import { DataManager } from './services/dataManager';
+import { CommandManager } from './commands/commandManager';
 
-export function activate(context: vscode.ExtensionContext) {
-  console.log('OpenSpec extension is now active!');
+let dataManager: DataManager | null = null;
 
-  // TODO: Add initialization logic
+export async function activate(context: vscode.ExtensionContext) {
+  initLogger();
+  logger.info('OpenSpec extension is activating...');
+
+  try {
+    // Get workspace root
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+      logger.error('No workspace folder found');
+      vscode.window.showErrorMessage('OpenSpec: No workspace folder found');
+      return;
+    }
+
+    const workspaceRoot = workspaceFolders[0].uri.fsPath;
+    logger.info(`Workspace root: ${workspaceRoot}`);
+
+    // Initialize data manager
+    dataManager = new DataManager(workspaceRoot);
+    await dataManager.initialize();
+
+    // Register commands
+    const commandManager = new CommandManager(dataManager, context);
+    commandManager.register();
+
+    logger.info('OpenSpec extension activated successfully');
+    console.log('OpenSpec extension is now active!');
+  } catch (error) {
+    logger.error('Failed to activate OpenSpec extension', error as Error);
+    vscode.window.showErrorMessage(
+      `OpenSpec extension failed to activate: ${(error as Error).message}`
+    );
+  }
 }
 
 export function deactivate() {
+  logger.info('OpenSpec extension is deactivating');
+  
+  if (dataManager) {
+    dataManager.dispose();
+    dataManager = null;
+  }
+
+  logger.dispose();
   console.log('OpenSpec extension is now deactivated');
 }
