@@ -1,147 +1,234 @@
 # OpenSpec VSCode Extension
 
-> A visual dashboard and interactive UI for OpenSpec workflows
+> Visual interface for managing OpenSpec workflows in VSCode
 
-## 🎯 Project Overview
+[![Status](https://img.shields.io/badge/status-in%20development-yellow)](openspec/changes/vscode-extension-mvp/PROGRESS.md)
+[![Progress](https://img.shields.io/badge/progress-37%25-blue)](openspec/changes/vscode-extension-mvp/tasks.md)
 
-This is a VSCode extension specifically designed for [OpenSpec](https://github.com/Fission-AI/OpenSpec) that provides:
+## 📖 Overview
 
-- 📊 **Visual Dashboard**: See all changes, specs, and progress at a glance
-- ✅ **Interactive Tasks**: Click to toggle task completion instead of editing markdown
-- 📑 **Artifact Viewer**: Browse proposals, specs, designs, and tasks in a unified view
-- ⚡ **Quick Actions**: Copy opsx commands, archive changes, navigate files with one click
-- 🔄 **Real-time Updates**: File watching keeps UI synced automatically
+A VSCode extension that provides a visual dashboard for [OpenSpec](https://github.com/Fission-AI/OpenSpec), making it easier to manage changes, view specs, and track tasks without leaving your editor.
 
-## 🏗️ Project Status
+### ✅ Current Features (v0.1.0)
 
-**Current Phase**: Planning & Design Complete ✅
+- **Visual Dashboard**: See all changes and specs with progress indicators
+- **CLI Integration**: Full integration with OpenSpec CLI commands
+- **Real-time Updates**: Auto-refresh when files change (300ms debounce)
+- **Change Management**: Create and archive changes via commands
+- **Smart Logging**: Detailed logs in Output panel ("OpenSpec" channel)
+- **Error Handling**: Robust error handling with retry logic
 
-We've completed the full planning process using OpenSpec itself! All artifacts are in `openspec/changes/vscode-extension-mvp/`:
+### 🚀 Coming Soon
 
-- ✅ **Proposal** - Problem statement, solution, scope, and success criteria
-- ✅ **Specs** - Detailed requirements for Dashboard, Task Management, Artifact Viewing, and CLI Integration
-- ✅ **Design** - Complete technical architecture and implementation details
-- ✅ **Tasks** - 269 actionable tasks broken down into 12 phases
-
-**Next Step**: Begin implementation (Phase 1 - Project Setup)
-
-## 📐 Architecture Decisions
-
-Based on our exploration, we've made the following key decisions:
-
-### 1. **Independent Project**
-- Not part of OpenSpec core repository
-- Maintains its own release cycle
-- Can target specific OpenSpec versions
-
-### 2. **Mixed Data Source (Hybrid Approach)**
-```
-Extension ──initial data──> OpenSpec CLI (via child_process)
-          ──real-time updates──> FileSystemWatcher
-          ──artifact details──> Direct file reads
-```
-
-### 3. **Technology Stack**
-- **Extension**: TypeScript + Node.js + VSCode Extension API
-- **Webview**: React 19 + Tailwind CSS + Radix UI
-- **Build**: esbuild (extension) + Vite (webview)
-- **Backend**: Calls `openspec` CLI commands
-
-### 4. **Three Development Phases**
-
-**MVP (Phase 1)** - Core functionality (~4 weeks)
-- Dashboard showing all changes
-- Task checkbox interaction
-- Artifact viewing
-- Quick actions (copy commands)
-
-**Phase 2** - Enhanced experience
-- Sidebar tree view
-- Spec diff viewer
-- Archive browser
-- File navigation
-
-**Phase 3** - Advanced features
-- Comment system
-- AI integration
-- Multi-language UI
-- Keyboard shortcuts
-
-## 📚 Documentation
-
-- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Detailed architectural design and diagrams
-- **[docs/EXPLORATION_SUMMARY.md](docs/EXPLORATION_SUMMARY.md)** - Exploration process summary and key decisions
-- **[docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md)** - Project file structure and document index
-- **[openspec/changes/vscode-extension-mvp/](openspec/changes/vscode-extension-mvp/)** - Complete planning artifacts
-  - `proposal.md` - What and why
-  - `specs/` - Requirements and scenarios
-  - `design.md` - Technical implementation
-  - `tasks.md` - Implementation breakdown
-
-## 🚀 Getting Started (When Ready)
-
-### Prerequisites
-
-- Node.js 20.19.0+
-- VSCode 1.85.0+
-- pnpm 8.0.0+ (install with `npm install -g pnpm`)
-- OpenSpec CLI installed (`npm install -g @fission-ai/openspec`)
-
-### Development Setup (Phase 1 tasks)
-
-```bash
-# Install dependencies
-pnpm install
-
-# Build extension
-pnpm run build
-
-# Watch for changes
-pnpm run watch
-
-# Run extension
-# Press F5 in VSCode to open Extension Development Host
-```
-
-## 🎯 MVP Success Criteria
-
-The MVP will be successful if:
-
-1. ✅ Users can see all their changes and progress without running CLI commands
-2. ✅ Task completion is faster via checkbox clicks vs manual markdown editing
-3. ✅ Users prefer the dashboard over manually navigating file tree
-4. ✅ Extension accurately reflects OpenSpec state (no sync issues)
-5. ✅ File watching keeps UI updated without manual refresh
-
-## 📊 Progress Tracking
-
-View implementation progress:
-```bash
-openspec list
-openspec show vscode-extension-mvp
-```
-
-Current status: **0/269 tasks complete** (Ready to start!)
-
-## 🔗 References
-
-- **OpenSpec Source**: `/Users/randy/workspace/project/opensource/AI/OpenSpec`
-- **Reference VSCode Extension**: [spec-workflow-mcp](https://github.com/Pimzino/spec-workflow-mcp/tree/main/vscode-extension)
-- **OpenSpec Documentation**: [Getting Started](https://github.com/Fission-AI/OpenSpec/blob/main/docs/getting-started.md)
-
-## 🤝 Contributing
-
-This project uses OpenSpec for development workflow. To contribute:
-
-1. Review the planning artifacts in `openspec/changes/vscode-extension-mvp/`
-2. Pick a task from `tasks.md`
-3. Implement and test
-4. Update task status in `tasks.md`
-
-## 📝 License
-
-MIT (same as OpenSpec)
+- React-based UI with Tailwind CSS
+- Interactive task toggling (click checkboxes)
+- Markdown artifact viewer
+- Drag-and-drop task reordering
+- Enhanced filtering and search
 
 ---
 
-**Built with [OpenSpec](https://github.com/Fission-AI/OpenSpec)** - Practice what we preach!
+## 🏗️ Architecture
+
+```
+Extension Host (Node.js)          Webview (Browser)
+├── DataManager                   ├── HTML (current)
+│   ├── OpenSpecCliService        └── React App (Phase 7-9)
+│   ├── FileManagerService            ├── Dashboard
+│   └── FileWatcherService            ├── TaskList
+├── CommandManager                    └── ArtifactViewer
+└── DashboardProvider
+```
+
+**Design Decisions:**
+- Data Source: Hybrid (CLI + FileWatcher + Direct reads)
+- Backend: OpenSpec CLI via `child_process`
+- Frontend: React + Tailwind CSS + Radix UI (planned)
+- Build: esbuild + Vite
+- Package Manager: pnpm
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for details.
+
+---
+
+## 📦 Installation
+
+### Prerequisites
+
+- **Node.js** 18.0.0+
+- **pnpm** 8.0.0+ (`npm install -g pnpm`)
+- **VSCode** 1.85.0+
+- **OpenSpec CLI** 1.1.0+ ([installation](https://github.com/Fission-AI/OpenSpec#quick-start))
+
+### Development Setup
+
+```bash
+# Clone and install
+git clone <repo-url>
+cd openspce-ui
+pnpm install
+
+# Build
+pnpm run compile    # One-time build
+pnpm run watch      # Watch mode
+
+# Debug
+# Press F5 in VSCode to launch Extension Development Host
+```
+
+---
+
+## 🚀 Usage
+
+### Commands
+
+Open Command Palette (`Cmd+Shift+P`):
+
+| Command | Description |
+|---------|-------------|
+| **OpenSpec: Open Dashboard** | Open visual dashboard |
+| **OpenSpec: Refresh Data** | Manually refresh from CLI |
+| **OpenSpec: Create New Change** | Create new change (with validation) |
+| **OpenSpec: Archive Change** | Archive completed change |
+
+### Dashboard
+
+Current dashboard shows:
+- List of all changes with task progress
+- List of all specs
+- Last refresh timestamp
+- JSON data view (React UI coming in Phase 7-9)
+
+### Viewing Logs
+
+1. Open Output panel: `View > Output` or `Cmd+Shift+U`
+2. Select **"OpenSpec"** from dropdown
+3. View timestamped logs (INFO, WARN, ERROR, DEBUG)
+
+---
+
+## 🛠️ Development
+
+### Project Structure
+
+```
+openspce-ui/
+├── src/
+│   ├── extension/              # Extension host (Node.js)
+│   │   ├── services/           # CLI, FileManager, DataManager
+│   │   ├── commands/           # Command handlers
+│   │   ├── providers/          # Webview providers
+│   │   └── utils/              # Logger, helpers
+│   └── webview/                # React app (coming)
+├── openspec/                   # OpenSpec workspace
+│   ├── changes/
+│   │   └── vscode-extension-mvp/  # This project
+│   ├── specs/
+│   └── config.yaml
+├── .vscode/
+│   ├── launch.json             # Debug config
+│   └── tasks.json              # Build tasks
+├── esbuild.js                  # Extension bundler
+├── vite.config.ts              # Webview bundler
+└── package.json
+```
+
+### Scripts
+
+```bash
+pnpm run compile       # Build extension once
+pnpm run watch         # Watch extension changes
+pnpm run build         # Build everything (future)
+```
+
+### Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Backend | TypeScript, Node.js, VSCode API |
+| Frontend | React 19, Tailwind CSS, Radix UI (planned) |
+| Build | esbuild (extension), Vite (webview) |
+| Tools | pnpm, ESLint, Prettier |
+
+---
+
+## 📊 Progress
+
+**Current**: 37% (100/270 tasks)
+
+### ✅ Completed Phases
+
+- ✅ **Phase 1**: Project Setup (18 tasks)
+- ✅ **Phase 2**: CLI Integration (17 tasks)
+- ✅ **Phase 3**: File System Layer (18 tasks)
+- ✅ **Phase 4**: Data Cache (10 tasks)
+- ✅ **Phase 5**: Commands (13 tasks)
+- ✅ **Phase 6**: Dashboard Webview (26 tasks)
+
+### 🚧 In Progress
+
+- 🚧 **Phase 7-9**: React UI Development
+- 🔜 **Phase 10**: Task Management UI
+- 🔜 **Phase 11**: Testing
+- 🔜 **Phase 12**: Documentation & Polish
+
+**Detailed progress**: [PROGRESS.md](openspec/changes/vscode-extension-mvp/PROGRESS.md)
+
+---
+
+## 🐛 Known Issues
+
+### Current Issues
+
+- Dashboard UI is basic HTML (React UI in Phase 7-9)
+- No interactive task toggling yet
+- No markdown rendering
+- Missing loading/error indicators
+
+### Fixed Issues
+
+- ✅ JSON parse error with "No specs found" (v0.1.0)
+
+Report issues in the issue tracker (when available).
+
+---
+
+## 📚 Documentation
+
+| Document | Description |
+|----------|-------------|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | High-level architecture |
+| [PROGRESS.md](openspec/changes/vscode-extension-mvp/PROGRESS.md) | Development log |
+| [proposal.md](openspec/changes/vscode-extension-mvp/proposal.md) | Project proposal |
+| [design.md](openspec/changes/vscode-extension-mvp/design.md) | Technical design |
+| [tasks.md](openspec/changes/vscode-extension-mvp/tasks.md) | Task breakdown |
+
+---
+
+## 🤝 Contributing
+
+Currently in active development. Contributions welcome after MVP release.
+
+**To contribute:**
+1. Review [ARCHITECTURE.md](ARCHITECTURE.md)
+2. Check [tasks.md](openspec/changes/vscode-extension-mvp/tasks.md)
+3. Follow code style (ESLint + Prettier)
+
+---
+
+## 📄 License
+
+MIT (TBD)
+
+---
+
+## 🙏 Acknowledgments
+
+- [OpenSpec](https://github.com/Fission-AI/OpenSpec) - Spec-driven workflow tool
+- [VSCode Extension Samples](https://github.com/microsoft/vscode-extension-samples)
+
+---
+
+**Version**: 0.1.0 (MVP in progress)  
+**Last Updated**: 2026-02-07  
+**Status**: 🟢 Backend stable, frontend pending
