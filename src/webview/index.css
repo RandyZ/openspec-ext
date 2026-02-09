@@ -21,3 +21,16 @@ body {
 * {
   box-sizing: border-box;
 }
+
+.markdown-body h1, .markdown-body h2, .markdown-body h3 { margin-top: 1em; margin-bottom: 0.5em; font-weight: 600; }
+.markdown-body h1 { font-size: 1.25em; }
+.markdown-body h2 { font-size: 1.1em; }
+.markdown-body h3 { font-size: 1em; }
+.markdown-body p { margin: 0.5em 0; }
+.markdown-body ul, .markdown-body ol { margin: 0.5em 0; padding-left: 1.5em; }
+.markdown-body code { padding: 0.2em 0.4em; border-radius: 3px; background: var(--vscode-textBlockQuote-background); font-size: 0.9em; }
+.markdown-body pre { margin: 0.5em 0; padding: 0.75em; overflow-x: auto; background: var(--vscode-textBlockQuote-background); border-radius: 4px; }
+.markdown-body pre code { padding: 0; background: none; }
+.markdown-body blockquote { margin: 0.5em 0; padding-left: 1em; border-left: 3px solid var(--vscode-textBlockQuote-border); color: var(--vscode-descriptionForeground); }
+.markdown-body .mermaid { margin: 1em 0; text-align: center; overflow-x: auto; }
+.markdown-body .mermaid svg { max-width: 100%; height: auto; }

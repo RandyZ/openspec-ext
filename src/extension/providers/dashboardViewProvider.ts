@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { logger } from '../utils/logger';
 import { DataManager } from '../services/dataManager';
+import { ChangeDetailPanelManager } from './changeDetailPanelManager';
+import { handleWebviewMessage, getWebviewContent } from './webviewMessageHandler';
 
 export class DashboardViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'openspec.dashboardView';
@@ -9,7 +11,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
   constructor(
     private dataManager: DataManager,
-    private extensionPath: string
+    private extensionPath: string,
+    private panelManager?: ChangeDetailPanelManager
   ) {}
 
   /**
@@ -27,7 +30,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       localResourceRoots: [vscode.Uri.file(path.join(this.extensionPath, 'dist'))],
     };
 
-    webviewView.webview.html = this.getWebviewContent(webviewView.webview);
+    webviewView.webview.html = getWebviewContent(webviewView.webview, this.extensionPath);
 
     // Setup message handler
     this.setupMessageHandler(webviewView);
@@ -67,80 +70,13 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   }
 
   /**
-   * Handle messages from webview
+   * Handle messages from webview (sidebar). openChangeDetailInEditor is handled here.
    */
   private async handleMessage(message: any, webview: vscode.Webview): Promise<void> {
-    logger.debug(`Received message: ${message.type}`);
-
-    switch (message.type) {
-      case 'getDashboardData':
-        const data = await this.dataManager.getDashboardData();
-        webview.postMessage({
-          type: 'dashboardData',
-          data,
-        });
-        break;
-
-      case 'refresh':
-        const refreshedData = await this.dataManager.refresh();
-        webview.postMessage({
-          type: 'dashboardData',
-          data: refreshedData,
-        });
-        break;
-
-      case 'toggleTask':
-        await this.dataManager.toggleTask(message.changeName, message.taskIndex);
-        const updatedData = await this.dataManager.getDashboardData();
-        webview.postMessage({
-          type: 'dashboardData',
-          data: updatedData,
-        });
-        break;
-
-      case 'openArtifact':
-        // Open artifact in editor
-        const artifactPath = path.join(
-          vscode.workspace.workspaceFolders![0].uri.fsPath,
-          'openspec',
-          'changes',
-          message.changeName,
-          `${message.artifactType}.md`
-        );
-        const doc = await vscode.workspace.openTextDocument(artifactPath);
-        await vscode.window.showTextDocument(doc);
-        break;
-
-      default:
-        logger.warn(`Unknown message type: ${message.type}`);
+    if (message.type === 'openChangeDetailInEditor' && message.changeName && this.panelManager) {
+      this.panelManager.open(message.changeName);
+      return;
     }
-  }
-
-  /**
-   * Generate HTML content for webview
-   */
-  private getWebviewContent(webview: vscode.Webview): string {
-    // Get URIs for the built React app
-    const scriptUri = webview.asWebviewUri(
-      vscode.Uri.file(path.join(this.extensionPath, 'dist', 'webview', 'index.js'))
-    );
-    const styleUri = webview.asWebviewUri(
-      vscode.Uri.file(path.join(this.extensionPath, 'dist', 'webview', 'index.css'))
-    );
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource};">
-  <title>OpenSpec Dashboard</title>
-  <link rel="stylesheet" href="${styleUri}">
-</head>
-<body>
-  <div id="root"></div>
-  <script type="module" src="${scriptUri}"></script>
-</body>
-</html>`;
+    await handleWebviewMessage(message, webview, this.dataManager);
   }
 }

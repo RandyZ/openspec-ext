@@ -3,6 +3,7 @@ import { initLogger, logger } from './utils/logger';
 import { DataManager } from './services/dataManager';
 import { CommandManager } from './commands/commandManager';
 import { DashboardViewProvider } from './providers/dashboardViewProvider';
+import { ChangeDetailPanelManager } from './providers/changeDetailPanelManager';
 
 let dataManager: DataManager | null = null;
 
@@ -26,10 +27,16 @@ export async function activate(context: vscode.ExtensionContext) {
     dataManager = new DataManager(workspaceRoot);
     await dataManager.initialize();
 
+    const changeDetailPanelManager = new ChangeDetailPanelManager(
+      dataManager,
+      context.extensionPath
+    );
+
     // Register dashboard view provider (sidebar)
     const dashboardViewProvider = new DashboardViewProvider(
       dataManager,
-      context.extensionPath
+      context.extensionPath,
+      changeDetailPanelManager
     );
     context.subscriptions.push(
       vscode.window.registerWebviewViewProvider(

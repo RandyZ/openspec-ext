@@ -99,6 +99,8 @@
     "@radix-ui/react-progress": "^1.1.8",
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",
+    "marked": "^17.0.1",
+    "mermaid": "^11.12.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   }

@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../utils/logger';
 import { OpenSpecCliService } from './openspecCli';
@@ -56,16 +57,20 @@ export class DataManager {
   }
 
   /**
-   * Refresh dashboard data from CLI
+   * Refresh dashboard data from CLI (and from change specs when CLI returns none)
    */
   async refresh(): Promise<DashboardData> {
     try {
       logger.info('Refreshing dashboard data...');
 
-      const [changes, specs] = await Promise.all([
+      const [changes, cliSpecs] = await Promise.all([
         this.cliService.listChanges(),
         this.cliService.listSpecs(),
       ]);
+
+      // When CLI returns no specs, show delta specs from each change's specs/ folder
+      const specs =
+        cliSpecs.length > 0 ? cliSpecs : await this.listSpecsFromChanges();
 
       this.cachedData = {
         changes,
@@ -79,6 +84,62 @@ export class DataManager {
     } catch (error) {
       logger.error('Failed to refresh dashboard data', error as Error);
       throw error;
+    }
+  }
+
+  /**
+   * List delta specs from openspec/changes/*/specs/*/spec.md when CLI list --specs is empty.
+   * Counts requirements by matching "### Requirement:" in each spec.md.
+   */
+  private async listSpecsFromChanges(): Promise<SpecInfo[]> {
+    const changesDir = path.join(this.workspaceRoot, 'openspec', 'changes');
+    const result: SpecInfo[] = [];
+
+    try {
+      const entries = await fs.promises.readdir(changesDir, { withFileTypes: true });
+      for (const ent of entries) {
+        if (!ent.isDirectory()) continue;
+        const changeName = ent.name;
+        const specsDir = path.join(changesDir, changeName, 'specs');
+        try {
+          const specEntries = await fs.promises.readdir(specsDir, { withFileTypes: true });
+          for (const se of specEntries) {
+            if (!se.isDirectory()) continue;
+            const specPath = path.join(specsDir, se.name, 'spec.md');
+            try {
+              await fs.promises.access(specPath);
+              const relativePath = path.relative(this.workspaceRoot, specPath);
+              const requirementCount = await this.countRequirementsInSpec(specPath);
+              result.push({
+                id: `${changeName} / ${se.name}`,
+                requirementCount,
+                path: relativePath,
+              });
+            } catch {
+              // no spec.md in this subdir
+            }
+          }
+        } catch {
+          // no specs dir or not readable
+        }
+      }
+    } catch (err) {
+      logger.debug('Could not list specs from changes', err as Error);
+    }
+
+    return result;
+  }
+
+  /**
+   * Count lines matching "### Requirement:" in a spec markdown file
+   */
+  private async countRequirementsInSpec(specPath: string): Promise<number> {
+    try {
+      const content = await fs.promises.readFile(specPath, 'utf-8');
+      const matches = content.match(/^### Requirement:/gm);
+      return matches ? matches.length : 0;
+    } catch {
+      return 0;
     }
   }
 
@@ -100,6 +161,13 @@ export class DataManager {
   }
 
   /**
+   * Check if artifact file exists
+   */
+  async artifactExists(changeName: string, artifactType: string): Promise<boolean> {
+    return await this.fileManager.artifactExists(changeName, artifactType);
+  }
+
+  /**
    * Read artifact content (from file system)
    */
   async readArtifact(changeName: string, artifactType: string): Promise<string> {
@@ -118,6 +186,30 @@ export class DataManager {
    */
   async readDeltaSpec(changeName: string, specId: string): Promise<string | null> {
     return await this.fileManager.readDeltaSpec(changeName, specId);
+  }
+
+  /**
+   * List delta spec ids for a change (specs/<id>/spec.md)
+   */
+  async listDeltaSpecIds(changeName: string): Promise<string[]> {
+    const specsDir = path.join(this.workspaceRoot, 'openspec', 'changes', changeName, 'specs');
+    try {
+      const entries = await fs.promises.readdir(specsDir, { withFileTypes: true });
+      const ids: string[] = [];
+      for (const ent of entries) {
+        if (!ent.isDirectory()) continue;
+        const specPath = path.join(specsDir, ent.name, 'spec.md');
+        try {
+          await fs.promises.access(specPath);
+          ids.push(ent.name);
+        } catch {
+          // no spec.md
+        }
+      }
+      return ids;
+    } catch {
+      return [];
+    }
   }
 
   /**

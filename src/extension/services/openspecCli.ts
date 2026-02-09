@@ -43,7 +43,21 @@ export class OpenSpecCliService {
   }
 
   /**
-   * List all changes
+   * Get change status with artifact details
+   */
+  async getChangeStatus(name: string): Promise<any> {
+    try {
+      const output = await this.execOpenSpec(['status', '--change', name, '--json']);
+      const data = JSON.parse(output);
+      return data;
+    } catch (error) {
+      logger.error(`Failed to get status for change: ${name}`, error as Error);
+      throw error;
+    }
+  }
+
+  /**
+   * List all changes with artifact status
    */
   async listChanges(): Promise<ChangeInfo[]> {
     try {
@@ -55,13 +69,34 @@ export class OpenSpecCliService {
         return [];
       }
 
-      return data.changes.map((c: any) => ({
-        name: c.name,
-        completedTasks: c.completedTasks || 0,
-        totalTasks: c.totalTasks || 0,
-        lastModified: c.lastModified,
-        status: this.determineStatus(c),
-      }));
+      // Enrich each change with artifact status
+      const enrichedChanges = await Promise.all(
+        data.changes.map(async (c: any) => {
+          try {
+            const status = await this.getChangeStatus(c.name);
+            return {
+              name: c.name,
+              completedTasks: c.completedTasks || 0,
+              totalTasks: c.totalTasks || 0,
+              lastModified: c.lastModified,
+              status: this.determineStatus(c),
+              artifacts: status.artifacts || [],
+            };
+          } catch {
+            // If status fails, return basic info
+            return {
+              name: c.name,
+              completedTasks: c.completedTasks || 0,
+              totalTasks: c.totalTasks || 0,
+              lastModified: c.lastModified,
+              status: this.determineStatus(c),
+              artifacts: [],
+            };
+          }
+        })
+      );
+
+      return enrichedChanges;
     } catch (error) {
       logger.error('Failed to list changes', error as Error);
       throw error;

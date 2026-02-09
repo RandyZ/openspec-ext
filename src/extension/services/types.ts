@@ -4,6 +4,13 @@ export interface ChangeInfo {
   totalTasks: number;
   lastModified: string;
   status: 'draft' | 'in-progress' | 'complete';
+  artifacts?: ArtifactStatus[];
+}
+
+export interface ArtifactStatus {
+  id: string;
+  outputPath: string;
+  status: 'done' | 'ready' | 'blocked';
 }
 
 export interface SpecInfo {

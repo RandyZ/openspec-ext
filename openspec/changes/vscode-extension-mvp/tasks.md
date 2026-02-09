@@ -174,90 +174,90 @@ This task list breaks down the MVP implementation into actionable items. Tasks a
 - [x] Configure Vite build
 
 ### 7.2 VSCode Integration
-- [ ] Create useVscode hook for API access
-- [ ] Implement message posting helper
-- [ ] Implement message receiving handler
-- [ ] Add VSCode theme color support
+- [x] Create useVscode hook for API access
+- [x] Implement message posting helper
+- [x] Implement message receiving handler
+- [x] Add VSCode theme color support
 
 ### 7.3 State Management
-- [ ] Create AppContext with reducer
-- [ ] Define state shape (changes, specs, selected, etc.)
-- [ ] Define actions (SET_CHANGES, SET_SPECS, etc.)
-- [ ] Implement reducer logic
-- [ ] Provide context to app
+- [x] Create AppContext with reducer
+- [x] Define state shape (changes, specs, selected, etc.)
+- [x] Define actions (SET_CHANGES, SET_SPECS, etc.)
+- [x] Implement reducer logic
+- [x] Provide context to app
 
 ### 7.4 Data Loading
-- [ ] Request initial data on mount
-- [ ] Handle updateData message from extension
-- [ ] Update state on data received
-- [ ] Add loading states
-- [ ] Add error states
+- [x] Request initial data on mount
+- [x] Handle updateData message from extension
+- [x] Update state on data received
+- [x] Add loading states
+- [x] Add error states
 
 ## Phase 8: Dashboard View
 
 ### 8.1 Layout Structure
-- [ ] Create Dashboard component
-- [ ] Add Header with title and actions
-- [ ] Create ChangesSection component
-- [ ] Create SpecsSection component
-- [ ] Create ArchiveSection component (placeholder)
-- [ ] Add responsive layout (CSS Grid or Flexbox)
+- [x] Create Dashboard component
+- [x] Add Header with title and actions
+- [x] Create ChangesSection component
+- [x] Create SpecsSection component
+- [x] Create ArchiveSection component (placeholder)
+- [x] Add responsive layout (CSS Grid or Flexbox)
 
 ### 8.2 Changes Section
-- [ ] Create ChangeCard component
-- [ ] Display change name, progress, last modified
-- [ ] Add progress bar visualization
-- [ ] Group changes by status (draft/active/completed)
-- [ ] Add status section headers with counts
-- [ ] Implement click to navigate to change detail
+- [x] Create ChangeCard component
+- [x] Display change name, progress, last modified
+- [x] Add progress bar visualization
+- [x] Group changes by status (draft/active/completed)
+- [x] Add status section headers with counts
+- [x] Implement click to navigate to change detail
 
 ### 8.3 Empty States
-- [ ] Create EmptyState component
-- [ ] Show empty state when no changes
-- [ ] Add "Create New Change" button
-- [ ] Show empty state for specs when none exist
+- [x] Create EmptyState component
+- [x] Show empty state when no changes
+- [x] Add "Create New Change" button
+- [x] Show empty state for specs when none exist
 
 ### 8.4 Quick Actions
-- [ ] Add hover actions on ChangeCard
-- [ ] Implement "Copy /opsx:ff" button
-- [ ] Implement "Copy /opsx:apply" button
-- [ ] Implement "Archive" button (conditional)
-- [ ] Add clipboard copy notification
+- [x] Add hover actions on ChangeCard
+- [x] Implement "Copy /opsx:ff" button
+- [x] Implement "Copy /opsx:apply" button
+- [x] Implement "Archive" button (conditional)
+- [x] Add clipboard copy notification
 
 ### 8.5 Specs Display
-- [ ] Create SpecCard component
-- [ ] Display spec name and requirement count
-- [ ] Add click to view spec details
-- [ ] Style spec cards
+- [x] Create SpecCard component
+- [x] Display spec name and requirement count
+- [x] Add click to view spec details
+- [x] Style spec cards
 
 ### 8.6 Global Actions
-- [ ] Add "New Change" button in header
-- [ ] Add "Refresh" button in header
-- [ ] Implement new change dialog/prompt
-- [ ] Implement refresh data action
+- [x] Add "New Change" button in header
+- [x] Add "Refresh" button in header
+- [x] Implement new change dialog/prompt
+- [x] Implement refresh data action
 
 ## Phase 9: Change Detail View
 
 ### 9.1 View Structure
-- [ ] Create ChangeDetail component
-- [ ] Add tabs for artifacts (Proposal, Specs, Design, Tasks)
-- [ ] Implement tab switching logic
-- [ ] Add back navigation to dashboard
-- [ ] Display change name in header
+- [x] Create ChangeDetail component
+- [x] Add tabs for artifacts (Proposal, Specs, Design, Tasks)
+- [x] Implement tab switching logic
+- [x] Add back navigation to dashboard
+- [x] Display change name in header
 
 ### 9.2 Artifact Viewer
-- [ ] Create ArtifactViewer component
-- [ ] Request artifact content from extension
-- [ ] Handle artifact loading state
-- [ ] Handle artifact not found state
-- [ ] Display artifact content
+- [x] Create ArtifactViewer component
+- [x] Request artifact content from extension
+- [x] Handle artifact loading state
+- [x] Handle artifact not found state
+- [x] Display artifact content
 
 ### 9.3 Markdown Rendering
-- [ ] Choose markdown library (marked or markdown-it)
-- [ ] Create MarkdownRenderer component
-- [ ] Implement markdown to HTML conversion
+- [x] Choose markdown library (marked or markdown-it)
+- [x] Create MarkdownRenderer component
+- [x] Implement markdown to HTML conversion
 - [ ] Add syntax highlighting for code blocks
-- [ ] Style markdown output to match VSCode theme
+- [x] Style markdown output to match VSCode theme
 - [ ] Handle internal links
 
 ### 9.4 Task List View
