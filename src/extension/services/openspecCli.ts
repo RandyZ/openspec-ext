@@ -150,9 +150,9 @@ export class OpenSpecCliService {
         return [];
       }
 
-      return data.specs.map((s: any) => ({
-        id: s.id,
-        requirementCount: s.requirementCount || 0,
+      return data.specs.map((s: { id?: string; requirementCount?: number; path?: string }): SpecInfo => ({
+        id: s.id ?? '',
+        requirementCount: s.requirementCount ?? 0,
         path: s.path,
       }));
     } catch (error) {

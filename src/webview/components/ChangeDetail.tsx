@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useVscode } from '../hooks/useVscode';
-import { useAppState } from '../context/AppContext';
 import { sendMessage } from '../types/messages';
 import { ArtifactViewer } from './ArtifactViewer';
 
@@ -17,7 +16,6 @@ export interface ChangeDetailProps {
 
 export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName }) => {
   const { postMessage, onMessage } = useVscode();
-  const { dispatch } = useAppState();
   const [activeTab, setActiveTab] = useState<'proposal' | 'specs' | 'design' | 'tasks'>('proposal');
   const [content, setContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -101,12 +99,19 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName }) => {
     }
   }, [activeTab, selectedSpecId]);
 
-  const handleBack = () => {
-    dispatch({ type: 'SELECT_CHANGE', payload: null });
+  const handleShowInSidebar = () => {
+    postMessage(sendMessage.revealSidebar());
   };
 
   const handleOpenInEditor = () => {
-    postMessage(sendMessage.openChange(changeName));
+    if (activeTab === 'specs' && selectedSpecId) {
+      const specPath = changeName.startsWith('archive:')
+        ? `openspec/changes/archive/${changeName.slice(8)}/specs/${selectedSpecId}/spec.md`
+        : `openspec/changes/${changeName}/specs/${selectedSpecId}/spec.md`;
+      postMessage(sendMessage.openSpec(specPath));
+    } else {
+      postMessage(sendMessage.openArtifact(changeName, activeTab));
+    }
   };
 
   return (
@@ -125,11 +130,13 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName }) => {
             background: 'var(--vscode-button-secondaryBackground)',
             color: 'var(--vscode-button-secondaryForeground)',
           }}
-          onClick={handleBack}
+          onClick={handleShowInSidebar}
         >
-          ← Back
+          Show in sidebar
         </button>
-        <span className="font-semibold text-sm">{changeName}</span>
+        <span className="font-semibold text-sm">
+          {changeName.startsWith('archive:') ? `${changeName.slice(8)} (archived)` : changeName}
+        </span>
         <button
           type="button"
           className="px-2 py-1 text-xs rounded cursor-pointer ml-auto"

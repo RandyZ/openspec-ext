@@ -34,12 +34,15 @@ export class CommandManager {
   }
 
   /**
-   * Open OpenSpec Dashboard (reveal sidebar view)
+   * Open OpenSpec Dashboard (optionally reveal sidebar view per setting)
    */
   private async handleOpenDashboard(): Promise<void> {
     try {
-      logger.info('Revealing OpenSpec dashboard view...');
-      this.dashboardViewProvider.reveal();
+      const focusSidebar = vscode.workspace.getConfiguration('openspec').get<boolean>('focusSidebarViewWhenOpeningDashboard');
+      if (focusSidebar) {
+        logger.info('Revealing OpenSpec dashboard view...');
+        this.dashboardViewProvider.reveal();
+      }
     } catch (error) {
       logger.error('Failed to open dashboard', error as Error);
       vscode.window.showErrorMessage('Failed to open OpenSpec dashboard');

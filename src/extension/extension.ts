@@ -27,9 +27,21 @@ export async function activate(context: vscode.ExtensionContext) {
     dataManager = new DataManager(workspaceRoot);
     await dataManager.initialize();
 
+    let dashboardViewProviderRef: DashboardViewProvider | null = null;
+    const onAfterOpenChangeDetail = (): void => {
+      if (vscode.workspace.getConfiguration('openspec').get<boolean>('focusSidebarViewWhenOpeningChangeDetail')) {
+        dashboardViewProviderRef?.reveal();
+      }
+    };
+    const onRevealSidebar = (): void => {
+      dashboardViewProviderRef?.reveal();
+    };
+
     const changeDetailPanelManager = new ChangeDetailPanelManager(
       dataManager,
-      context.extensionPath
+      context.extensionPath,
+      onAfterOpenChangeDetail,
+      onRevealSidebar
     );
 
     // Register dashboard view provider (sidebar)
@@ -38,6 +50,7 @@ export async function activate(context: vscode.ExtensionContext) {
       context.extensionPath,
       changeDetailPanelManager
     );
+    dashboardViewProviderRef = dashboardViewProvider;
     context.subscriptions.push(
       vscode.window.registerWebviewViewProvider(
         DashboardViewProvider.viewType,

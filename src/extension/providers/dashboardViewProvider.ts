@@ -47,8 +47,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
    * Reveal the view (make it visible if hidden)
    */
   public reveal(): void {
+    logger.debug('OpenSpec sidebar reveal called');
+    void vscode.commands.executeCommand('workbench.view.extension.openspec');
     if (this._view) {
-      this._view.show?.(true);
+      this._view.show?.(false);
     }
   }
 

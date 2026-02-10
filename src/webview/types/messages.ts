@@ -13,7 +13,9 @@ export type WebviewMessage =
   | { type: 'getArtifactContent'; changeName: string; artifactType: string }
   | { type: 'listDeltaSpecs'; changeName: string }
   | { type: 'getDeltaSpecContent'; changeName: string; specId: string }
-  | { type: 'openChangeDetailInEditor'; changeName: string };
+  | { type: 'openChangeDetailInEditor'; changeName: string }
+  | { type: 'getArchivedChanges' }
+  | { type: 'revealSidebar' };
 
 // Message types from extension to webview
 export type ExtensionMessage =
@@ -24,7 +26,8 @@ export type ExtensionMessage =
   | { type: 'deltaSpecList'; changeName: string; specIds: string[] }
   | { type: 'deltaSpecContent'; changeName: string; specId: string; content: string }
   | { type: 'deltaSpecContentError'; changeName: string; specId: string; message: string }
-  | { type: 'setContext'; view: 'changeDetail'; changeName: string };
+  | { type: 'setContext'; view: 'changeDetail'; changeName: string }
+  | { type: 'archivedChanges'; items: ArchivedChangeInfo[] };
 
 // Data types
 export interface DashboardData {
@@ -52,6 +55,12 @@ export interface SpecInfo {
   id: string;
   requirementCount: number;
   path?: string;
+}
+
+export interface ArchivedChangeInfo {
+  directoryName: string;
+  name: string;
+  archiveDate: string;
 }
 
 // Helper functions for sending messages
@@ -125,5 +134,13 @@ export const sendMessage = {
   openChangeDetailInEditor: (changeName: string): WebviewMessage => ({
     type: 'openChangeDetailInEditor',
     changeName,
+  }),
+
+  getArchivedChanges: (): WebviewMessage => ({
+    type: 'getArchivedChanges',
+  }),
+
+  revealSidebar: (): WebviewMessage => ({
+    type: 'revealSidebar',
   }),
 };

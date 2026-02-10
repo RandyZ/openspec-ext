@@ -5,7 +5,7 @@ import { logger } from '../utils/logger';
 import { OpenSpecCliService } from './openspecCli';
 import { FileManagerService } from './fileManager';
 import { FileWatcherService } from './fileWatcher';
-import { ChangeInfo, ChangeDetails, SpecInfo } from './types';
+import { ChangeInfo, ChangeDetails, SpecInfo, ArchivedChangeInfo } from './types';
 
 export interface DashboardData {
   changes: ChangeInfo[];
@@ -22,7 +22,7 @@ export class DataManager {
 
   constructor(private workspaceRoot: string) {
     const openspecDir = path.join(workspaceRoot, 'openspec');
-    
+
     this.cliService = new OpenSpecCliService(workspaceRoot);
     this.fileManager = new FileManagerService(openspecDir);
     this.fileWatcher = new FileWatcherService(workspaceRoot);
@@ -69,14 +69,14 @@ export class DataManager {
       ]);
 
       // When CLI returns no specs, show delta specs from each change's specs/ folder
-      const specs =
-        cliSpecs.length > 0 ? cliSpecs : await this.listSpecsFromChanges();
+      const specs: SpecInfo[] = cliSpecs.length > 0 ? cliSpecs : await this.listSpecsFromChanges();
 
-      this.cachedData = {
+      const data: DashboardData = {
         changes,
         specs,
         lastRefresh: Date.now(),
       };
+      this.cachedData = data;
 
       logger.info(`Refreshed: ${changes.length} changes, ${specs.length} specs`);
       this.notifyRefresh();
@@ -88,7 +88,7 @@ export class DataManager {
   }
 
   /**
-   * List delta specs from openspec/changes/*/specs/*/spec.md when CLI list --specs is empty.
+   * List delta specs from openspec/changes/.../specs/.../spec.md when CLI list --specs is empty.
    * Counts requirements by matching "### Requirement:" in each spec.md.
    */
   private async listSpecsFromChanges(): Promise<SpecInfo[]> {
@@ -98,7 +98,7 @@ export class DataManager {
     try {
       const entries = await fs.promises.readdir(changesDir, { withFileTypes: true });
       for (const ent of entries) {
-        if (!ent.isDirectory()) continue;
+        if (!ent.isDirectory() || ent.name === 'archive') continue;
         const changeName = ent.name;
         const specsDir = path.join(changesDir, changeName, 'specs');
         try {
@@ -124,7 +124,7 @@ export class DataManager {
         }
       }
     } catch (err) {
-      logger.debug('Could not list specs from changes', err as Error);
+      logger.debug(`Could not list specs from changes: ${(err as Error).message}`);
     }
 
     return result;
@@ -189,10 +189,42 @@ export class DataManager {
   }
 
   /**
-   * List delta spec ids for a change (specs/<id>/spec.md)
+   * List archived changes (scan openspec/changes/archive, lazy-loaded).
+   * Directory names are expected to be YYYY-MM-DD-<name>.
+   */
+  async listArchivedChanges(): Promise<ArchivedChangeInfo[]> {
+    const archiveDir = path.join(this.workspaceRoot, 'openspec', 'changes', 'archive');
+    const result: ArchivedChangeInfo[] = [];
+    try {
+      const entries = await fs.promises.readdir(archiveDir, { withFileTypes: true });
+      for (const ent of entries) {
+        if (!ent.isDirectory()) continue;
+        const directoryName = ent.name;
+        const match = directoryName.match(/^(\d{4}-\d{2}-\d{2})-(.+)$/);
+        const archiveDate = match ? match[1] : '';
+        const name = match ? match[2] : directoryName;
+        result.push({ directoryName, name, archiveDate });
+      }
+      result.sort((a, b) =>
+        (b.archiveDate || b.directoryName).localeCompare(a.archiveDate || a.directoryName)
+      );
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        logger.debug(`Could not list archive: ${(err as Error).message}`);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * List delta spec ids for a change (specs/<id>/spec.md).
+   * For archived changes, changeName must be prefixed with "archive:" and then directoryName.
    */
   async listDeltaSpecIds(changeName: string): Promise<string[]> {
-    const specsDir = path.join(this.workspaceRoot, 'openspec', 'changes', changeName, 'specs');
+    const baseDir = changeName.startsWith('archive:')
+      ? path.join(this.workspaceRoot, 'openspec', 'changes', 'archive', changeName.slice(8))
+      : path.join(this.workspaceRoot, 'openspec', 'changes', changeName);
+    const specsDir = path.join(baseDir, 'specs');
     try {
       const entries = await fs.promises.readdir(specsDir, { withFileTypes: true });
       const ids: string[] = [];

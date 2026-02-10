@@ -19,10 +19,13 @@ export class FileManagerService {
   constructor(private openspecDir: string) {}
 
   /**
-   * Get path to an artifact
+   * Get path to an artifact.
+   * For archived changes, changeName must be "archive:YYYY-MM-DD-name" (directoryName under archive).
    */
   getArtifactPath(changeName: string, artifactType: string): string {
-    const basePath = path.join(this.openspecDir, 'changes', changeName);
+    const basePath = changeName.startsWith('archive:')
+      ? path.join(this.openspecDir, 'changes', 'archive', changeName.slice(8))
+      : path.join(this.openspecDir, 'changes', changeName);
 
     switch (artifactType) {
       case 'proposal':
@@ -84,17 +87,13 @@ export class FileManagerService {
   }
 
   /**
-   * Read delta spec from a change
+   * Read delta spec from a change (or from archive when changeName is "archive:directoryName").
    */
   async readDeltaSpec(changeName: string, specId: string): Promise<string | null> {
-    const deltaPath = path.join(
-      this.openspecDir,
-      'changes',
-      changeName,
-      'specs',
-      specId,
-      'spec.md'
-    );
+    const changesBase = changeName.startsWith('archive:')
+      ? path.join(this.openspecDir, 'changes', 'archive', changeName.slice(8))
+      : path.join(this.openspecDir, 'changes', changeName);
+    const deltaPath = path.join(changesBase, 'specs', specId, 'spec.md');
 
     try {
       const content = await fs.promises.readFile(deltaPath, 'utf-8');

@@ -19,6 +19,13 @@ export interface SpecInfo {
   path?: string;
 }
 
+/** Archived change: directory name is YYYY-MM-DD-<name> under openspec/changes/archive */
+export interface ArchivedChangeInfo {
+  directoryName: string;
+  name: string;
+  archiveDate: string;
+}
+
 export interface ChangeDetails {
   name: string;
   schema: string;

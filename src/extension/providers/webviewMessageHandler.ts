@@ -91,13 +91,10 @@ export async function handleWebviewMessage(
     case 'openArtifact': {
       const folder = vscode.workspace.workspaceFolders?.[0];
       if (!folder) break;
-      const artifactPath = path.join(
-        folder.uri.fsPath,
-        'openspec',
-        'changes',
-        message.changeName,
-        `${message.artifactType}.md`
-      );
+      const changesBase = message.changeName.startsWith('archive:')
+        ? path.join(folder.uri.fsPath, 'openspec', 'changes', 'archive', message.changeName.slice(8))
+        : path.join(folder.uri.fsPath, 'openspec', 'changes', message.changeName);
+      const artifactPath = path.join(changesBase, `${message.artifactType}.md`);
       const doc = await vscode.workspace.openTextDocument(artifactPath);
       await vscode.window.showTextDocument(doc);
       break;
@@ -186,6 +183,17 @@ export async function handleWebviewMessage(
           specId,
           message: (err as Error).message,
         });
+      }
+      break;
+    }
+
+    case 'getArchivedChanges': {
+      try {
+        const items = await dataManager.listArchivedChanges();
+        webview.postMessage({ type: 'archivedChanges', items });
+      } catch (err) {
+        logger.error('Failed to list archived changes', err as Error);
+        webview.postMessage({ type: 'archivedChanges', items: [] });
       }
       break;
     }

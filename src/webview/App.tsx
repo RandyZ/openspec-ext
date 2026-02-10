@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AppProvider, useAppState } from './context/AppContext';
 import { useVscode } from './hooks/useVscode';
 import { Dashboard } from './components/Dashboard';
@@ -7,17 +7,22 @@ import { ChangeDetail } from './components/ChangeDetail';
 function AppContent() {
   const { state, dispatch } = useAppState();
   const { onMessage } = useVscode();
+  const [panelChangeName, setPanelChangeName] = useState<string | null>(null);
 
   useEffect(() => {
     const cleanup = onMessage((event: MessageEvent) => {
       const msg = event.data;
       if (msg.type === 'setContext' && msg.view === 'changeDetail' && msg.changeName) {
+        setPanelChangeName(msg.changeName);
         dispatch({ type: 'SELECT_CHANGE', payload: msg.changeName });
       }
     });
     return cleanup;
   }, [onMessage, dispatch]);
 
+  if (panelChangeName) {
+    return <ChangeDetail changeName={panelChangeName} />;
+  }
   if (state.selectedChange) {
     return <ChangeDetail changeName={state.selectedChange} />;
   }

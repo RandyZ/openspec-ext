@@ -1,7 +1,8 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useVscode } from '../hooks/useVscode';
 import { useAppState } from '../context/AppContext';
 import { sendMessage } from '../types/messages';
+import type { ArchivedChangeInfo } from '../types/messages';
 import { Header } from './Header';
 import { ChangesSection } from './ChangesSection';
 import { SpecsSection } from './SpecsSection';
@@ -9,16 +10,22 @@ import { SpecsSection } from './SpecsSection';
 export const Dashboard: React.FC = () => {
   const { postMessage, onMessage } = useVscode();
   const { state, dispatch } = useAppState();
+  const [archivedExpanded, setArchivedExpanded] = useState(false);
+  const [archivedItems, setArchivedItems] = useState<ArchivedChangeInfo[]>([]);
+  const [archivedLoading, setArchivedLoading] = useState(false);
 
   useEffect(() => {
     // Listen for messages from extension
     const cleanup = onMessage((event: MessageEvent) => {
       const message = event.data;
-      
+
       if (message.type === 'dashboardData') {
         dispatch({ type: 'SET_DATA', payload: message.data });
       } else if (message.type === 'error') {
         dispatch({ type: 'SET_ERROR', payload: message.message });
+      } else if (message.type === 'archivedChanges') {
+        setArchivedItems(message.items ?? []);
+        setArchivedLoading(false);
       }
     });
 
@@ -28,6 +35,19 @@ export const Dashboard: React.FC = () => {
 
     return cleanup;
   }, [postMessage, onMessage, dispatch]);
+
+  const handleArchivedToggle = () => {
+    const next = !archivedExpanded;
+    setArchivedExpanded(next);
+    if (next) {
+      setArchivedLoading(true);
+      postMessage(sendMessage.getArchivedChanges());
+    }
+  };
+
+  const handleOpenArchivedChange = (directoryName: string) => {
+    postMessage(sendMessage.openChangeDetailInEditor(`archive:${directoryName}`));
+  };
 
   const handleRefresh = () => {
     dispatch({ type: 'SET_LOADING', payload: true });
@@ -95,6 +115,11 @@ export const Dashboard: React.FC = () => {
               onCopyFf={handleCopyFf}
               onCopyApply={handleCopyApply}
               onArchive={handleArchive}
+              archivedExpanded={archivedExpanded}
+              onArchivedToggle={handleArchivedToggle}
+              archivedItems={archivedItems}
+              archivedLoading={archivedLoading}
+              onOpenArchivedChange={handleOpenArchivedChange}
             />
             <SpecsSection specs={data.specs} onOpenSpec={handleOpenSpec} />
           </>

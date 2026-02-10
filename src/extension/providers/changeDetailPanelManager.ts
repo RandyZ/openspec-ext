@@ -14,19 +14,32 @@ export class ChangeDetailPanelManager {
 
   constructor(
     private dataManager: DataManager,
-    private extensionPath: string
+    private extensionPath: string,
+    private onAfterOpen?: () => void,
+    private onRevealSidebar?: () => void
   ) {}
 
   public open(changeName: string): void {
     const existing = this.panels.get(changeName);
     if (existing) {
       existing.reveal(vscode.ViewColumn.One);
+      existing.webview.postMessage({
+        type: 'setContext',
+        view: 'changeDetail',
+        changeName,
+      });
+      if (this.onAfterOpen) {
+        this.onAfterOpen();
+      }
       return;
     }
 
+    const panelTitle = changeName.startsWith('archive:')
+      ? `OpenSpec: ${changeName.slice(8)} (archived)`
+      : `OpenSpec: ${changeName}`;
     const panel = vscode.window.createWebviewPanel(
       'openspecChangeDetail',
-      `OpenSpec: ${changeName}`,
+      panelTitle,
       vscode.ViewColumn.One,
       {
         enableScripts: true,
@@ -42,8 +55,22 @@ export class ChangeDetailPanelManager {
 
     panel.webview.html = getWebviewContent(panel.webview, this.extensionPath);
 
+    // Proactively send setContext so webview can show ChangeDetail without waiting for first message
+    setTimeout(() => {
+      panel.webview.postMessage({
+        type: 'setContext',
+        view: 'changeDetail',
+        changeName,
+      });
+    }, 150);
+
     panel.webview.onDidReceiveMessage(
       async (message) => {
+        if (message?.type === 'revealSidebar') {
+          logger.debug('Panel received revealSidebar');
+          this.onRevealSidebar?.();
+          return;
+        }
         const changeNameForContext = this.pendingSetContext.get(panel.webview);
         if (changeNameForContext !== undefined) {
           this.pendingSetContext.delete(panel.webview);
@@ -63,10 +90,21 @@ export class ChangeDetailPanelManager {
       []
     );
 
+    panel.onDidChangeViewState((e) => {
+      if (e.webviewPanel.visible && this.onAfterOpen) {
+        logger.debug('Change detail panel became visible, calling onAfterOpen');
+        this.onAfterOpen();
+      }
+    });
+
     panel.onDidDispose(() => {
       this.panels.delete(changeName);
       this.pendingSetContext.delete(panel.webview);
     });
+
+    if (this.onAfterOpen) {
+      this.onAfterOpen();
+    }
 
     logger.info(`Change detail panel opened: ${changeName}`);
   }
