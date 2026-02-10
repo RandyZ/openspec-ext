@@ -54,11 +54,11 @@ This task list breaks down the MVP implementation into actionable items. Tasks a
 - [x] Add workspace not initialized error handling
 
 ### 2.4 Unit Tests
-- [ ] Test CLI availability check
-- [ ] Test JSON parsing with valid data
-- [ ] Test JSON parsing with malformed data
-- [ ] Test command execution success cases
-- [ ] Test command execution error cases
+- [x] Test CLI availability check
+- [x] Test JSON parsing with valid data
+- [x] Test JSON parsing with malformed data
+- [x] Test command execution success cases
+- [x] Test command execution error cases
 - [ ] Test timeout handling
 
 ## Phase 3: File System Layer
@@ -91,8 +91,8 @@ This task list breaks down the MVP implementation into actionable items. Tasks a
 - [x] Test task markdown parsing
 - [x] Test task toggle functionality
 - [x] Test artifact reading
-- [ ] Test file path resolution
-- [ ] Test error handling for missing files
+- [x] Test file path resolution
+- [x] Test error handling for missing files
 
 ## Phase 4: Data Cache Layer
 
