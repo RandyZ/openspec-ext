@@ -5,6 +5,8 @@ import { logger } from '../utils/logger';
 import { OpenSpecCliService } from './openspecCli';
 import { FileManagerService } from './fileManager';
 import { FileWatcherService } from './fileWatcher';
+import { TaskExecutorService } from './taskExecutorService';
+import { getAvailableAdapters, getCurrentAdapter } from '../adapters';
 import { ChangeInfo, ChangeDetails, SpecInfo, ArchivedChangeInfo } from './types';
 
 export interface DashboardData {
@@ -13,10 +15,16 @@ export interface DashboardData {
   lastRefresh: number;
 }
 
+export interface AgentAdapterInfo {
+  available: { id: string; displayName: string }[];
+  currentId: string | null;
+}
+
 export class DataManager {
   private cliService: OpenSpecCliService;
   private fileManager: FileManagerService;
   private fileWatcher: FileWatcherService;
+  private taskExecutorService: TaskExecutorService;
   private cachedData: DashboardData | null = null;
   private refreshCallbacks: Set<() => void> = new Set();
 
@@ -26,6 +34,7 @@ export class DataManager {
     this.cliService = new OpenSpecCliService(workspaceRoot);
     this.fileManager = new FileManagerService(openspecDir);
     this.fileWatcher = new FileWatcherService(workspaceRoot);
+    this.taskExecutorService = new TaskExecutorService(workspaceRoot, this.fileManager);
   }
 
   /**
@@ -274,6 +283,26 @@ export class DataManager {
   async archiveChange(name: string): Promise<void> {
     await this.cliService.archiveChange(name);
     await this.refresh();
+  }
+
+  /**
+   * Execute task via current adapter (dependency check + mode handled inside).
+   * @returns { success: boolean } for UI to clear running state.
+   */
+  async executeTaskRequest(changeName: string, taskIndex: number, taskText: string): Promise<{ success: boolean }> {
+    return await this.taskExecutorService.execute(changeName, taskIndex, taskText);
+  }
+
+  /**
+   * Get available agent adapters and current selection for UI.
+   */
+  async getAgentAdaptersInfo(): Promise<AgentAdapterInfo> {
+    const available = await getAvailableAdapters();
+    const current = await getCurrentAdapter();
+    return {
+      available: available.map((a) => ({ id: a.id, displayName: a.displayName })),
+      currentId: current?.id ?? null,
+    };
   }
 
   /**

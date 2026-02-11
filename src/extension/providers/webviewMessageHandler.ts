@@ -48,12 +48,27 @@ export async function handleWebviewMessage(
       break;
     }
 
-    case 'toggleTask':
-      await dataManager.toggleTask(message.changeName, message.taskIndex);
+    case 'toggleTask': {
+      const changeName = message.changeName;
+      const taskIndex = message.taskIndex;
+      const tasks = await dataManager.readTasks(changeName);
+      const task = tasks[taskIndex];
+      const isMarkingDone = task && !task.done;
+      if (isMarkingDone) {
+        const confirm = await vscode.window.showWarningMessage(
+          '确定将此任务标记为已完成？（跳过）',
+          { modal: true },
+          '确定跳过',
+          '取消'
+        );
+        if (confirm !== '确定跳过') break;
+      }
+      await dataManager.toggleTask(changeName, taskIndex);
       await dataManager.getDashboardData().then((data) => {
         webview.postMessage({ type: 'dashboardData', data });
       });
       break;
+    }
 
     case 'openChange': {
       const folder = vscode.workspace.workspaceFolders?.[0];
@@ -194,6 +209,59 @@ export async function handleWebviewMessage(
       } catch (err) {
         logger.error('Failed to list archived changes', err as Error);
         webview.postMessage({ type: 'archivedChanges', items: [] });
+      }
+      break;
+    }
+
+    case 'executeTask': {
+      const { changeName, taskIndex, taskText } = message;
+      if (!changeName || typeof taskIndex !== 'number' || !taskText) break;
+      let success = false;
+      try {
+        const result = await dataManager.executeTaskRequest(changeName, taskIndex, taskText);
+        success = result.success;
+      } catch (err) {
+        logger.error('executeTask failed', err as Error);
+        vscode.window.showErrorMessage((err as Error).message || '执行任务失败');
+      }
+      try {
+        webview.postMessage({ type: 'taskExecutionFinished', changeName, taskIndex, success });
+      } catch (e) {
+        const msg = (e as Error).message ?? String(e);
+        if (msg.includes('disposed') || msg.includes('Disposed')) {
+          logger.debug('executeTask: webview already disposed, skip postMessage');
+        } else {
+          throw e;
+        }
+      }
+      break;
+    }
+
+    case 'getAgentAdapters': {
+      try {
+        const info = await dataManager.getAgentAdaptersInfo();
+        webview.postMessage({ type: 'agentAdapters', ...info });
+      } catch (err) {
+        logger.error('getAgentAdapters failed', err as Error);
+        webview.postMessage({
+          type: 'agentAdapters',
+          available: [],
+          currentId: null,
+        });
+      }
+      break;
+    }
+
+    case 'setPreferredAgentAdapter': {
+      const adapterId = message.adapterId;
+      if (typeof adapterId !== 'string') break;
+      try {
+        const config = vscode.workspace.getConfiguration('openspec');
+        await config.update('preferredAgentAdapter', adapterId, vscode.ConfigurationTarget.Global);
+        vscode.window.showInformationMessage(`已切换执行者: ${adapterId}`);
+      } catch (err) {
+        logger.error('setPreferredAgentAdapter failed', err as Error);
+        vscode.window.showErrorMessage('保存设置失败');
       }
       break;
     }

@@ -35,6 +35,28 @@
           "type": "boolean",
           "default": false,
           "description": "When running Open Dashboard command, focus the sidebar on the OpenSpec view."
+        },
+        "openspec.taskExecutionMode": {
+          "type": "string",
+          "enum": ["auto", "fillChat"],
+          "default": "fillChat",
+          "description": "When clicking task execute: auto = run via adapter; fillChat = fill chat or copy to clipboard."
+        },
+        "openspec.preferredAgentAdapter": {
+          "type": "string",
+          "default": "",
+          "description": "Preferred Agent executor adapter id (e.g. cursor, claude-code, clipboard). Empty = use first available."
+        },
+        "openspec.taskDependencyPolicy": {
+          "type": "string",
+          "enum": ["block", "warn"],
+          "default": "block",
+          "description": "When preceding tasks are incomplete: block = prevent execution; warn = show warning and let user proceed."
+        },
+        "openspec.agentModel": {
+          "type": "string",
+          "default": "auto",
+          "description": "Cursor agent CLI model. Default is 'auto' (Cursor chooses; no --model passed). Set a specific name (e.g. composer-1.5, gpt-5.2) only when you want to override, e.g. to avoid a model's usage limit."
         }
       }
     },
@@ -76,6 +98,11 @@
       {
         "command": "openspec.archiveChange",
         "title": "OpenSpec: Archive Change",
+        "category": "OpenSpec"
+      },
+      {
+        "command": "openspec.selectAgentAdapter",
+        "title": "OpenSpec: Select Agent Adapter",
         "category": "OpenSpec"
       }
     ]

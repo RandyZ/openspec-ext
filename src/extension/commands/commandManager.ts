@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { logger } from '../utils/logger';
 import { DataManager } from '../services/dataManager';
 import { DashboardViewProvider } from '../providers/dashboardViewProvider';
+import { getAvailableAdapters, getCurrentAdapter } from '../adapters';
 
 export class CommandManager {
   constructor(
@@ -26,6 +27,9 @@ export class CommandManager {
       ),
       vscode.commands.registerCommand('openspec.archiveChange', (changeName?: string) =>
         this.handleArchiveChange(changeName)
+      ),
+      vscode.commands.registerCommand('openspec.selectAgentAdapter', () =>
+        this.handleSelectAgentAdapter()
       ),
     ];
 
@@ -174,6 +178,36 @@ export class CommandManager {
     } catch (error) {
       logger.error('Failed to archive change', error as Error);
       vscode.window.showErrorMessage('Failed to archive change');
+    }
+  }
+
+  /**
+   * Select preferred Agent adapter (Quick Pick).
+   */
+  private async handleSelectAgentAdapter(): Promise<void> {
+    try {
+      const available = await getAvailableAdapters();
+      if (available.length === 0) {
+        vscode.window.showInformationMessage('当前没有可用的执行者。');
+        return;
+      }
+      const current = await getCurrentAdapter();
+      const items = available.map((a) => ({
+        label: a.displayName,
+        description: a.id === current?.id ? '当前' : undefined,
+        id: a.id,
+      }));
+      const selected = await vscode.window.showQuickPick(items, {
+        placeHolder: '选择任务执行者',
+        matchOnDescription: true,
+      });
+      if (!selected) return;
+      const config = vscode.workspace.getConfiguration('openspec');
+      await config.update('preferredAgentAdapter', selected.id, vscode.ConfigurationTarget.Global);
+      vscode.window.showInformationMessage(`已切换执行者: ${selected.label}`);
+    } catch (error) {
+      logger.error('Failed to select agent adapter', error as Error);
+      vscode.window.showErrorMessage('选择执行者失败');
     }
   }
 }

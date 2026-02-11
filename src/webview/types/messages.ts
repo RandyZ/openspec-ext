@@ -15,7 +15,10 @@ export type WebviewMessage =
   | { type: 'getDeltaSpecContent'; changeName: string; specId: string }
   | { type: 'openChangeDetailInEditor'; changeName: string }
   | { type: 'getArchivedChanges' }
-  | { type: 'revealSidebar' };
+  | { type: 'revealSidebar' }
+  | { type: 'executeTask'; changeName: string; taskIndex: number; taskText: string }
+  | { type: 'getAgentAdapters' }
+  | { type: 'setPreferredAgentAdapter'; adapterId: string };
 
 // Message types from extension to webview
 export type ExtensionMessage =
@@ -27,7 +30,9 @@ export type ExtensionMessage =
   | { type: 'deltaSpecContent'; changeName: string; specId: string; content: string }
   | { type: 'deltaSpecContentError'; changeName: string; specId: string; message: string }
   | { type: 'setContext'; view: 'changeDetail'; changeName: string }
-  | { type: 'archivedChanges'; items: ArchivedChangeInfo[] };
+  | { type: 'archivedChanges'; items: ArchivedChangeInfo[] }
+  | { type: 'agentAdapters'; available: { id: string; displayName: string }[]; currentId: string | null }
+  | { type: 'taskExecutionFinished'; changeName: string; taskIndex: number; success: boolean };
 
 // Data types
 export interface DashboardData {
@@ -142,5 +147,21 @@ export const sendMessage = {
 
   revealSidebar: (): WebviewMessage => ({
     type: 'revealSidebar',
+  }),
+
+  executeTask: (changeName: string, taskIndex: number, taskText: string): WebviewMessage => ({
+    type: 'executeTask',
+    changeName,
+    taskIndex,
+    taskText,
+  }),
+
+  getAgentAdapters: (): WebviewMessage => ({
+    type: 'getAgentAdapters',
+  }),
+
+  setPreferredAgentAdapter: (adapterId: string): WebviewMessage => ({
+    type: 'setPreferredAgentAdapter',
+    adapterId,
   }),
 };

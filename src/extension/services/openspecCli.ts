@@ -207,6 +207,21 @@ export class OpenSpecCliService {
   }
 
   /**
+   * Get instructions for an artifact (e.g. apply, proposal, design, tasks).
+   * Returns raw JSON string from `openspec instructions <artifact> --change <changeName> --json`.
+   * Throws if CLI is not available or command fails.
+   */
+  async getInstructions(artifact: string, changeName: string): Promise<string> {
+    return await this.execOpenSpec([
+      'instructions',
+      artifact,
+      '--change',
+      changeName,
+      '--json',
+    ]);
+  }
+
+  /**
    * Execute OpenSpec CLI command with retry logic
    */
   private async execOpenSpec(args: string[], retries: number = 3): Promise<string> {

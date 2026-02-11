@@ -25,6 +25,11 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName }) => {
   const [errorCode, setErrorCode] = useState<string | undefined>(undefined);
   const [deltaSpecIds, setDeltaSpecIds] = useState<string[]>([]);
   const [selectedSpecId, setSelectedSpecId] = useState<string | null>(null);
+  const [agentAdapters, setAgentAdapters] = useState<{
+    available: { id: string; displayName: string }[];
+    currentId: string | null;
+  }>({ available: [], currentId: null });
+  const [executingTaskIndex, setExecutingTaskIndex] = useState<number | null>(null);
 
   const requestArtifact = (artifactType: string) => {
     setLoading(true);
@@ -88,6 +93,13 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName }) => {
         setError(msg.message ?? 'Failed to load spec');
         setLoading(false);
         setContent(null);
+      } else if (msg.type === 'agentAdapters') {
+        setAgentAdapters({
+          available: msg.available ?? [],
+          currentId: msg.currentId ?? null,
+        });
+      } else if (msg.type === 'taskExecutionFinished' && msg.changeName === changeName) {
+        setExecutingTaskIndex(null);
       }
     });
     return cleanup;
@@ -100,6 +112,12 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName }) => {
       postMessage(sendMessage.getDeltaSpecContent(changeName, selectedSpecId));
     }
   }, [activeTab, selectedSpecId]);
+
+  useEffect(() => {
+    if (activeTab === 'tasks') {
+      postMessage(sendMessage.getAgentAdapters());
+    }
+  }, [activeTab, changeName]);
 
   const handleShowInSidebar = () => {
     postMessage(sendMessage.revealSidebar());
@@ -201,13 +219,46 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName }) => {
 
       <div className="p-3 flex-1 overflow-auto">
         {activeTab === 'tasks' && content !== null && !loading && !error ? (
-          <TaskList
-            content={content}
-            changeName={changeName}
-            onToggleTask={(name, taskIndex) =>
-              postMessage(sendMessage.toggleTask(name, taskIndex))
-            }
-          />
+          <>
+            {agentAdapters.available.length > 0 && (
+              <div className="flex items-center gap-2 mb-3 text-sm">
+                <span style={{ color: 'var(--vscode-descriptionForeground)' }}>执行者：</span>
+                <select
+                  value={agentAdapters.currentId ?? ''}
+                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                    const id = e.target.value;
+                    if (id) {
+                      postMessage(sendMessage.setPreferredAgentAdapter(id));
+                      setAgentAdapters((prev) => ({ ...prev, currentId: id }));
+                    }
+                  }}
+                  style={{
+                    padding: '2px 8px',
+                    background: 'var(--vscode-input-background)',
+                    color: 'var(--vscode-input-foreground)',
+                    border: '1px solid var(--vscode-input-border)',
+                    borderRadius: '4px',
+                  }}
+                >
+                  {agentAdapters.available.map((a) => (
+                    <option key={a.id} value={a.id}>{a.displayName}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <TaskList
+              content={content}
+              changeName={changeName}
+              executingTaskIndex={executingTaskIndex}
+              onToggleTask={(name, taskIndex) =>
+                postMessage(sendMessage.toggleTask(name, taskIndex))
+              }
+              onExecuteTask={(name, taskIndex, taskText) => {
+                setExecutingTaskIndex(taskIndex);
+                postMessage(sendMessage.executeTask(name, taskIndex, taskText));
+              }}
+            />
+          </>
         ) : (
           <ArtifactViewer
             content={content}
