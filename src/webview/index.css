@@ -34,3 +34,7 @@ body {
 .markdown-body blockquote { margin: 0.5em 0; padding-left: 1em; border-left: 3px solid var(--vscode-textBlockQuote-border); color: var(--vscode-descriptionForeground); }
 .markdown-body .mermaid { margin: 1em 0; text-align: center; overflow-x: auto; }
 .markdown-body .mermaid svg { max-width: 100%; height: auto; }
+
+@keyframes ui-spin {
+  to { transform: rotate(360deg); }
+}

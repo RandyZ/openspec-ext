@@ -256,49 +256,49 @@ This task list breaks down the MVP implementation into actionable items. Tasks a
 - [x] Choose markdown library (marked or markdown-it)
 - [x] Create MarkdownRenderer component
 - [x] Implement markdown to HTML conversion
-- [ ] Add syntax highlighting for code blocks
+- [x] Add syntax highlighting for code blocks
 - [x] Style markdown output to match VSCode theme
-- [ ] Handle internal links
+- [x] Handle internal links
 
 ### 9.4 Task List View
-- [ ] Create TaskList component
-- [ ] Create TaskCheckbox component
-- [ ] Display tasks with proper indentation
-- [ ] Implement task toggle interaction
-- [ ] Add optimistic UI update
-- [ ] Show task completion animation
+- [x] Create TaskList component
+- [x] Create TaskCheckbox component
+- [x] Display tasks with proper indentation
+- [x] Implement task toggle interaction
+- [x] Add optimistic UI update
+- [x] Show task completion animation
 
 ### 9.5 Action Bar
-- [ ] Create ActionBar component
-- [ ] Add "Copy /opsx:ff" button
-- [ ] Add "Copy /opsx:apply" button
-- [ ] Add "Open in Editor" button
-- [ ] Add "Archive Change" button (conditional)
-- [ ] Add "Refresh" button
+- [x] Create ActionBar component
+- [x] Add "Copy /opsx:ff" button
+- [x] Add "Copy /opsx:apply" button
+- [x] Add "Open in Editor" button
+- [x] Add "Archive Change" button (conditional)
+- [x] Add "Refresh" button
 
 ## Phase 10: UI Components Library
 
 ### 10.1 Base Components
-- [ ] Setup Radix UI primitives
-- [ ] Create Button component (with variants)
-- [ ] Create Card component
-- [ ] Create Tabs component
-- [ ] Create Progress component
-- [ ] Create LoadingSpinner component
+- [x] Setup Radix UI primitives
+- [x] Create Button component (with variants)
+- [x] Create Card component
+- [x] Create Tabs component
+- [x] Create Progress component
+- [x] Create LoadingSpinner component
 
 ### 10.2 Utility Components
-- [ ] Create ErrorBoundary component
-- [ ] Create Tooltip component
-- [ ] Create Badge component (for status)
-- [ ] Create EmptyState component
-- [ ] Create ConfirmDialog component
+- [x] Create ErrorBoundary component
+- [x] Create Tooltip component
+- [x] Create Badge component (for status)
+- [x] Create EmptyState component
+- [x] Create ConfirmDialog component
 
 ### 10.3 Styling
-- [ ] Setup Tailwind utility classes
-- [ ] Create shared color palette
-- [ ] Add VSCode theme variable integration
-- [ ] Create component variants (CVA)
-- [ ] Add animations and transitions
+- [x] Setup Tailwind utility classes
+- [x] Create shared color palette
+- [x] Add VSCode theme variable integration
+- [x] Create component variants (CVA)
+- [x] Add animations and transitions
 
 ## Phase 11: Testing & Polish
 

@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useVscode } from '../hooks/useVscode';
 import { sendMessage } from '../types/messages';
+import { ActionBar } from './ActionBar';
 import { ArtifactViewer } from './ArtifactViewer';
+import { TaskList } from './TaskList';
 
 const TABS = [
   { id: 'proposal' as const, label: 'Proposal' },
@@ -114,6 +116,17 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName }) => {
     }
   };
 
+  const handleRefresh = () => {
+    postMessage(sendMessage.refresh());
+    if (activeTab === 'specs') {
+      requestSpecsList();
+    } else {
+      requestArtifact(activeTab);
+    }
+  };
+
+  const isArchived = changeName.startsWith('archive:');
+
   return (
     <div
       className="min-h-screen flex flex-col"
@@ -137,18 +150,17 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName }) => {
         <span className="font-semibold text-sm">
           {changeName.startsWith('archive:') ? `${changeName.slice(8)} (archived)` : changeName}
         </span>
-        <button
-          type="button"
-          className="px-2 py-1 text-xs rounded cursor-pointer ml-auto"
-          style={{
-            background: 'var(--vscode-button-secondaryBackground)',
-            color: 'var(--vscode-button-secondaryForeground)',
-          }}
-          onClick={handleOpenInEditor}
-        >
-          Open in Editor
-        </button>
       </div>
+
+      <ActionBar
+        changeName={changeName}
+        isArchived={isArchived}
+        onCopyFf={(name) => postMessage(sendMessage.copyToClipboard(`/opsx-ff ${name}`))}
+        onCopyApply={(name) => postMessage(sendMessage.copyToClipboard(`/opsx-apply ${name}`))}
+        onOpenInEditor={handleOpenInEditor}
+        onArchive={(name) => postMessage(sendMessage.archiveChange(name))}
+        onRefresh={handleRefresh}
+      />
 
       <div className="flex border-b gap-1 px-2" style={{ borderColor: 'var(--vscode-panel-border)' }}>
         {TABS.map((tab) => (
@@ -188,13 +200,23 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName }) => {
       )}
 
       <div className="p-3 flex-1 overflow-auto">
-        <ArtifactViewer
-          content={content}
-          loading={loading}
-          error={error}
-          errorCode={errorCode}
-          onOpenInEditor={handleOpenInEditor}
-        />
+        {activeTab === 'tasks' && content !== null && !loading && !error ? (
+          <TaskList
+            content={content}
+            changeName={changeName}
+            onToggleTask={(name, taskIndex) =>
+              postMessage(sendMessage.toggleTask(name, taskIndex))
+            }
+          />
+        ) : (
+          <ArtifactViewer
+            content={content}
+            loading={loading}
+            error={error}
+            errorCode={errorCode}
+            onOpenInEditor={handleOpenInEditor}
+          />
+        )}
       </div>
     </div>
   );
