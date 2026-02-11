@@ -3,7 +3,7 @@
 > Visual interface for managing OpenSpec workflows in VSCode
 
 [![Status](https://img.shields.io/badge/status-in%20development-yellow)](openspec/changes/vscode-extension-mvp/PROGRESS.md)
-[![Progress](https://img.shields.io/badge/progress-37%25-blue)](openspec/changes/vscode-extension-mvp/tasks.md)
+[![Progress](https://img.shields.io/badge/progress-MVP-blue)](openspec/changes/vscode-extension-mvp/tasks.md)
 
 ## 📖 Overview
 
@@ -11,20 +11,14 @@ A VSCode extension that provides a visual dashboard for [OpenSpec](https://githu
 
 ### ✅ Current Features (v0.1.0)
 
-- **Visual Dashboard**: See all changes and specs with progress indicators
-- **CLI Integration**: Full integration with OpenSpec CLI commands
-- **Real-time Updates**: Auto-refresh when files change (300ms debounce)
-- **Change Management**: Create and archive changes via commands
-- **Smart Logging**: Detailed logs in Output panel ("OpenSpec" channel)
-- **Error Handling**: Robust error handling with retry logic
-
-### 🚀 Coming Soon
-
-- React-based UI with Tailwind CSS
-- Interactive task toggling (click checkboxes)
-- Markdown artifact viewer
-- Drag-and-drop task reordering
-- Enhanced filtering and search
+- **Visual Dashboard**: React UI with changes and specs, progress bars, empty states
+- **Change Detail**: Tabs for Proposal, Specs, Design, Tasks; markdown artifact viewer; task checkboxes with write-back
+- **CLI Integration**: OpenSpec CLI (list, status, new, archive) with retry and 30s timeout
+- **Real-time Updates**: File watcher (openspec/**/*.md, *.yaml) with 300ms debounce; cache 10s TTL
+- **Quick Actions**: Copy /opsx:ff, /opsx:apply; Archive; Open in Editor; Refresh
+- **Commands**: Open Dashboard, Refresh Data, Create New Change, Archive Change
+- **Logging**: Output panel "OpenSpec" channel
+- **Error Handling**: User-facing messages, CLI-not-found and timeout handling
 
 ---
 
@@ -82,22 +76,32 @@ pnpm run watch      # Watch mode
 
 ### Commands
 
-Open Command Palette (`Cmd+Shift+P`):
+Open Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`):
 
 | Command | Description |
 |---------|-------------|
-| **OpenSpec: Open Dashboard** | Open visual dashboard |
+| **OpenSpec: Open Dashboard** | Open visual dashboard (sidebar or editor) |
 | **OpenSpec: Refresh Data** | Manually refresh from CLI |
 | **OpenSpec: Create New Change** | Create new change (with validation) |
 | **OpenSpec: Archive Change** | Archive completed change |
 
+### Keyboard shortcuts
+
+- `Cmd+Shift+P` (Mac) / `Ctrl+Shift+P` (Windows/Linux): Command Palette — then type "OpenSpec" to run any command.
+- No default keybindings; you can assign them in Keyboard Shortcuts (e.g. for "OpenSpec: Open Dashboard").
+
+### Configuration
+
+| Setting | Default | Description |
+|--------|---------|-------------|
+| `openspec.focusSidebarViewWhenOpeningChangeDetail` | `false` | Focus OpenSpec sidebar when opening change detail |
+| `openspec.focusSidebarViewWhenOpeningDashboard` | `false` | Focus OpenSpec sidebar when opening dashboard |
+
 ### Dashboard
 
-Current dashboard shows:
-- List of all changes with task progress
-- List of all specs
-- Last refresh timestamp
-- JSON data view (React UI coming in Phase 7-9)
+- Changes list with progress and status; quick actions (Copy /opsx:ff, /opsx:apply, Archive)
+- Specs list; empty states with "Create New Change"
+- Change detail: Proposal / Specs / Design / Tasks tabs; markdown rendering; task toggles; action bar
 
 ### Viewing Logs
 
@@ -154,42 +158,41 @@ pnpm run build         # Build everything (future)
 
 ## 📊 Progress
 
-**Current**: 37% (100/270 tasks)
+**Current**: MVP complete (Phases 1–12). Post-MVP: Sidebar tree, Spec diff, Archive browser.
 
 ### ✅ Completed Phases
 
-- ✅ **Phase 1**: Project Setup (18 tasks)
-- ✅ **Phase 2**: CLI Integration (17 tasks)
-- ✅ **Phase 3**: File System Layer (18 tasks)
-- ✅ **Phase 4**: Data Cache (10 tasks)
-- ✅ **Phase 5**: Commands (13 tasks)
-- ✅ **Phase 6**: Dashboard Webview (26 tasks)
+- ✅ **Phase 1–6**: Setup, CLI, File system, Cache, Commands, Dashboard provider
+- ✅ **Phase 7–10**: React webview, Dashboard & Change detail UI, UI component library
+- ✅ **Phase 11**: Testing & polish (manual checklist, edge cases, performance, docs)
+- ✅ **Phase 12**: Documentation, package config, release prep
 
-### 🚧 In Progress
-
-- 🚧 **Phase 7-9**: React UI Development
-- 🔜 **Phase 10**: Task Management UI
-- 🔜 **Phase 11**: Testing
-- 🔜 **Phase 12**: Documentation & Polish
-
-**Detailed progress**: [PROGRESS.md](openspec/changes/vscode-extension-mvp/PROGRESS.md)
+**Detailed progress**: [tasks.md](openspec/changes/vscode-extension-mvp/tasks.md)
 
 ---
 
-## 🐛 Known Issues
+## 🐛 Known Issues & Troubleshooting
 
-### Current Issues
+### Troubleshooting
 
-- Dashboard UI is basic HTML (React UI in Phase 7-9)
-- No interactive task toggling yet
-- No markdown rendering
-- Missing loading/error indicators
+- **Extension doesn’t activate**  
+  Ensure the workspace root contains `openspec/config.yaml`. Check Output → Extension Host.
 
-### Fixed Issues
+- **Dashboard or webview blank**  
+  Run `pnpm run build` and ensure `dist/webview/` exists. In Extension Development Host, use "Developer: Toggle Developer Tools" and check the webview iframe console.
+
+- **OpenSpec CLI not found**  
+  Install [OpenSpec CLI](https://github.com/Fission-AI/OpenSpec#quick-start) and ensure `openspec` is on PATH in the environment where VSCode is launched.
+
+- **Tasks don’t update on disk**  
+  Ensure the workspace has write access to `openspec/changes/<name>/tasks.md`. Check Output → OpenSpec for errors.
+
+- **Build or test failures**  
+  `rm -rf dist node_modules && pnpm install && pnpm run build && pnpm test`
+
+### Fixed
 
 - ✅ JSON parse error with "No specs found" (v0.1.0)
-
-Report issues in the issue tracker (when available).
 
 ---
 
@@ -229,6 +232,6 @@ MIT (TBD)
 
 ---
 
-**Version**: 0.1.0 (MVP in progress)  
-**Last Updated**: 2026-02-07  
-**Status**: 🟢 Backend stable, frontend pending
+**Version**: 0.1.0  
+**Last Updated**: 2026-02  
+**Status**: 🟢 MVP complete

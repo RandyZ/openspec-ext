@@ -134,4 +134,25 @@ describe('OpenSpecCliService', () => {
     const service = new OpenSpecCliService(workspaceRoot);
     await expect(service.getVersion()).rejects.toThrow();
   });
+
+  it('rejects with timeout error when CLI does not complete within 30s', async () => {
+    vi.useFakeTimers();
+    // Process that never emits 'close' so the 30s timeout will fire (service retries 3 times)
+    vi.mocked(spawn).mockImplementation(() => ({
+      stdout: { on: vi.fn() },
+      stderr: { on: vi.fn() },
+      on: vi.fn(),
+      kill: vi.fn(),
+    }) as any);
+
+    const service = new OpenSpecCliService(workspaceRoot);
+    const promise = service.getVersion();
+    const expectation = expect(promise).rejects.toThrow('Command timed out after 30 seconds');
+
+    // Advance past all 3 retry timeouts (30s each) plus backoff (1s + 2s)
+    await vi.advanceTimersByTimeAsync(100000);
+
+    await expectation;
+    vi.useRealTimers();
+  });
 });

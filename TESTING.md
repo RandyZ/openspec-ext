@@ -5,107 +5,72 @@
 ### 1. 构建扩展
 ```bash
 pnpm run compile
+# 或完整构建（extension + webview）
+pnpm run build
 ```
 
-应该看到输出：
-```
-[watch] build started
-[watch] build finished
+应看到 `[watch] build finished` 及 Vite 构建完成。
+
+### 2. 运行单元测试
+```bash
+pnpm test
 ```
 
-### 2. 在 VSCode 中测试
+覆盖：CLI 服务（可用性、JSON 解析、超时、错误）、FileManager（任务解析、路径、缺失文件）。
+
+### 3. 在 VSCode 中测试
 
 #### 方式 A：使用调试器（推荐）
-1. 在 VSCode 中打开这个项目
-2. 按 `F5` 或点击左侧的 "Run and Debug"
-3. 选择 "Run Extension"
-4. 会打开一个新的 VSCode 窗口（Extension Development Host）
+1. 在 VSCode 中打开本项目
+2. 按 `F5` 或 Run and Debug → "Run Extension"
+3. 在 Extension Development Host 中打开**包含 `openspec/config.yaml` 的工作区**（例如本项目根目录）
 
 #### 方式 B：手动启动
 ```bash
-code --extensionDevelopmentPath=/Users/randy/workspace/project/randy/openspce-ui
+code --extensionDevelopmentPath=$(pwd)
 ```
+然后在打开的新窗口中打开带 OpenSpec 的工作区。
 
-### 3. 验证扩展运行
+### 4. 验证扩展运行（Phase 11.1 手动测试清单）
 
-在 Extension Development Host 窗口中：
+- **扩展激活**：Console 出现 `OpenSpec extension is now active!`；Running Extensions 中可见 "OpenSpec"。
+- **CLI 未安装**：在无 `openspec` 的 PATH 下打开项目，应出现友好提示。
+- **无 openspec 工作区**：打开不含 `openspec/config.yaml` 的文件夹，扩展不激活（无错误）。
+- **Dashboard 加载**：命令 "OpenSpec: Open Dashboard" 或侧边栏 OpenSpec → Dashboard，应打开 React 面板并显示数据。
+- **Change 列表**：Dashboard 显示 changes 与 progress；无 changes 时显示空状态。
+- **Change 详情**：点击某 change 进入详情；Proposal/Specs/Design/Tasks 标签可切换；Artifact 与 Task 列表正常。
+- **Task 勾选**：在 Tasks 标签中勾选/取消勾选，应写回 `tasks.md` 并保持格式。
+- **文件监视与自动刷新**：修改 `openspec/**/*.md` 或 `*.yaml` 后，约 300ms 防抖后数据刷新。
+- **快捷操作**：Copy /opsx:ff、Copy /opsx:apply、Archive 等按钮可用；复制后应有提示。
+- **错误场景**：如 CLI 超时、无效 JSON，应有明确错误提示。
 
-1. **打开开发者工具**
-   - Mac: `Cmd + Option + I`
-   - Windows/Linux: `Ctrl + Shift + I`
+### 5. 边界与性能（Phase 11.2 / 11.3）
 
-2. **查看 Console**
-   - 应该能看到：`OpenSpec extension is now active!`
+- **无 changes / 无 specs**：空状态与“新建 Change”入口正常。
+- **大任务文件 / 深层嵌套**：`parseTasksMarkdown` 与 toggle 单元测试已覆盖；可手动用 100+ 行 tasks.md 验证。
+- **特殊字符**：change 名称含空格或特殊字符时列表与详情正常。
+- **缓存与防抖**：DataManager 缓存 TTL 10s；FileWatcher 300ms 防抖（见实现与单元测试）。
 
-3. **检查扩展是否加载**
-   - 打开命令面板：`Cmd + Shift + P` (Mac) 或 `Ctrl + Shift + P`
-   - 输入 "Extensions: Show Running Extensions"
-   - 在列表中找到 "OpenSpec"
+### 6. 检查构建产物
 
-### 4. 测试激活条件
-
-我们的扩展配置为在工作区包含 `openspec/config.yaml` 时激活。
-
-1. 在 Extension Development Host 中打开一个包含 OpenSpec 的项目
-2. 或者在测试窗口中创建一个：
-   ```bash
-   mkdir test-workspace
-   cd test-workspace
-   mkdir openspec
-   touch openspec/config.yaml
-   ```
-3. 然后在 Extension Development Host 中打开这个文件夹
-
-### 5. 检查构建输出
-
-查看 `dist/extension.js` 是否存在：
 ```bash
 ls -lh dist/
+ls -lh dist/webview/
 ```
 
-## 当前状态
-
-✅ **可以测试的功能**：
-- 扩展激活
-- 基本的 activate/deactivate 生命周期
-
-❌ **还不能测试的功能**（尚未实现）：
-- 命令（还没有注册任何命令）
-- Dashboard UI（还没有实现）
-- CLI 集成（还没有实现）
+应存在 `extension.js` 与 webview 的 `index.html`、`index.js`、`index.css`。
 
 ## 预期结果
 
-成功的测试应该：
-1. ✅ Extension Development Host 启动
-2. ✅ Console 显示 "OpenSpec extension is now active!"
-3. ✅ 扩展在运行列表中出现
-4. ✅ 没有错误信息
+- Extension Development Host 启动无报错
+- Console 显示扩展已激活
+- Dashboard 与 Change 详情加载正常，Task 可勾选
+- 单元测试全部通过
 
-## 如果遇到问题
+## 故障排除
 
-### 问题：扩展没有激活
-- 检查是否有 `openspec/config.yaml` 文件
-- 查看 Output 面板中的 "Extension Host" 日志
-
-### 问题：构建失败
-```bash
-# 清理并重新构建
-rm -rf dist
-pnpm run compile
-```
-
-### 问题：找不到模块
-```bash
-# 重新安装依赖
-rm -rf node_modules
-pnpm install
-```
-
-## 下一步测试
-
-当我们实现更多功能后，可以测试：
-- [ ] Phase 2: CLI 命令调用
-- [ ] Phase 6: Dashboard 显示
-- [ ] Phase 8: Change 列表
-- [ ] Phase 9: Task 切换功能
+- **扩展未激活**：确认工作区根目录存在 `openspec/config.yaml`；查看 Output → Extension Host。
+- **构建失败**：`rm -rf dist && pnpm run build`
+- **依赖问题**：`rm -rf node_modules && pnpm install`
+- **Webview 空白**：查看 Webview 开发者工具（右键 webview 标题栏）；确认 `dist/webview/` 已生成。
+- **CLI 超时**：CLI 调用 30s 超时、重试 3 次；见 `openspecCli.ts` 与 `openspecCli.test.ts`。

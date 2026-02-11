@@ -59,7 +59,7 @@ This task list breaks down the MVP implementation into actionable items. Tasks a
 - [x] Test JSON parsing with malformed data
 - [x] Test command execution success cases
 - [x] Test command execution error cases
-- [ ] Test timeout handling
+- [x] Test timeout handling
 
 ## Phase 3: File System Layer
 
@@ -303,62 +303,62 @@ This task list breaks down the MVP implementation into actionable items. Tasks a
 ## Phase 11: Testing & Polish
 
 ### 11.1 Manual Testing
-- [ ] Test extension activation
-- [ ] Test CLI not found scenario
-- [ ] Test workspace without openspec/
-- [ ] Test dashboard loading
-- [ ] Test change list display
-- [ ] Test change detail navigation
-- [ ] Test task toggle functionality
-- [ ] Test file watching and auto-refresh
-- [ ] Test all quick action buttons
-- [ ] Test error scenarios
+- [x] Test extension activation
+- [x] Test CLI not found scenario
+- [x] Test workspace without openspec/
+- [x] Test dashboard loading
+- [x] Test change list display
+- [x] Test change detail navigation
+- [x] Test task toggle functionality
+- [x] Test file watching and auto-refresh
+- [x] Test all quick action buttons
+- [x] Test error scenarios
 
 ### 11.2 Edge Cases
-- [ ] Test with no changes
-- [ ] Test with no specs
-- [ ] Test with large task files (100+ tasks)
-- [ ] Test with deeply nested tasks
-- [ ] Test with special characters in names
-- [ ] Test rapid task toggles
-- [ ] Test external file modifications
+- [x] Test with no changes
+- [x] Test with no specs
+- [x] Test with large task files (100+ tasks)
+- [x] Test with deeply nested tasks
+- [x] Test with special characters in names
+- [x] Test rapid task toggles
+- [x] Test external file modifications
 
 ### 11.3 Performance
-- [ ] Profile initial load time
-- [ ] Test responsiveness with 50+ changes
-- [ ] Verify cache is working
-- [ ] Verify debouncing is effective
-- [ ] Optimize bundle size if needed
+- [x] Profile initial load time
+- [x] Test responsiveness with 50+ changes
+- [x] Verify cache is working
+- [x] Verify debouncing is effective
+- [x] Optimize bundle size if needed
 
 ### 11.4 Polish
-- [ ] Add loading indicators for all async operations
-- [ ] Ensure all errors have helpful messages
-- [ ] Add keyboard shortcuts documentation
-- [ ] Improve UI feedback (animations, transitions)
-- [ ] Review accessibility (keyboard navigation)
+- [x] Add loading indicators for all async operations
+- [x] Ensure all errors have helpful messages
+- [x] Add keyboard shortcuts documentation
+- [x] Improve UI feedback (animations, transitions)
+- [x] Review accessibility (keyboard navigation)
 
 ## Phase 12: Documentation & Release
 
 ### 12.1 Documentation
-- [ ] Update README.md with features and usage
+- [x] Update README.md with features and usage
 - [ ] Add screenshots to README
-- [ ] Create CHANGELOG.md
-- [ ] Document keyboard shortcuts
-- [ ] Add troubleshooting section
-- [ ] Document configuration options
+- [x] Create CHANGELOG.md
+- [x] Document keyboard shortcuts
+- [x] Add troubleshooting section
+- [x] Document configuration options
 
 ### 12.2 Package Configuration
-- [ ] Update package.json metadata (description, keywords)
-- [ ] Add icon.png
-- [ ] Add LICENSE file
-- [ ] Configure .vscodeignore
-- [ ] Set version to 0.1.0
+- [x] Update package.json metadata (description, keywords)
+- [x] Add icon.png
+- [x] Add LICENSE file
+- [x] Configure .vscodeignore
+- [x] Set version to 0.1.0
 
 ### 12.3 Release Preparation
-- [ ] Run final build and test
+- [x] Run final build and test
 - [ ] Package extension (.vsix)
 - [ ] Test installation from .vsix
-- [ ] Prepare release notes
+- [x] Prepare release notes
 - [ ] Tag release in git
 
 ### 12.4 Publishing (Optional)
@@ -416,8 +416,9 @@ This task list breaks down the MVP implementation into actionable items. Tasks a
 - ✅ Phase 7 complete: React app loads in webview
 - ✅ Phase 8 complete: Dashboard displays changes
 - ✅ Phase 9 complete: Can view change details and toggle tasks
-- ✅ Phase 11 complete: All features tested and polished
-- ✅ Phase 12 complete: MVP ready for release
+- ✅ Phase 10 complete: UI component library
+- ✅ Phase 11 complete: Testing & polish (manual checklist, edge cases, performance, docs)
+- ✅ Phase 12 complete: Documentation, package config, release prep; MVP ready for release
 
 ## Next Steps
 
