@@ -1,11 +1,12 @@
 import * as vscode from 'vscode';
-import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../utils/logger';
 import { OpenSpecCliService } from './openspecCli';
 import { FileManagerService } from './fileManager';
 import { FileWatcherService } from './fileWatcher';
 import { TaskExecutorService } from './taskExecutorService';
+import { StateReader } from './stateReader';
+import type { IOpenSpecContentAccess } from './contentAccess';
 import { getAvailableAdapters, getCurrentAdapter } from '../adapters';
 import { ChangeInfo, ChangeDetails, SpecInfo, ArchivedChangeInfo } from './types';
 
@@ -22,7 +23,8 @@ export interface AgentAdapterInfo {
 
 export class DataManager {
   private cliService: OpenSpecCliService;
-  private fileManager: FileManagerService;
+  private stateReader: StateReader;
+  private contentAccess: IOpenSpecContentAccess;
   private fileWatcher: FileWatcherService;
   private taskExecutorService: TaskExecutorService;
   private cachedData: DashboardData | null = null;
@@ -32,9 +34,10 @@ export class DataManager {
     const openspecDir = path.join(workspaceRoot, 'openspec');
 
     this.cliService = new OpenSpecCliService(workspaceRoot);
-    this.fileManager = new FileManagerService(openspecDir);
+    this.contentAccess = new FileManagerService(openspecDir);
+    this.stateReader = new StateReader(this.cliService, this.contentAccess);
     this.fileWatcher = new FileWatcherService(workspaceRoot);
-    this.taskExecutorService = new TaskExecutorService(workspaceRoot, this.fileManager);
+    this.taskExecutorService = new TaskExecutorService(workspaceRoot, this.contentAccess);
   }
 
   /**
@@ -53,6 +56,17 @@ export class DataManager {
 
     // Start file watcher
     this.fileWatcher.start((events) => {
+      for (const e of events) {
+        const relative = path.relative(this.workspaceRoot, e.uri.fsPath).replace(/\\/g, '/');
+        const archiveMatch = relative.match(/^openspec\/changes\/archive\/([^/]+)\/tasks\.md$/);
+        const draftMatch = relative.match(/^openspec\/changes\/(?!archive)([^/]+)\/tasks\.md$/);
+        const changeName = archiveMatch ? `archive:${archiveMatch[1]}` : draftMatch ? draftMatch[1] : null;
+        if (changeName) {
+          this.contentAccess.autoCompleteParents(changeName).catch((err) =>
+            logger.warn('autoCompleteParents after tasks.md change', err as Error)
+          );
+        }
+      }
       logger.info(`File changes detected (${events.length} events), refreshing...`);
       this.refresh();
     });
@@ -66,19 +80,16 @@ export class DataManager {
   }
 
   /**
-   * Refresh dashboard data from CLI (and from change specs when CLI returns none)
+   * Refresh dashboard data from State Reader (CLI list + status, specs with fallback)
    */
   async refresh(): Promise<DashboardData> {
     try {
       logger.info('Refreshing dashboard data...');
 
-      const [changes, cliSpecs] = await Promise.all([
-        this.cliService.listChanges(),
-        this.cliService.listSpecs(),
+      const [changes, specs] = await Promise.all([
+        this.stateReader.listChanges(),
+        this.stateReader.listSpecs(),
       ]);
-
-      // When CLI returns no specs, show delta specs from each change's specs/ folder
-      const specs: SpecInfo[] = cliSpecs.length > 0 ? cliSpecs : await this.listSpecsFromChanges();
 
       const data: DashboardData = {
         changes,
@@ -97,62 +108,6 @@ export class DataManager {
   }
 
   /**
-   * List delta specs from openspec/changes/.../specs/.../spec.md when CLI list --specs is empty.
-   * Counts requirements by matching "### Requirement:" in each spec.md.
-   */
-  private async listSpecsFromChanges(): Promise<SpecInfo[]> {
-    const changesDir = path.join(this.workspaceRoot, 'openspec', 'changes');
-    const result: SpecInfo[] = [];
-
-    try {
-      const entries = await fs.promises.readdir(changesDir, { withFileTypes: true });
-      for (const ent of entries) {
-        if (!ent.isDirectory() || ent.name === 'archive') continue;
-        const changeName = ent.name;
-        const specsDir = path.join(changesDir, changeName, 'specs');
-        try {
-          const specEntries = await fs.promises.readdir(specsDir, { withFileTypes: true });
-          for (const se of specEntries) {
-            if (!se.isDirectory()) continue;
-            const specPath = path.join(specsDir, se.name, 'spec.md');
-            try {
-              await fs.promises.access(specPath);
-              const relativePath = path.relative(this.workspaceRoot, specPath);
-              const requirementCount = await this.countRequirementsInSpec(specPath);
-              result.push({
-                id: `${changeName} / ${se.name}`,
-                requirementCount,
-                path: relativePath,
-              });
-            } catch {
-              // no spec.md in this subdir
-            }
-          }
-        } catch {
-          // no specs dir or not readable
-        }
-      }
-    } catch (err) {
-      logger.debug(`Could not list specs from changes: ${(err as Error).message}`);
-    }
-
-    return result;
-  }
-
-  /**
-   * Count lines matching "### Requirement:" in a spec markdown file
-   */
-  private async countRequirementsInSpec(specPath: string): Promise<number> {
-    try {
-      const content = await fs.promises.readFile(specPath, 'utf-8');
-      const matches = content.match(/^### Requirement:/gm);
-      return matches ? matches.length : 0;
-    } catch {
-      return 0;
-    }
-  }
-
-  /**
    * Get cached dashboard data or refresh
    */
   async getDashboardData(): Promise<DashboardData> {
@@ -163,109 +118,67 @@ export class DataManager {
   }
 
   /**
-   * Get change details (from CLI)
+   * Get change details (from State Reader / CLI show)
    */
   async getChangeDetails(changeName: string): Promise<ChangeDetails> {
-    return await this.cliService.showChange(changeName);
+    return await this.stateReader.getChangeDetails(changeName);
   }
 
   /**
-   * Check if artifact file exists
+   * Check if artifact exists (State Reader: show artifacts or Content Access)
    */
   async artifactExists(changeName: string, artifactType: string): Promise<boolean> {
-    return await this.fileManager.artifactExists(changeName, artifactType);
+    return await this.stateReader.artifactExists(changeName, artifactType);
   }
 
   /**
-   * Read artifact content (from file system)
+   * Read artifact content (Content Access)
    */
   async readArtifact(changeName: string, artifactType: string): Promise<string> {
-    return await this.fileManager.readArtifact(changeName, artifactType);
+    return await this.contentAccess.readArtifact(changeName, artifactType);
   }
 
   /**
-   * Read spec content (from file system)
+   * Read main spec content (Content Access)
    */
   async readSpec(specId: string): Promise<string> {
-    return await this.fileManager.readSpec(specId);
+    return await this.contentAccess.readSpec(specId);
   }
 
   /**
-   * Read delta spec (from file system)
+   * Read delta spec (Content Access)
    */
   async readDeltaSpec(changeName: string, specId: string): Promise<string | null> {
-    return await this.fileManager.readDeltaSpec(changeName, specId);
+    return await this.contentAccess.readDeltaSpec(changeName, specId);
   }
 
   /**
-   * List archived changes (scan openspec/changes/archive, lazy-loaded).
-   * Directory names are expected to be YYYY-MM-DD-<name>.
+   * List archived changes (State Reader -> Content Access)
    */
   async listArchivedChanges(): Promise<ArchivedChangeInfo[]> {
-    const archiveDir = path.join(this.workspaceRoot, 'openspec', 'changes', 'archive');
-    const result: ArchivedChangeInfo[] = [];
-    try {
-      const entries = await fs.promises.readdir(archiveDir, { withFileTypes: true });
-      for (const ent of entries) {
-        if (!ent.isDirectory()) continue;
-        const directoryName = ent.name;
-        const match = directoryName.match(/^(\d{4}-\d{2}-\d{2})-(.+)$/);
-        const archiveDate = match ? match[1] : '';
-        const name = match ? match[2] : directoryName;
-        result.push({ directoryName, name, archiveDate });
-      }
-      result.sort((a, b) =>
-        (b.archiveDate || b.directoryName).localeCompare(a.archiveDate || a.directoryName)
-      );
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-        logger.debug(`Could not list archive: ${(err as Error).message}`);
-      }
-    }
-    return result;
+    return await this.stateReader.listArchivedChanges();
   }
 
   /**
-   * List delta spec ids for a change (specs/<id>/spec.md).
-   * For archived changes, changeName must be prefixed with "archive:" and then directoryName.
+   * List delta spec ids for a change (Content Access)
    */
   async listDeltaSpecIds(changeName: string): Promise<string[]> {
-    const baseDir = changeName.startsWith('archive:')
-      ? path.join(this.workspaceRoot, 'openspec', 'changes', 'archive', changeName.slice(8))
-      : path.join(this.workspaceRoot, 'openspec', 'changes', changeName);
-    const specsDir = path.join(baseDir, 'specs');
-    try {
-      const entries = await fs.promises.readdir(specsDir, { withFileTypes: true });
-      const ids: string[] = [];
-      for (const ent of entries) {
-        if (!ent.isDirectory()) continue;
-        const specPath = path.join(specsDir, ent.name, 'spec.md');
-        try {
-          await fs.promises.access(specPath);
-          ids.push(ent.name);
-        } catch {
-          // no spec.md
-        }
-      }
-      return ids;
-    } catch {
-      return [];
-    }
+    return await this.contentAccess.listDeltaSpecIds(changeName);
   }
 
   /**
-   * Read tasks for a change
+   * Read tasks for a change (State Reader: show.tasks or Content Access)
    */
   async readTasks(changeName: string) {
-    return await this.fileManager.readTasks(changeName);
+    return await this.stateReader.getTasks(changeName);
   }
 
   /**
-   * Toggle task completion
+   * Toggle task completion. 若子任务全部完成，会自动勾选父任务。
    */
   async toggleTask(changeName: string, taskIndex: number): Promise<void> {
-    await this.fileManager.toggleTask(changeName, taskIndex);
-    // Refresh to update task counts
+    await this.contentAccess.toggleTask(changeName, taskIndex);
+    await this.contentAccess.autoCompleteParents(changeName);
     await this.refresh();
   }
 

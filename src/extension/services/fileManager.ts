@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../utils/logger';
+import type { IOpenSpecContentAccess } from './contentAccess';
+import type { ArchivedChangeInfo, SpecInfo } from './types';
 
 export interface Task {
   lineIndex: number;
@@ -15,7 +17,7 @@ export interface TaskProgress {
   total: number;
 }
 
-export class FileManagerService {
+export class FileManagerService implements IOpenSpecContentAccess {
   constructor(private openspecDir: string) {}
 
   /**
@@ -130,6 +132,20 @@ export class FileManagerService {
   }
 
   /**
+   * 获取某任务的直接子任务在 tasks 数组中的下标（缩进更大，直到遇到同层或更前层级）。
+   */
+  getDirectChildIndices(tasks: Task[], taskIndex: number): number[] {
+    if (taskIndex < 0 || taskIndex >= tasks.length) return [];
+    const parentIndent = tasks[taskIndex].indent;
+    const childIndices: number[] = [];
+    for (let j = taskIndex + 1; j < tasks.length; j++) {
+      if (tasks[j].indent <= parentIndent) break;
+      childIndices.push(j);
+    }
+    return childIndices;
+  }
+
+  /**
    * Read tasks from tasks.md
    */
   async readTasks(changeName: string): Promise<Task[]> {
@@ -175,6 +191,35 @@ export class FileManagerService {
   }
 
   /**
+   * 子任务全部完成后，将对应父任务自动勾选（从后往前处理，支持多层父子）。
+   */
+  async autoCompleteParents(changeName: string): Promise<void> {
+    const tasksPath = this.getArtifactPath(changeName, 'tasks');
+    try {
+      const content = await fs.promises.readFile(tasksPath, 'utf-8');
+      const lines = content.split('\n');
+      const tasks = this.parseTasksMarkdown(content);
+      let changed = false;
+      for (let i = tasks.length - 1; i >= 0; i--) {
+        if (tasks[i].done) continue;
+        const childIndices = this.getDirectChildIndices(tasks, i);
+        if (childIndices.length === 0) continue;
+        if (childIndices.some((c) => !tasks[c].done)) continue;
+        const lineIdx = tasks[i].lineIndex;
+        lines[lineIdx] = lines[lineIdx].replace(/\[([ xX])\]/, '[x]');
+        tasks[i].done = true;
+        changed = true;
+      }
+      if (changed) {
+        await fs.promises.writeFile(tasksPath, lines.join('\n'), 'utf-8');
+        logger.info(`Auto-completed parent tasks in ${changeName}`);
+      }
+    } catch (error) {
+      logger.warn(`autoCompleteParents ${changeName} failed`, error as Error);
+    }
+  }
+
+  /**
    * Get task completion progress
    */
   async getTaskProgress(changeName: string): Promise<TaskProgress> {
@@ -185,5 +230,110 @@ export class FileManagerService {
       completed,
       total: tasks.length,
     };
+  }
+
+  /**
+   * List delta spec ids for a change (specs/<id>/spec.md).
+   * For archived changes, changeName must be "archive:YYYY-MM-DD-name".
+   */
+  async listDeltaSpecIds(changeName: string): Promise<string[]> {
+    const changesBase = changeName.startsWith('archive:')
+      ? path.join(this.openspecDir, 'changes', 'archive', changeName.slice(8))
+      : path.join(this.openspecDir, 'changes', changeName);
+    const specsDir = path.join(changesBase, 'specs');
+    try {
+      const entries = await fs.promises.readdir(specsDir, { withFileTypes: true });
+      const ids: string[] = [];
+      for (const ent of entries) {
+        if (!ent.isDirectory()) continue;
+        const specPath = path.join(specsDir, ent.name, 'spec.md');
+        try {
+          await fs.promises.access(specPath);
+          ids.push(ent.name);
+        } catch {
+          // no spec.md
+        }
+      }
+      return ids;
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * List archived changes (directory names YYYY-MM-DD-<name> under openspec/changes/archive).
+   */
+  async listArchivedChanges(): Promise<ArchivedChangeInfo[]> {
+    const archiveDir = path.join(this.openspecDir, 'changes', 'archive');
+    const result: ArchivedChangeInfo[] = [];
+    try {
+      const entries = await fs.promises.readdir(archiveDir, { withFileTypes: true });
+      for (const ent of entries) {
+        if (!ent.isDirectory()) continue;
+        const directoryName = ent.name;
+        const match = directoryName.match(/^(\d{4}-\d{2}-\d{2})-(.+)$/);
+        const archiveDate = match ? match[1] : '';
+        const name = match ? match[2] : directoryName;
+        result.push({ directoryName, name, archiveDate });
+      }
+      result.sort((a, b) =>
+        (b.archiveDate || b.directoryName).localeCompare(a.archiveDate || a.directoryName)
+      );
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        logger.debug(`Could not list archive: ${(err as Error).message}`);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * List delta specs from openspec/changes/.../specs/.../spec.md when CLI list --specs is empty.
+   */
+  async listSpecsFromChanges(): Promise<SpecInfo[]> {
+    const changesDir = path.join(this.openspecDir, 'changes');
+    const result: SpecInfo[] = [];
+    try {
+      const entries = await fs.promises.readdir(changesDir, { withFileTypes: true });
+      for (const ent of entries) {
+        if (!ent.isDirectory() || ent.name === 'archive') continue;
+        const changeName = ent.name;
+        const specsDir = path.join(changesDir, changeName, 'specs');
+        try {
+          const specEntries = await fs.promises.readdir(specsDir, { withFileTypes: true });
+          for (const se of specEntries) {
+            if (!se.isDirectory()) continue;
+            const specPath = path.join(specsDir, se.name, 'spec.md');
+            try {
+              await fs.promises.access(specPath);
+              const relativePath = path.relative(this.openspecDir, specPath);
+              const requirementCount = await this.countRequirementsInSpec(specPath);
+              result.push({
+                id: `${changeName} / ${se.name}`,
+                requirementCount,
+                path: relativePath,
+              });
+            } catch {
+              // no spec.md
+            }
+          }
+        } catch {
+          // no specs dir
+        }
+      }
+    } catch (err) {
+      logger.debug(`Could not list specs from changes: ${(err as Error).message}`);
+    }
+    return result;
+  }
+
+  private async countRequirementsInSpec(specPath: string): Promise<number> {
+    try {
+      const content = await fs.promises.readFile(specPath, 'utf-8');
+      const matches = content.match(/^### Requirement:/gm);
+      return matches ? matches.length : 0;
+    } catch {
+      return 0;
+    }
   }
 }

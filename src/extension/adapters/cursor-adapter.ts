@@ -111,13 +111,19 @@ export const cursorAdapter: IAgentExecutorAdapter = {
       ? `agent -p --force${modelArg} (Get-Content -Raw -Path "${escapePathForDoubleQuotes(tmpFile)}")`
       : `agent -p --force${modelArg} "$(cat '${escapePathForSingleQuotes(tmpFile)}')"`;
 
+    const OPENSPEC_TERMINAL_NAME = 'OpenSpec Agent';
+
     try {
-      const terminal = vscode.window.createTerminal({
+      const existing = vscode.window.terminals.find(
+        (t) => t.name === OPENSPEC_TERMINAL_NAME
+      );
+      const terminal = existing ?? vscode.window.createTerminal({
         cwd: request.workspaceRoot,
-        name: 'OpenSpec Agent',
+        name: OPENSPEC_TERMINAL_NAME,
       });
       terminal.show(true);
-      terminal.sendText(cmd);
+      // 先换行再发命令，避免首字符被吞导致 "agent" 变成 "gent"
+      terminal.sendText('\n' + cmd);
       channel.appendLine('[OpenSpec] 已在集成终端中启动 agent，请在终端中查看输出。');
       channel.appendLine('---');
       vscode.window.showInformationMessage('已在集成终端中启动 Cursor agent，请在终端中查看执行过程。');

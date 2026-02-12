@@ -24,6 +24,7 @@ eslint.config.js
 .npmrc
 *.test.ts
 *.spec.ts
+test/
 test-extension.sh
 .env*
 .DS_Store

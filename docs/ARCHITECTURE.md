@@ -7,11 +7,80 @@
 ## 核心决策
 
 1. **独立项目**：不依赖于 OpenSpec 核心仓库，作为独立插件发布
-2. **数据源**：混合方案 - CLI 初始化 + 文件监听 + 按需读取
+2. **数据源（CLI 优先）**：工程所需**状态**以 OpenSpec CLI 为主（list / show / status / instructions 等）；Artifact 正文等 CLI 未提供的能力经 **Content Access** 读写在 `openspec/` 目录完成。本机**未安装** openspec 时仅提示安装，不提供“无 CLI”的降级模式。
 3. **技术栈**：React + Tailwind CSS + Radix UI (Frontend) + esbuild (Extension)
-4. **后端**：通过 child_process 调用 `openspec` CLI
+4. **四层隔离**：CLI 网关（唯一调用 `openspec` 二进制）→ State Reader（状态聚合）→ Content Access（读写 artifact/任务/归档）→ DataManager（应用门面，对外 API 不变）
 
 ## 架构图
+
+```mermaid
+flowchart TB
+  subgraph ui [UI Layer]
+    Webview[Webview / Panel]
+    Commands[Commands]
+  end
+
+  subgraph app [Application Layer]
+    DataManager[DataManager]
+  end
+
+  subgraph domain [Domain Layer]
+    CliGateway[OpenSpec CLI Gateway]
+    StateReader[State Reader]
+    ContentAccess[Content Access]
+  end
+
+  subgraph cli [CLI]
+    OpenspecBin[openspec binary]
+  end
+
+  subgraph fs [Filesystem]
+    OpenspecDir[openspec/ directory]
+  end
+
+  Webview --> DataManager
+  Commands --> DataManager
+  DataManager --> StateReader
+  DataManager --> ContentAccess
+  StateReader --> CliGateway
+  StateReader --> ContentAccess
+  ContentAccess --> OpenspecDir
+  CliGateway --> OpenspecBin
+```
+
+（State Reader 聚合 CLI 与 Content Access；Content Access 仅读写 `openspec/` 目录，不直接调 CLI。）
+
+- **OpenSpec CLI Gateway**（`openspecCli.ts`）：唯一 spawn `openspec` 的模块；封装 list / show / status / instructions / validate / new / archive；命令未找到（exit 127 或 spawn ENOENT）时统一提示安装并抛错，不做文件回退。
+- **State Reader**（`stateReader.ts`）：提供变更列表、变更详情、任务列表、spec 列表、归档列表等**状态**；优先从 CLI 获取，CLI 不提供的经 Content Access 获取；不直接调 fs。
+- **Content Access**（接口 `contentAccess.ts`，默认实现 `fileManager.ts`）：读/写 artifact、任务勾选与父任务自动完成、delta spec、归档列表等；当前基于 `openspec/` 目录，接口抽象便于将来由 CLI 或其它实现替换。
+- **DataManager**：应用门面，只依赖 State Reader + Content Access；对外 API 保持不变，供 Webview、Commands、TaskExecutor 使用。
+
+### 未安装 OpenSpec 时的行为
+
+- 扩展激活或执行依赖 CLI 的操作时，Gateway 检测到「命令未找到」（exit 127 或 spawn ENOENT）即调用 `showCliNotFoundError()` 提示安装，并向上抛错。
+- 不提供基于纯文件扫描的降级模式，避免展示不完整或与 CLI 不一致的状态。
+
+### CLI 命令与状态映射
+
+| CLI 命令 | 用途 |
+|----------|------|
+| `list --json` | 变更列表 |
+| `status --change <name> --json` | 单 change 进度与 artifacts |
+| `show <name> --json` | 变更详情、artifacts、tasks |
+| `list --specs --json` | Spec 列表 |
+| `instructions <artifact> --change <name> --json` | 执行任务时的 prompt 生成 |
+| `validate` / `new` / `archive` | 校验、新建 change、归档 |
+
+| 状态/能力           | 来源（CLI 优先） |
+|--------------------|------------------|
+| 变更列表 + 进度     | `list` + `status` |
+| 变更详情、artifacts | `show name --json` |
+| 任务列表（执行/勾选）| `show` 的 tasks 或 Content Access 读 tasks.md |
+| Spec 列表          | `list --specs`，空时 Content Access 扫 changes |
+| 归档列表           | Content Access 扫 archive 目录（CLI 暂无） |
+| Artifact 正文      | Content Access 读文件 |
+| 任务勾选/父任务完成 | Content Access 写 tasks.md |
+| 新建/归档 change   | CLI `new` / `archive` |
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -33,27 +102,26 @@
 │  │  │  OpenSpec Service Layer                               │  │  │
 │  │  │                                                        │  │  │
 │  │  │  ┌─────────────────────────────────────────────────┐  │  │  │
-│  │  │  │  CLI Wrapper (openspecCli.ts)                   │  │  │  │
-│  │  │  │  - execOpenSpec(args: string[]): Promise<any>  │  │  │  │
-│  │  │  │  - listChanges(): Promise<Change[]>            │  │  │  │
-│  │  │  │  - showChange(name: string): Promise<Details>  │  │  │  │
-│  │  │  │  - validateChange(): Promise<ValidationResult> │  │  │  │
+│  │  │  │  DataManager (dataManager.ts)                    │  │  │  │
+│  │  │  │  - 应用门面，仅依赖 StateReader + ContentAccess  │  │  │  │
 │  │  │  └─────────────────────────────────────────────────┘  │  │  │
-│  │  │                                                        │  │  │
 │  │  │  ┌─────────────────────────────────────────────────┐  │  │  │
-│  │  │  │  File System Manager (fileManager.ts)           │  │  │  │
-│  │  │  │  - watchOpenSpecDir()                           │  │  │  │
-│  │  │  │  - readArtifact(path): Promise<string>          │  │  │  │
-│  │  │  │  - updateTaskStatus(change, task, done)         │  │  │  │
-│  │  │  │  - parseTasksMarkdown(content): Task[]          │  │  │  │
+│  │  │  │  State Reader (stateReader.ts)                   │  │  │  │
+│  │  │  │  - listChanges / getChangeDetails / getTasks     │  │  │  │
+│  │  │  │  - listSpecs / listArchivedChanges               │  │  │  │
 │  │  │  └─────────────────────────────────────────────────┘  │  │  │
-│  │  │                                                        │  │  │
 │  │  │  ┌─────────────────────────────────────────────────┐  │  │  │
-│  │  │  │  Data Models (types.ts)                         │  │  │  │
-│  │  │  │  - Change                                       │  │  │  │
-│  │  │  │  - Spec                                         │  │  │  │
-│  │  │  │  - Artifact                                     │  │  │  │
-│  │  │  │  - Task                                         │  │  │  │
+│  │  │  │  CLI Gateway (openspecCli.ts)                    │  │  │  │
+│  │  │  │  - list / show / status / instructions / ...    │  │  │  │
+│  │  │  │  - 未安装时 showCliNotFoundError + throw         │  │  │  │
+│  │  │  └─────────────────────────────────────────────────┘  │  │  │
+│  │  │  ┌─────────────────────────────────────────────────┐  │  │  │
+│  │  │  │  Content Access (contentAccess.ts + fileManager) │  │  │  │
+│  │  │  │  - readArtifact / readTasks / toggleTask         │  │  │  │
+│  │  │  │  - autoCompleteParents / listDeltaSpecIds / ...  │  │  │  │
+│  │  │  └─────────────────────────────────────────────────┘  │  │  │
+│  │  │  ┌─────────────────────────────────────────────────┐  │  │  │
+│  │  │  │  Data Models (types.ts)                          │  │  │  │
 │  │  │  └─────────────────────────────────────────────────┘  │  │  │
 │  │  └────────────────────────────────────────────────────────┘  │  │
 │  │                     │                                         │  │
@@ -164,24 +232,44 @@
 
 ### 初始化流程
 
-```
-1. Extension Activation
-   ├─> Check if openspec CLI is available
-   ├─> Detect openspec/ directory in workspace
-   ├─> Initialize FileSystemWatcher on openspec/**/*
-   └─> Load initial data via CLI
+```mermaid
+sequenceDiagram
+  participant Ext as Extension
+  participant DM as DataManager
+  participant Gateway as CLI Gateway
+  participant Bin as openspec binary
 
-2. Data Loading (混合方案 C)
-   ├─> openspec list --json  (获取 changes 列表)
-   ├─> openspec show --json   (获取 change 详情)
-   ├─> Direct read files      (读取 artifact 内容)
-   └─> Watch file changes     (实时更新)
-
-3. UI Initialization
-   ├─> Create webview panel
-   ├─> Load React app
-   └─> Send initial data to webview
+  Ext->>DM: initialize()
+  DM->>Gateway: checkAvailability()
+  Gateway->>Bin: --version
+  alt CLI 未安装
+    Bin-->>Gateway: exit 127 / ENOENT
+    Gateway->>Gateway: showCliNotFoundError()
+    Gateway-->>DM: throw
+    DM-->>Ext: 激活失败
+  else CLI 可用
+    Bin-->>Gateway: version
+    Gateway-->>DM: ok
+    DM->>DM: 创建 StateReader + ContentAccess
+    DM->>DM: 启动 FileWatcher
+    DM-->>Ext: 激活成功
+  end
 ```
+
+1. **Extension Activation**
+   - 调用 DataManager.initialize()
+   - DataManager 先通过 CLI Gateway 执行 `openspec --version`；若未安装（exit 127 或 spawn 报错），提示安装并抛错，不继续
+   - 若 CLI 可用，创建 StateReader（依赖 Gateway + Content Access）、Content Access（默认 FileManager），启动 FileWatcher
+
+2. **Data Loading（CLI 优先）**
+   - 变更列表：State Reader → Gateway `list --json` + `status --change <name> --json`
+   - 变更详情：State Reader → Gateway `show <name> --json`
+   - 任务列表：State Reader 优先用 `show` 的 tasks，若与 UI 不兼容则 Content Access 读 tasks.md
+   - Artifact 正文：Content Access 读 `openspec/` 下文件
+   - 文件变更时 FileWatcher 触发 refresh，必要时调用 Content Access（如 autoCompleteParents）
+
+3. **UI Initialization**
+   - 创建 webview / panel，加载 React 应用，通过 DataManager 获取数据并下发
 
 ### 文件监听机制
 
@@ -202,15 +290,13 @@ FileSystemWatcher
 ```
 User clicks task checkbox in webview
     ↓
-Message posted to Extension
+Message posted to Extension (webviewMessageHandler)
     ↓
-Extension reads tasks.md
+DataManager.toggleTask(changeName, taskIndex)
     ↓
-Parse markdown, find task line
+Content Access: toggleTask → autoCompleteParents
     ↓
-Toggle [ ] ↔ [x]
-    ↓
-Write back to tasks.md
+Write tasks.md（仅 Content Access 层接触 fs）
     ↓
 FileSystemWatcher detects change
     ↓
@@ -285,6 +371,7 @@ openspec-vscode/
 **目标**：基本可用的 Dashboard 和任务管理
 
 **功能清单**：
+
 1. ✅ 扩展激活和初始化
 2. ✅ CLI 集成（list, show）
 3. ✅ Changes Dashboard（查看所有 changes）
@@ -294,6 +381,7 @@ openspec-vscode/
 7. ✅ 基础文件监听
 
 **技术任务**：
+
 - [ ] 项目初始化（package.json, tsconfig, build config）
 - [ ] Extension 入口和激活
 - [ ] OpenSpec CLI Wrapper
@@ -307,6 +395,7 @@ openspec-vscode/
 - [ ] FileSystemWatcher 集成
 
 **验收标准**：
+
 - 能在 VSCode 中打开 Dashboard
 - 能看到所有 changes 及其进度
 - 能点击进入 change 查看详情
@@ -320,6 +409,7 @@ openspec-vscode/
 **目标**：更好的导航和可视化
 
 **功能清单**：
+
 1. ✅ Sidebar Tree View
 2. ✅ Spec List 和 Viewer
 3. ✅ Spec Diff Viewer (delta vs main)
@@ -329,6 +419,7 @@ openspec-vscode/
 7. ✅ 进度可视化（图表）
 
 **技术任务**：
+
 - [ ] Sidebar Tree View Provider
 - [ ] Spec List API integration
 - [ ] Spec Viewer component
@@ -340,6 +431,7 @@ openspec-vscode/
 - [ ] Progress charts (Chart.js or Recharts)
 
 **验收标准**：
+
 - 侧边栏显示 changes/specs 树
 - 能查看 spec 内容和 requirements
 - 能对比 delta spec 和 main spec 差异
@@ -354,6 +446,7 @@ openspec-vscode/
 **目标**：完整的工作流支持
 
 **功能清单**：
+
 1. ✅ Comment System（对 artifact 添加评论）
 2. ✅ AI Integration（在插件中触发 AI 命令）
 3. ✅ Bulk Operations（批量归档等）
@@ -363,6 +456,7 @@ openspec-vscode/
 7. ✅ 通知和音效
 
 **技术任务**：
+
 - [ ] Comment storage design (JSON in .comments/ ?)
 - [ ] Comment UI components
 - [ ] AI command integration (need research)
@@ -375,6 +469,7 @@ openspec-vscode/
 - [ ] Sound effects (optional)
 
 **验收标准**：
+
 - 能在 artifact 上添加评论
 - 能通过插件触发 AI 工作流
 - 能批量归档多个 changes
@@ -387,6 +482,7 @@ openspec-vscode/
 ## 技术栈详细清单
 
 ### Extension (Node.js)
+
 ```json
 {
   "engines": { "vscode": "^1.85.0" },
@@ -401,6 +497,7 @@ openspec-vscode/
 ```
 
 ### Webview (React)
+
 ```json
 {
   "dependencies": {
@@ -430,6 +527,7 @@ openspec-vscode/
 ### 1. Message Passing between Extension and Webview
 
 **Extension → Webview**:
+
 ```typescript
 webviewPanel.webview.postMessage({
   type: 'updateData',
@@ -438,6 +536,7 @@ webviewPanel.webview.postMessage({
 ```
 
 **Webview → Extension**:
+
 ```typescript
 vscode.postMessage({
   type: 'toggleTask',

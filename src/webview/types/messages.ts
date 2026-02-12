@@ -18,7 +18,8 @@ export type WebviewMessage =
   | { type: 'revealSidebar' }
   | { type: 'executeTask'; changeName: string; taskIndex: number; taskText: string }
   | { type: 'getAgentAdapters' }
-  | { type: 'setPreferredAgentAdapter'; adapterId: string };
+  | { type: 'setPreferredAgentAdapter'; adapterId: string }
+  | { type: 'requestCreateArtifact'; changeName: string; artifactType: string };
 
 // Message types from extension to webview
 export type ExtensionMessage =
@@ -29,7 +30,7 @@ export type ExtensionMessage =
   | { type: 'deltaSpecList'; changeName: string; specIds: string[] }
   | { type: 'deltaSpecContent'; changeName: string; specId: string; content: string }
   | { type: 'deltaSpecContentError'; changeName: string; specId: string; message: string }
-  | { type: 'setContext'; view: 'changeDetail'; changeName: string }
+  | { type: 'setContext'; view: 'changeDetail'; changeName: string; existingArtifactIds?: string[] }
   | { type: 'archivedChanges'; items: ArchivedChangeInfo[] }
   | { type: 'agentAdapters'; available: { id: string; displayName: string }[]; currentId: string | null }
   | { type: 'taskExecutionFinished'; changeName: string; taskIndex: number; success: boolean };
@@ -163,5 +164,11 @@ export const sendMessage = {
   setPreferredAgentAdapter: (adapterId: string): WebviewMessage => ({
     type: 'setPreferredAgentAdapter',
     adapterId,
+  }),
+
+  requestCreateArtifact: (changeName: string, artifactType: string): WebviewMessage => ({
+    type: 'requestCreateArtifact',
+    changeName,
+    artifactType,
   }),
 };

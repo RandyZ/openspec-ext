@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { TaskCheckbox } from './TaskCheckbox';
 import { parseTasksMarkdown, ParsedTask } from '../utils/parseTasks';
 
@@ -19,25 +19,11 @@ export const TaskList: React.FC<TaskListProps> = ({
 }) => {
   const tasks = useMemo(() => parseTasksMarkdown(content), [content]);
 
-  const [optimisticDone, setOptimisticDone] = useState<Record<number, boolean>>({});
-
-  const getDone = useCallback(
-    (task: ParsedTask) => {
-      if (task.taskIndex in optimisticDone) {
-        return optimisticDone[task.taskIndex];
-      }
-      return task.done;
-    },
-    [optimisticDone]
-  );
-
   const handleToggle = useCallback(
     (task: ParsedTask) => {
-      const currentDone = getDone(task);
-      setOptimisticDone((prev) => ({ ...prev, [task.taskIndex]: !currentDone }));
       onToggleTask(changeName, task.taskIndex);
     },
-    [changeName, getDone, onToggleTask]
+    [changeName, onToggleTask]
   );
 
   if (tasks.length === 0) {
@@ -73,7 +59,7 @@ export const TaskList: React.FC<TaskListProps> = ({
         >
           <div style={{ flex: 1, minWidth: 0 }}>
             <TaskCheckbox
-              checked={getDone(task)}
+              checked={task.done}
               onToggle={() => handleToggle(task)}
               label={task.text}
               indent={task.indent}

@@ -12,11 +12,15 @@ const TABS = [
   { id: 'tasks' as const, label: 'Tasks' },
 ];
 
+const MISSING_ARTIFACT_MESSAGE =
+  '该内容尚未创建或文件已丢失。可使用 /opsx:continue 生成对应 artifact，或在编辑器中打开 change 目录查看。';
+
 export interface ChangeDetailProps {
   changeName: string;
+  existingArtifactIds?: string[];
 }
 
-export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName }) => {
+export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existingArtifactIds }) => {
   const { postMessage, onMessage } = useVscode();
   const [activeTab, setActiveTab] = useState<'proposal' | 'specs' | 'design' | 'tasks'>('proposal');
   const [content, setContent] = useState<string | null>(null);
@@ -56,12 +60,28 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName }) => {
   };
 
   useEffect(() => {
+    const artifactId = activeTab;
+    const knownMissing =
+      Array.isArray(existingArtifactIds) && !existingArtifactIds.includes(artifactId);
+
+    if (knownMissing) {
+      setLoading(false);
+      setError(MISSING_ARTIFACT_MESSAGE);
+      setErrorCode('ARTIFACT_MISSING');
+      setContent(null);
+      if (activeTab === 'specs') {
+        setDeltaSpecIds([]);
+        setSelectedSpecId(null);
+      }
+      return;
+    }
+
     if (activeTab === 'specs') {
       requestSpecsList();
     } else {
       requestArtifact(activeTab);
     }
-  }, [changeName, activeTab]);
+  }, [changeName, activeTab, existingArtifactIds]);
 
   useEffect(() => {
     const cleanup = onMessage((event: MessageEvent) => {
@@ -266,6 +286,9 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName }) => {
             error={error}
             errorCode={errorCode}
             onOpenInEditor={handleOpenInEditor}
+            onCreateWithAi={() =>
+              postMessage(sendMessage.requestCreateArtifact(changeName, activeTab))
+            }
           />
         )}
       </div>

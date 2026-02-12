@@ -104,6 +104,11 @@
         "command": "openspec.selectAgentAdapter",
         "title": "OpenSpec: Select Agent Adapter",
         "category": "OpenSpec"
+      },
+      {
+        "command": "openspec.continueArtifact",
+        "title": "OpenSpec: Create Artifact with AI",
+        "category": "OpenSpec"
       }
     ]
   },

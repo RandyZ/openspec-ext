@@ -62,11 +62,29 @@ export async function handleWebviewMessage(
           '取消'
         );
         if (confirm !== '确定跳过') break;
+      } else if (task?.done) {
+        const confirm = await vscode.window.showWarningMessage(
+          '确定要取消完成该任务？',
+          { modal: true },
+          '确定',
+          '取消'
+        );
+        if (confirm !== '确定') break;
       }
       await dataManager.toggleTask(changeName, taskIndex);
-      await dataManager.getDashboardData().then((data) => {
-        webview.postMessage({ type: 'dashboardData', data });
-      });
+      const [data, tasksContent] = await Promise.all([
+        dataManager.getDashboardData(),
+        dataManager.readArtifact(changeName, 'tasks').catch(() => null),
+      ]);
+      webview.postMessage({ type: 'dashboardData', data });
+      if (tasksContent != null) {
+        webview.postMessage({
+          type: 'artifactContent',
+          changeName,
+          artifactType: 'tasks',
+          content: tasksContent,
+        });
+      }
       break;
     }
 
@@ -262,6 +280,15 @@ export async function handleWebviewMessage(
       } catch (err) {
         logger.error('setPreferredAgentAdapter failed', err as Error);
         vscode.window.showErrorMessage('保存设置失败');
+      }
+      break;
+    }
+
+    case 'requestCreateArtifact': {
+      const changeName = message.changeName;
+      const artifactType = message.artifactType;
+      if (typeof changeName === 'string' && typeof artifactType === 'string') {
+        await vscode.commands.executeCommand('openspec.continueArtifact', changeName, artifactType);
       }
       break;
     }

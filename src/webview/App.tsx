@@ -8,12 +8,14 @@ function AppContent() {
   const { state, dispatch } = useAppState();
   const { onMessage } = useVscode();
   const [panelChangeName, setPanelChangeName] = useState<string | null>(null);
+  const [existingArtifactIds, setExistingArtifactIds] = useState<string[] | undefined>(undefined);
 
   useEffect(() => {
     const cleanup = onMessage((event: MessageEvent) => {
       const msg = event.data;
       if (msg.type === 'setContext' && msg.view === 'changeDetail' && msg.changeName) {
         setPanelChangeName(msg.changeName);
+        setExistingArtifactIds(msg.existingArtifactIds);
         dispatch({ type: 'SELECT_CHANGE', payload: msg.changeName });
       }
     });
@@ -21,7 +23,7 @@ function AppContent() {
   }, [onMessage, dispatch]);
 
   if (panelChangeName) {
-    return <ChangeDetail changeName={panelChangeName} />;
+    return <ChangeDetail changeName={panelChangeName} existingArtifactIds={existingArtifactIds} />;
   }
   if (state.selectedChange) {
     return <ChangeDetail changeName={state.selectedChange} />;

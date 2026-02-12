@@ -11,8 +11,12 @@ export class Logger {
     this.log('INFO', message);
   }
 
-  warn(message: string): void {
-    this.log('WARN', message);
+  warn(message: string, error?: Error): void {
+    const errorMessage = error ? `${message}: ${error.message}` : message;
+    this.log('WARN', errorMessage);
+    if (error?.stack) {
+      this.outputChannel.appendLine(error.stack);
+    }
   }
 
   error(message: string, error?: Error): void {
@@ -23,8 +27,12 @@ export class Logger {
     }
   }
 
-  debug(message: string): void {
-    this.log('DEBUG', message);
+  debug(message: string, error?: Error): void {
+    const errorMessage = error ? `${message}: ${error.message}` : message;
+    this.log('DEBUG', errorMessage);
+    if (error?.stack) {
+      this.outputChannel.appendLine(error.stack);
+    }
   }
 
   show(): void {

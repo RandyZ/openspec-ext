@@ -31,6 +31,11 @@ export class CommandManager {
       vscode.commands.registerCommand('openspec.selectAgentAdapter', () =>
         this.handleSelectAgentAdapter()
       ),
+      vscode.commands.registerCommand(
+        'openspec.continueArtifact',
+        (changeName?: string, artifactType?: string) =>
+          this.handleContinueArtifact(changeName, artifactType)
+      ),
     ];
 
     commands.forEach((cmd) => this.context.subscriptions.push(cmd));
@@ -179,6 +184,19 @@ export class CommandManager {
       logger.error('Failed to archive change', error as Error);
       vscode.window.showErrorMessage('Failed to archive change');
     }
+  }
+
+  /**
+   * Copy /opsx:continue (with change name when provided) to clipboard for AI to create artifact.
+   */
+  private async handleContinueArtifact(changeName?: string, _artifactType?: string): Promise<void> {
+    const text = changeName?.trim() ? `/opsx:continue ${changeName.trim()}` : '/opsx:continue';
+    await vscode.env.clipboard.writeText(text);
+    vscode.window.showInformationMessage(
+      changeName?.trim()
+        ? `已复制「${text}」，请在 AI 对话中粘贴以生成对应 artifact`
+        : '已复制 /opsx:continue，请在 AI 对话中粘贴以生成对应 artifact'
+    );
   }
 
   /**

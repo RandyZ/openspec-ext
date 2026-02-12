@@ -3,6 +3,9 @@ import * as vscode from 'vscode';
 import { logger } from '../utils/logger';
 import {
   ChangeInfo,
+  ArtifactStatus,
+  ArtifactInfo,
+  TaskInfo,
   SpecInfo,
   ChangeDetails,
   ValidationResult,
@@ -43,13 +46,14 @@ export class OpenSpecCliService {
   }
 
   /**
-   * Get change status with artifact details
+   * Get change status with artifact details.
+   * If CLI returns non-JSON, returns { artifacts: [] } so listChanges can still show basic change list.
    */
-  async getChangeStatus(name: string): Promise<any> {
+  async getChangeStatus(name: string): Promise<{ artifacts?: unknown[]; [k: string]: unknown }> {
     try {
       const output = await this.execOpenSpec(['status', '--change', name, '--json']);
-      const data = JSON.parse(output);
-      return data;
+      const data = this.tryParseJson<{ artifacts?: unknown[] }>(output, `openspec status --change ${name} --json`);
+      return data ?? { artifacts: [] };
     } catch (error) {
       logger.error(`Failed to get status for change: ${name}`, error as Error);
       throw error;
@@ -57,14 +61,30 @@ export class OpenSpecCliService {
   }
 
   /**
-   * List all changes with artifact status
+   * Try to parse CLI stdout as JSON; on failure log and return undefined.
+   * Per OpenSpec CLI docs, list/show/status/validate support --json, but some versions or cases may return human-readable text.
+   */
+  private tryParseJson<T>(output: string, logContext: string): T | undefined {
+    const trimmed = output.trim();
+    if (!trimmed) return undefined;
+    try {
+      return JSON.parse(trimmed) as T;
+    } catch {
+      logger.warn(`${logContext} returned non-JSON (${trimmed.slice(0, 80)}...), treating as empty or fallback`);
+      return undefined;
+    }
+  }
+
+  /**
+   * List all changes with artifact status.
+   * Handles non-JSON output (e.g. human-readable "Active changes:") by returning [].
    */
   async listChanges(): Promise<ChangeInfo[]> {
     try {
       const output = await this.execOpenSpec(['list', '--json']);
-      const data = JSON.parse(output);
-
-      if (!data.changes || !Array.isArray(data.changes)) {
+      const data = this.tryParseJson<{ changes?: unknown[] }>(output, 'openspec list --json');
+      if (!data?.changes || !Array.isArray(data.changes)) {
+        if (!data) return [];
         logger.warn('Unexpected format from openspec list');
         return [];
       }
@@ -74,23 +94,23 @@ export class OpenSpecCliService {
         data.changes.map(async (c: any) => {
           try {
             const status = await this.getChangeStatus(c.name);
+            const artifacts = this.normalizeArtifactStatuses(status.artifacts ?? []);
             return {
               name: c.name,
               completedTasks: c.completedTasks || 0,
               totalTasks: c.totalTasks || 0,
               lastModified: c.lastModified,
               status: this.determineStatus(c),
-              artifacts: status.artifacts || [],
+              artifacts,
             };
           } catch {
-            // If status fails, return basic info
             return {
               name: c.name,
               completedTasks: c.completedTasks || 0,
               totalTasks: c.totalTasks || 0,
               lastModified: c.lastModified,
               status: this.determineStatus(c),
-              artifacts: [],
+              artifacts: [] as ArtifactStatus[],
             };
           }
         })
@@ -104,53 +124,69 @@ export class OpenSpecCliService {
   }
 
   /**
-   * Show details for a specific change
+   * Show details for a specific change.
+   * If CLI returns non-JSON or command fails (e.g. exit 1), returns minimal ChangeDetails so callers can fallback to Content Access.
    */
   async showChange(name: string): Promise<ChangeDetails> {
     try {
       const output = await this.execOpenSpec(['show', name, '--json']);
-      const data = JSON.parse(output);
-
+      const data = this.tryParseJson<{ name?: string; schema?: string; artifacts?: unknown[]; tasks?: unknown[]; metadata?: Record<string, unknown> }>(
+        output,
+        `openspec show ${name} --json`
+      );
+      if (!data) {
+        return this.minimalChangeDetails(name);
+      }
       return {
         name: data.name || name,
         schema: data.schema || 'unknown',
-        artifacts: data.artifacts || [],
-        tasks: data.tasks || [],
-        metadata: data.metadata || {},
+        artifacts: this.normalizeArtifactInfos(data.artifacts ?? []),
+        tasks: this.normalizeTaskInfos(data.tasks ?? []),
+        metadata: data.metadata && typeof data.metadata === 'object' ? data.metadata : {},
       };
     } catch (error) {
+      if (error instanceof OpenSpecCliError) {
+        logger.warn(
+          `openspec show ${name} failed (exit ${error.exitCode}): ${error.stderr || error.message}. Returning minimal details.`
+        );
+        return this.minimalChangeDetails(name);
+      }
       logger.error(`Failed to show change: ${name}`, error as Error);
       throw error;
     }
   }
 
+  private minimalChangeDetails(name: string): ChangeDetails {
+    return {
+      name,
+      schema: 'unknown',
+      artifacts: [],
+      tasks: [],
+      metadata: {},
+    };
+  }
+
   /**
-   * List all specs
-   * Note: OpenSpec CLI may return "No specs found.\n" instead of JSON when there are no specs.
+   * List all specs.
+   * CLI may return "No specs found.", or human-readable "Specs: ..." instead of JSON when --json is not honored or output is mixed.
    */
   async listSpecs(): Promise<SpecInfo[]> {
     try {
       const output = (await this.execOpenSpec(['list', '--specs', '--json'])).trim();
 
-      // CLI returns plain text "No specs found." when there are no specs (not valid JSON)
       if (!output || output.startsWith('No specs found')) {
         return [];
       }
 
-      let data: any;
-      try {
-        data = JSON.parse(output);
-      } catch (parseError) {
-        logger.warn(`openspec list --specs returned non-JSON (${output.slice(0, 60)}...), treating as empty`);
+      const data = this.tryParseJson<{ specs?: { id?: string; requirementCount?: number; path?: string }[] }>(
+        output,
+        'openspec list --specs --json'
+      );
+      if (!data?.specs || !Array.isArray(data.specs)) {
         return [];
       }
 
-      if (!data.specs || !Array.isArray(data.specs)) {
-        logger.warn('Unexpected format from openspec list --specs');
-        return [];
-      }
-
-      return data.specs.map((s: { id?: string; requirementCount?: number; path?: string }): SpecInfo => ({
+      return data.specs.map((s): SpecInfo => ({
         id: s.id ?? '',
         requirementCount: s.requirementCount ?? 0,
         path: s.path,
@@ -162,17 +198,23 @@ export class OpenSpecCliService {
   }
 
   /**
-   * Validate a change
+   * Validate a change.
+   * If CLI returns non-JSON, returns { valid: false, errors: ['Invalid or non-JSON output'], warnings: [] }.
    */
   async validateChange(name: string): Promise<ValidationResult> {
     try {
       const output = await this.execOpenSpec(['validate', name, '--json']);
-      const data = JSON.parse(output);
-
+      const data = this.tryParseJson<{ valid?: boolean; errors?: string[]; warnings?: string[] }>(
+        output,
+        `openspec validate ${name} --json`
+      );
+      if (!data) {
+        return { valid: false, errors: ['CLI returned non-JSON output'], warnings: [] };
+      }
       return {
-        valid: data.valid || false,
-        errors: data.errors || [],
-        warnings: data.warnings || [],
+        valid: data.valid ?? false,
+        errors: Array.isArray(data.errors) ? data.errors : [],
+        warnings: Array.isArray(data.warnings) ? data.warnings : [],
       };
     } catch (error) {
       logger.error(`Failed to validate change: ${name}`, error as Error);
@@ -222,7 +264,8 @@ export class OpenSpecCliService {
   }
 
   /**
-   * Execute OpenSpec CLI command with retry logic
+   * Execute OpenSpec CLI command with retry logic.
+   * On "command not found" (exit 127 or spawn ENOENT), calls showCliNotFoundError() and rethrows; no file fallback.
    */
   private async execOpenSpec(args: string[], retries: number = 3): Promise<string> {
     let lastError: Error | undefined;
@@ -234,7 +277,7 @@ export class OpenSpecCliService {
         lastError = error as Error;
 
         if (error instanceof OpenSpecCliError && error.exitCode === 127) {
-          // Command not found, don't retry
+          this.showCliNotFoundError();
           throw error;
         }
 
@@ -246,7 +289,16 @@ export class OpenSpecCliService {
       }
     }
 
+    if (lastError && this.isCliNotFoundError(lastError)) {
+      this.showCliNotFoundError();
+    }
     throw lastError;
+  }
+
+  /** True when the error indicates openspec binary was not found (e.g. spawn ENOENT). */
+  private isCliNotFoundError(err: Error): boolean {
+    const msg = err.message.toLowerCase();
+    return msg.includes('spawn') && (msg.includes('enoent') || msg.includes('not found'));
   }
 
   /**
@@ -297,6 +349,36 @@ export class OpenSpecCliService {
         clearTimeout(timeout);
       });
     });
+  }
+
+  /** Normalize CLI artifact list (unknown[]) to ArtifactStatus[]; CLI may use 'complete' for done. */
+  private normalizeArtifactStatuses(raw: unknown[]): ArtifactStatus[] {
+    return this.normalizeArtifactInfos(raw) as ArtifactStatus[];
+  }
+
+  private normalizeArtifactInfos(raw: unknown[]): ArtifactInfo[] {
+    const allowed: Array<'done' | 'ready' | 'blocked'> = ['done', 'ready', 'blocked'];
+    return raw
+      .filter((a): a is Record<string, unknown> => a != null && typeof a === 'object')
+      .map((a) => {
+        const status = a.status === 'complete' ? 'done' : a.status;
+        return {
+          id: typeof a.id === 'string' ? a.id : '',
+          outputPath: typeof a.outputPath === 'string' ? a.outputPath : (a.path as string) ?? '',
+          status: (typeof status === 'string' && allowed.includes(status as 'done' | 'ready' | 'blocked') ? status : 'blocked') as 'done' | 'ready' | 'blocked',
+        };
+      });
+  }
+
+  private normalizeTaskInfos(raw: unknown[] | undefined): TaskInfo[] {
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .filter((t): t is Record<string, unknown> => t != null && typeof t === 'object')
+      .map((t) => ({
+        id: typeof t.id === 'string' ? t.id : String(t.id ?? ''),
+        description: typeof t.description === 'string' ? t.description : (t.title as string) ?? '',
+        done: Boolean(t.done),
+      }));
   }
 
   /**

@@ -7,6 +7,7 @@ export interface ArtifactViewerProps {
   error: string | null;
   errorCode?: string;
   onOpenInEditor?: () => void;
+  onCreateWithAi?: () => void;
 }
 
 export const ArtifactViewer: React.FC<ArtifactViewerProps> = ({
@@ -15,6 +16,7 @@ export const ArtifactViewer: React.FC<ArtifactViewerProps> = ({
   error,
   errorCode,
   onOpenInEditor,
+  onCreateWithAi,
 }) => {
   if (loading) {
     return (
@@ -46,18 +48,35 @@ export const ArtifactViewer: React.FC<ArtifactViewerProps> = ({
             ? '该内容尚未创建或文件已丢失。可使用 /opsx:continue 生成对应 artifact，或在编辑器中打开 change 目录查看。'
             : error}
         </p>
-        {isMissing && onOpenInEditor && (
-          <button
-            type="button"
-            className="px-3 py-1.5 rounded text-xs font-medium cursor-pointer border-none"
-            style={{
-              background: 'var(--vscode-button-background)',
-              color: 'var(--vscode-button-foreground)',
-            }}
-            onClick={onOpenInEditor}
-          >
-            在编辑器中打开
-          </button>
+        {isMissing && (
+          <div className="flex flex-wrap gap-2">
+            {onCreateWithAi && (
+              <button
+                type="button"
+                className="px-3 py-1.5 rounded text-xs font-medium cursor-pointer border-none"
+                style={{
+                  background: 'var(--vscode-button-background)',
+                  color: 'var(--vscode-button-foreground)',
+                }}
+                onClick={onCreateWithAi}
+              >
+                用 AI 创建
+              </button>
+            )}
+            {onOpenInEditor && (
+              <button
+                type="button"
+                className="px-3 py-1.5 rounded text-xs font-medium cursor-pointer border-none"
+                style={{
+                  background: 'var(--vscode-button-secondaryBackground)',
+                  color: 'var(--vscode-button-secondaryForeground)',
+                }}
+                onClick={onOpenInEditor}
+              >
+                在编辑器中打开
+              </button>
+            )}
+          </div>
         )}
       </div>
     );

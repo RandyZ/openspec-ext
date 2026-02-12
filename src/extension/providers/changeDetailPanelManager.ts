@@ -19,15 +19,30 @@ export class ChangeDetailPanelManager {
     private onRevealSidebar?: () => void
   ) {}
 
+  private async buildSetContextPayload(changeName: string): Promise<{
+    type: 'setContext';
+    view: 'changeDetail';
+    changeName: string;
+    existingArtifactIds?: string[];
+  }> {
+    try {
+      const data = await this.dataManager.getDashboardData();
+      const change = data.changes.find((c) => c.name === changeName);
+      const existingArtifactIds =
+        change?.artifacts?.filter((a) => a.status === 'done').map((a) => a.id) ?? [];
+      return { type: 'setContext', view: 'changeDetail', changeName, existingArtifactIds };
+    } catch {
+      return { type: 'setContext', view: 'changeDetail', changeName };
+    }
+  }
+
   public open(changeName: string): void {
     const existing = this.panels.get(changeName);
     if (existing) {
       existing.reveal(vscode.ViewColumn.One);
-      existing.webview.postMessage({
-        type: 'setContext',
-        view: 'changeDetail',
-        changeName,
-      });
+      this.buildSetContextPayload(changeName).then((payload) =>
+        existing.webview.postMessage(payload)
+      );
       if (this.onAfterOpen) {
         this.onAfterOpen();
       }
@@ -57,11 +72,9 @@ export class ChangeDetailPanelManager {
 
     // Proactively send setContext so webview can show ChangeDetail without waiting for first message
     setTimeout(() => {
-      panel.webview.postMessage({
-        type: 'setContext',
-        view: 'changeDetail',
-        changeName,
-      });
+      this.buildSetContextPayload(changeName).then((payload) =>
+        panel.webview.postMessage(payload)
+      );
     }, 150);
 
     panel.webview.onDidReceiveMessage(
@@ -74,11 +87,9 @@ export class ChangeDetailPanelManager {
         const changeNameForContext = this.pendingSetContext.get(panel.webview);
         if (changeNameForContext !== undefined) {
           this.pendingSetContext.delete(panel.webview);
-          panel.webview.postMessage({
-            type: 'setContext',
-            view: 'changeDetail',
-            changeName: changeNameForContext,
-          });
+          this.buildSetContextPayload(changeNameForContext).then((payload) =>
+            panel.webview.postMessage(payload)
+          );
         }
         try {
           await handleWebviewMessage(message, panel.webview, this.dataManager);
