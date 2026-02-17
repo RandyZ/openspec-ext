@@ -19,7 +19,8 @@ export type WebviewMessage =
   | { type: 'executeTask'; changeName: string; taskIndex: number; taskText: string }
   | { type: 'getAgentAdapters' }
   | { type: 'setPreferredAgentAdapter'; adapterId: string }
-  | { type: 'requestCreateArtifact'; changeName: string; artifactType: string };
+  | { type: 'requestCreateArtifact'; changeName: string; artifactType: string }
+  | { type: 'runCommand'; commandId: string; argsJson?: string };
 
 // Message types from extension to webview
 export type ExtensionMessage =
@@ -33,7 +34,8 @@ export type ExtensionMessage =
   | { type: 'setContext'; view: 'changeDetail'; changeName: string; existingArtifactIds?: string[] }
   | { type: 'archivedChanges'; items: ArchivedChangeInfo[] }
   | { type: 'agentAdapters'; available: { id: string; displayName: string }[]; currentId: string | null }
-  | { type: 'taskExecutionFinished'; changeName: string; taskIndex: number; success: boolean };
+  | { type: 'taskExecutionFinished'; changeName: string; taskIndex: number; success: boolean }
+  | { type: 'runCommandResult'; success: boolean; message?: string };
 
 // Data types
 export interface DashboardData {
@@ -170,5 +172,11 @@ export const sendMessage = {
     type: 'requestCreateArtifact',
     changeName,
     artifactType,
+  }),
+
+  runCommand: (commandId: string, argsJson?: string): WebviewMessage => ({
+    type: 'runCommand',
+    commandId,
+    ...(argsJson !== undefined && argsJson !== '' ? { argsJson } : {}),
   }),
 };

@@ -293,6 +293,34 @@ export async function handleWebviewMessage(
       break;
     }
 
+    case 'runCommand': {
+      const commandId = message.commandId;
+      const argsJson = message.argsJson;
+      if (typeof commandId !== 'string' || !commandId.trim()) {
+        webview.postMessage({ type: 'runCommandResult', success: false, message: 'Command ID 不能为空' });
+        break;
+      }
+      let args: unknown[] = [];
+      if (typeof argsJson === 'string' && argsJson.trim()) {
+        try {
+          const parsed = JSON.parse(argsJson) as unknown;
+          args = Array.isArray(parsed) ? parsed : [parsed];
+        } catch {
+          webview.postMessage({ type: 'runCommandResult', success: false, message: '参数不是合法 JSON' });
+          break;
+        }
+      }
+      try {
+        await vscode.commands.executeCommand(commandId, ...args);
+        webview.postMessage({ type: 'runCommandResult', success: true });
+      } catch (err) {
+        const msg = (err as Error).message ?? String(err);
+        logger.error('runCommand failed', err as Error);
+        webview.postMessage({ type: 'runCommandResult', success: false, message: msg });
+      }
+      break;
+    }
+
     default:
       logger.warn(`Unknown message type: ${message.type}`);
   }

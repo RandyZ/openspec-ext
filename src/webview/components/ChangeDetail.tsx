@@ -10,6 +10,7 @@ const TABS = [
   { id: 'specs' as const, label: 'Specs' },
   { id: 'design' as const, label: 'Design' },
   { id: 'tasks' as const, label: 'Tasks' },
+  { id: 'verify' as const, label: 'Verify' },
 ];
 
 const MISSING_ARTIFACT_MESSAGE =
@@ -22,7 +23,7 @@ export interface ChangeDetailProps {
 
 export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existingArtifactIds }) => {
   const { postMessage, onMessage } = useVscode();
-  const [activeTab, setActiveTab] = useState<'proposal' | 'specs' | 'design' | 'tasks'>('proposal');
+  const [activeTab, setActiveTab] = useState<'proposal' | 'specs' | 'design' | 'tasks' | 'verify'>('proposal');
   const [content, setContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +35,9 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
     currentId: string | null;
   }>({ available: [], currentId: null });
   const [executingTaskIndex, setExecutingTaskIndex] = useState<number | null>(null);
+  const [verifyCommandId, setVerifyCommandId] = useState('');
+  const [verifyArgsJson, setVerifyArgsJson] = useState('');
+  const [runCommandResult, setRunCommandResult] = useState<{ success: boolean; message?: string } | null>(null);
 
   const requestArtifact = (artifactType: string) => {
     setLoading(true);
@@ -60,6 +64,12 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
   };
 
   useEffect(() => {
+    if (activeTab === 'verify') {
+      setLoading(false);
+      setError(null);
+      setContent(null);
+      return;
+    }
     const artifactId = activeTab;
     const knownMissing =
       Array.isArray(existingArtifactIds) && !existingArtifactIds.includes(artifactId);
@@ -120,6 +130,8 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
         });
       } else if (msg.type === 'taskExecutionFinished' && msg.changeName === changeName) {
         setExecutingTaskIndex(null);
+      } else if (msg.type === 'runCommandResult') {
+        setRunCommandResult({ success: msg.success, message: msg.message });
       }
     });
     return cleanup;
@@ -144,6 +156,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
   };
 
   const handleOpenInEditor = () => {
+    if (activeTab === 'verify') return;
     if (activeTab === 'specs' && selectedSpecId) {
       const specPath = changeName.startsWith('archive:')
         ? `openspec/changes/archive/${changeName.slice(8)}/specs/${selectedSpecId}/spec.md`
@@ -156,11 +169,19 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
 
   const handleRefresh = () => {
     postMessage(sendMessage.refresh());
+    if (activeTab === 'verify') return;
     if (activeTab === 'specs') {
       requestSpecsList();
     } else {
       requestArtifact(activeTab);
     }
+  };
+
+  const handleRunCommand = () => {
+    const commandId = verifyCommandId.trim();
+    if (!commandId) return;
+    setRunCommandResult(null);
+    postMessage(sendMessage.runCommand(commandId, verifyArgsJson.trim() || undefined));
   };
 
   const isArchived = changeName.startsWith('archive:');
@@ -238,7 +259,70 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
       )}
 
       <div className="p-3 flex-1 overflow-auto">
-        {activeTab === 'tasks' && content !== null && !loading && !error ? (
+        {activeTab === 'verify' ? (
+          <div className="flex flex-col gap-3 max-w-lg">
+            <div>
+              <label className="block text-xs mb-1" style={{ color: 'var(--vscode-descriptionForeground)' }}>
+                Command ID
+              </label>
+              <input
+                type="text"
+                value={verifyCommandId}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setVerifyCommandId(e.target.value)}
+                placeholder="composer.newAgentChat"
+                className="w-full px-2 py-1.5 text-sm rounded"
+                style={{
+                  background: 'var(--vscode-input-background)',
+                  color: 'var(--vscode-input-foreground)',
+                  border: '1px solid var(--vscode-input-border)',
+                }}
+              />
+            </div>
+            <div>
+              <label className="block text-xs mb-1" style={{ color: 'var(--vscode-descriptionForeground)' }}>
+                参数 (JSON，可选)
+              </label>
+              <textarea
+                value={verifyArgsJson}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setVerifyArgsJson(e.target.value)}
+                placeholder='{"initialPrompt": "hello"}'
+                rows={4}
+                className="w-full px-2 py-1.5 text-sm rounded font-mono"
+                style={{
+                  background: 'var(--vscode-input-background)',
+                  color: 'var(--vscode-input-foreground)',
+                  border: '1px solid var(--vscode-input-border)',
+                }}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleRunCommand}
+              className="px-3 py-1.5 text-sm rounded cursor-pointer w-fit"
+              style={{
+                background: 'var(--vscode-button-background)',
+                color: 'var(--vscode-button-foreground)',
+              }}
+            >
+              执行
+            </button>
+            {runCommandResult !== null && (
+              <div
+                className="text-sm px-2 py-1.5 rounded"
+                style={{
+                  background: runCommandResult.success
+                    ? 'var(--vscode-editor-inactiveSelectionBackground)'
+                    : 'var(--vscode-inputValidation-errorBackground)',
+                  color: runCommandResult.success
+                    ? 'var(--vscode-foreground)'
+                    : 'var(--vscode-errorForeground)',
+                }}
+              >
+                {runCommandResult.success ? 'Command executed.' : runCommandResult.message ?? 'Failed'}
+              </div>
+            )}
+          </div>
+        ) : activeTab === 'tasks' && content !== null && !loading && !error ? (
           <>
             {agentAdapters.available.length > 0 && (
               <div className="flex items-center gap-2 mb-3 text-sm">
