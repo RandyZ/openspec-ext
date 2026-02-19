@@ -1,14 +1,17 @@
 import { spawn } from 'child_process';
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
 import * as vscode from 'vscode';
-import type { IAgentExecutorAdapter, TaskExecuteRequest, TaskExecuteResult } from '../services/agentExecutor.types';
+import type {
+  IAgentExecutorAdapter,
+  TaskExecuteRequest,
+  TaskExecuteResult,
+} from '../services/agentExecutor.types';
 import { logger } from '../utils/logger';
 
 const ADAPTER_ID = 'cursor';
 const DISPLAY_NAME = 'Cursor (agent CLI)';
 const OUTPUT_CHANNEL_NAME = 'OpenSpec (Agent)';
+
+let _outputChannel: vscode.OutputChannel | undefined;
 
 function buildPromptText(request: TaskExecuteRequest): string {
   const refs = request.contextFiles.length
@@ -27,51 +30,23 @@ function checkAgentCli(): Promise<boolean> {
   return new Promise((resolve) => {
     const proc = spawn('which', ['agent'], { shell: true });
     let out = '';
-    proc.stdout?.on('data', (d) => { out += d.toString(); });
+    proc.stdout?.on('data', (d) => {
+      out += d.toString();
+    });
     proc.on('close', (code) => resolve(code === 0 && out.trim().length > 0));
     proc.on('error', () => resolve(false));
   });
 }
 
-/** 转义路径用于在单引号内使用（Unix） */
-function escapePathForSingleQuotes(p: string): string {
-  return p.replace(/'/g, "'\"'\"'");
-}
-
-/** 转义路径用于双引号内使用（PowerShell） */
-function escapePathForDoubleQuotes(p: string): string {
-  return p.replace(/"/g, '`"');
-}
-
-const TMP_FILE_PREFIX = 'openspec-agent-prompt-';
-const TMP_FILE_CLEANUP_DELAY_MS = 10_000;
-
-/** 清理 os.tmpdir 下已有的 OpenSpec agent 临时 prompt 文件，避免堆积 */
-async function cleanupOldPromptFiles(tmpDir: string): Promise<void> {
-  try {
-    const entries = await fs.promises.readdir(tmpDir, { withFileTypes: true });
-    const toRemove = entries.filter(
-      (e) => e.isFile() && e.name.startsWith(TMP_FILE_PREFIX) && e.name.endsWith('.txt')
-    );
-    await Promise.all(toRemove.map((e) => fs.promises.unlink(path.join(tmpDir, e.name)).catch(() => {})));
-  } catch {
-    // ignore
-  }
-}
-
-/** 读取配置的 agent 模型；空或 "auto" 时返回字面量 "auto"，保证始终传 --model */
+/**
+ * Cursor use auto model by default, so we need to return 'auto' if the config is 'auto' or empty.
+ * @returns The model option for the agent.
+ */
 function getAgentModelOption(): string {
   const config = vscode.workspace.getConfiguration('openspec');
   const raw = config.get<string>('agentModel');
   const v = (raw ?? 'auto').trim().toLowerCase();
   return v === '' || v === 'auto' ? 'auto' : (raw ?? '').trim();
-}
-
-/** 构建 --model 参数片段（已加前导空格），始终传入至少 "auto" */
-function buildModelArg(model: string, isWindows: boolean): string {
-  const value = model || 'auto';
-  const escaped = isWindows ? value.replace(/"/g, '`"') : value.replace(/"/g, '\\"');
-  return ` --model "${escaped}"`;
 }
 
 export const cursorAdapter: IAgentExecutorAdapter = {
@@ -84,65 +59,57 @@ export const cursorAdapter: IAgentExecutorAdapter = {
 
   async executeTask(request: TaskExecuteRequest): Promise<TaskExecuteResult> {
     const prompt = request.promptOverride ?? buildPromptText(request);
-    const channel = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME);
+    if (!_outputChannel) {
+      _outputChannel = vscode.window.createOutputChannel(OUTPUT_CHANNEL_NAME);
+    }
+    const channel = _outputChannel;
     channel.clear();
     channel.show(true);
-    channel.appendLine(`[OpenSpec] 正在通过集成终端启动 Cursor agent: ${request.taskText}`);
+    channel.appendLine(`[OpenSpec] 正在执行: ${request.taskText}`);
     channel.appendLine(`[OpenSpec] Prompt 长度: ${prompt.length} 字符`);
     const modelOpt = getAgentModelOption();
-    channel.appendLine(`[OpenSpec] 使用模型: ${modelOpt} (已传 --model)`);
-
-    const isWindows = process.platform === 'win32';
-    const tmpDir = os.tmpdir();
-    await cleanupOldPromptFiles(tmpDir);
-    const tmpFile = path.join(tmpDir, `${TMP_FILE_PREFIX}${Date.now()}.txt`);
-
-    try {
-      await fs.promises.writeFile(tmpFile, prompt, 'utf8');
-    } catch (err) {
-      const msg = (err as Error).message;
-      channel.appendLine(`[OpenSpec] 写入临时文件失败: ${msg}`);
-      logger.error('cursor-adapter: write temp file failed', err as Error);
-      return { success: false, adapterId: ADAPTER_ID, message: msg };
+    channel.appendLine(`[OpenSpec] 模型: ${modelOpt}`);
+    const debug = vscode.workspace.getConfiguration('openspec').get<boolean>('debug') ?? false;
+    if (debug) {
+      channel.appendLine('[OpenSpec] --- 发送给 Agent 的内容 (debug) ---');
+      channel.appendLine(prompt);
+      channel.appendLine('[OpenSpec] --- 以上为发送给 Agent 的内容 ---');
     }
+    channel.appendLine('---');
 
-    const modelArg = buildModelArg(modelOpt, isWindows);
-    const cmd = isWindows
-      ? `agent -p --force${modelArg} (Get-Content -Raw -Path "${escapePathForDoubleQuotes(tmpFile)}")`
-      : `agent -p --force${modelArg} "$(cat '${escapePathForSingleQuotes(tmpFile)}')"`;
+    const args = ['-p', '--force', '--model', modelOpt, prompt];
+    const child = spawn('agent', args, {
+      cwd: request.workspaceRoot,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
 
-    const OPENSPEC_TERMINAL_NAME = 'OpenSpec Agent';
+    child.stdout?.on('data', (chunk: Buffer | string) => {
+      channel.append(chunk.toString());
+    });
+    child.stderr?.on('data', (chunk: Buffer | string) => {
+      channel.append(chunk.toString());
+    });
 
-    try {
-      const existing = vscode.window.terminals.find(
-        (t) => t.name === OPENSPEC_TERMINAL_NAME
-      );
-      const terminal = existing ?? vscode.window.createTerminal({
-        cwd: request.workspaceRoot,
-        name: OPENSPEC_TERMINAL_NAME,
+    return new Promise<TaskExecuteResult>((resolve) => {
+      child.on('error', (err) => {
+        const msg = (err as Error).message;
+        channel.appendLine(`[OpenSpec] 启动 agent 失败: ${msg}`);
+        logger.error('cursor-adapter: spawn failed', err as Error);
+        resolve({ success: false, adapterId: ADAPTER_ID, message: msg });
       });
-      terminal.show(true);
-      // 先换行再发命令，避免首字符被吞导致 "agent" 变成 "gent"
-      terminal.sendText('\n' + cmd);
-      channel.appendLine('[OpenSpec] 已在集成终端中启动 agent，请在终端中查看输出。');
-      channel.appendLine('---');
-      vscode.window.showInformationMessage('已在集成终端中启动 Cursor agent，请在终端中查看执行过程。');
-      // 命令发送后 shell 会立即展开 $(cat file)，再延迟删除临时文件，避免堆积
-      setTimeout(() => {
-        fs.promises.unlink(tmpFile).catch(() => {});
-      }, TMP_FILE_CLEANUP_DELAY_MS);
-      return { success: true, adapterId: ADAPTER_ID };
-    } catch (err) {
-      const msg = (err as Error).message;
-      channel.appendLine(`[OpenSpec] 创建终端或发送命令失败: ${msg}`);
-      logger.error('cursor-adapter: createTerminal/sendText failed', err as Error);
-      try {
-        await fs.promises.unlink(tmpFile);
-      } catch {
-        // ignore cleanup error
-      }
-      return { success: false, adapterId: ADAPTER_ID, message: msg };
-    }
+
+      child.on('close', (code, signal) => {
+        channel.appendLine('---');
+        if (code === 0) {
+          channel.appendLine('[OpenSpec] 执行完成。');
+          resolve({ success: true, adapterId: ADAPTER_ID });
+        } else {
+          const msg = signal ? `进程收到信号 ${signal}` : `退出码 ${code}`;
+          channel.appendLine(`[OpenSpec] 执行结束: ${msg}`);
+          resolve({ success: false, adapterId: ADAPTER_ID, message: msg });
+        }
+      });
+    });
   },
 
   async fillChat(request: TaskExecuteRequest): Promise<TaskExecuteResult> {

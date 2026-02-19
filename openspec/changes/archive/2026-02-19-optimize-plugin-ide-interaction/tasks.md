@@ -51,5 +51,5 @@
 
 ## 10. 文档与收尾
 
-- [ ] 10.1 在 README 或设置说明中补充各配置项及 Adapter 的适用环境（如 Cursor 需 agent CLI、Clipboard 始终可用）
-- [ ] 10.2 运行扩展并验证：选择 adapter、执行模式、点击任务执行/填 Chat、依赖未完成时阻止或警告
+- [x] 10.1 在 README 或设置说明中补充各配置项及 Adapter 的适用环境（如 Cursor 需 agent CLI、Clipboard 始终可用）
+- [x] 10.2 运行扩展并验证：选择 adapter、执行模式、点击任务执行/填 Chat、依赖未完成时阻止或警告

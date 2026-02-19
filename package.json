@@ -57,6 +57,11 @@
           "type": "string",
           "default": "auto",
           "description": "Cursor agent CLI model. Default is 'auto' (Cursor chooses; no --model passed). Set a specific name (e.g. composer-1.5, gpt-5.2) only when you want to override, e.g. to avoid a model's usage limit."
+        },
+        "openspec.debug": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable debug: show Verify tab in change detail (to test IDE commands), and print the full prompt sent to Cursor Agent in the output channel when executing tasks."
         }
       }
     },

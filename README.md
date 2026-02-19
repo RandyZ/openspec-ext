@@ -96,6 +96,17 @@ Open Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`):
 |--------|---------|-------------|
 | `openspec.focusSidebarViewWhenOpeningChangeDetail` | `false` | Focus OpenSpec sidebar when opening change detail |
 | `openspec.focusSidebarViewWhenOpeningDashboard` | `false` | Focus OpenSpec sidebar when opening dashboard |
+| `openspec.taskExecutionMode` | `fillChat` | When clicking task execute: `auto` = run via adapter; `fillChat` = fill chat or copy to clipboard |
+| `openspec.preferredAgentAdapter` | `""` | Preferred agent executor adapter id (e.g. `cursor`, `clipboard`). Empty = use first available |
+| `openspec.taskDependencyPolicy` | `block` | When preceding tasks are incomplete: `block` = prevent execution; `warn` = show warning and allow proceed |
+| `openspec.agentModel` | `auto` | Cursor agent CLI model (only when using Cursor adapter). Use `auto` or a specific model name |
+| `openspec.debug` | `false` | Enable debug: Verify tab and full prompt in Output when executing tasks |
+
+**Task execution & Adapters**
+
+- **Clipboard** (`clipboard`): Always available. In fillChat mode it copies the prompt to the clipboard and notifies you; in auto mode it also copies (no direct execution).
+- **Cursor** (`cursor`): Available when the Cursor `agent` CLI is on PATH (e.g. in Cursor IDE). Executes tasks via the agent CLI or fills chat / copies to clipboard.
+- You can choose the adapter in the change detail UI (Adapter dropdown) or set `openspec.preferredAgentAdapter` in settings. If the selected adapter is unavailable, the extension falls back to the first available one (often clipboard).
 
 ### Dashboard
 

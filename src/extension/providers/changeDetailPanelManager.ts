@@ -4,6 +4,9 @@ import { logger } from '../utils/logger';
 import { DataManager } from '../services/dataManager';
 import { handleWebviewMessage, getWebviewContent } from './webviewMessageHandler';
 
+/** Delay (ms) before sending initial setContext so the webview is ready to receive it. */
+const INITIAL_SET_CONTEXT_DELAY_MS = 150;
+
 /**
  * Manages WebviewPanels for Change Detail view in the editor area.
  * One panel per change; reuses panel when opening the same change again.
@@ -24,15 +27,17 @@ export class ChangeDetailPanelManager {
     view: 'changeDetail';
     changeName: string;
     existingArtifactIds?: string[];
+    debug?: boolean;
   }> {
+    const debug = vscode.workspace.getConfiguration('openspec').get<boolean>('debug') ?? false;
     try {
       const data = await this.dataManager.getDashboardData();
       const change = data.changes.find((c) => c.name === changeName);
       const existingArtifactIds =
         change?.artifacts?.filter((a) => a.status === 'done').map((a) => a.id) ?? [];
-      return { type: 'setContext', view: 'changeDetail', changeName, existingArtifactIds };
+      return { type: 'setContext', view: 'changeDetail', changeName, existingArtifactIds, debug };
     } catch {
-      return { type: 'setContext', view: 'changeDetail', changeName };
+      return { type: 'setContext', view: 'changeDetail', changeName, debug };
     }
   }
 
@@ -75,7 +80,7 @@ export class ChangeDetailPanelManager {
       this.buildSetContextPayload(changeName).then((payload) =>
         panel.webview.postMessage(payload)
       );
-    }, 150);
+    }, INITIAL_SET_CONTEXT_DELAY_MS);
 
     panel.webview.onDidReceiveMessage(
       async (message) => {

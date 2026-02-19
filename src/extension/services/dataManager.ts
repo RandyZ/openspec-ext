@@ -1,5 +1,6 @@
-import * as vscode from 'vscode';
+import * as fs from 'fs';
 import * as path from 'path';
+import * as vscode from 'vscode';
 import { logger } from '../utils/logger';
 import { OpenSpecCliService } from './openspecCli';
 import { FileManagerService } from './fileManager';
@@ -216,6 +217,53 @@ export class DataManager {
       available: available.map((a) => ({ id: a.id, displayName: a.displayName })),
       currentId: current?.id ?? null,
     };
+  }
+
+  /** Execution state: taskIndex -> { success, timestamp } for a change. */
+  private getExecutionStatePath(): string {
+    return path.join(this.workspaceRoot, 'openspec', '.execution-state.json');
+  }
+
+  /**
+   * Get last execution state per task for a change.
+   */
+  async getTaskExecutionState(changeName: string): Promise<Record<number, { success: boolean; timestamp: number }>> {
+    const filePath = this.getExecutionStatePath();
+    try {
+      const raw = await fs.promises.readFile(filePath, 'utf8');
+      const data = JSON.parse(raw) as Record<string, Record<string, { success: boolean; timestamp: number }>>;
+      const change = data[changeName];
+      if (!change || typeof change !== 'object') return {};
+      const out: Record<number, { success: boolean; timestamp: number }> = {};
+      for (const [k, v] of Object.entries(change)) {
+        const idx = Number(k);
+        if (Number.isInteger(idx) && v && typeof v.success === 'boolean' && typeof v.timestamp === 'number') {
+          out[idx] = { success: v.success, timestamp: v.timestamp };
+        }
+      }
+      return out;
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * Persist execution result for a task; merge with existing state.
+   */
+  async setTaskExecutionState(changeName: string, taskIndex: number, success: boolean): Promise<void> {
+    const filePath = this.getExecutionStatePath();
+    const dir = path.dirname(filePath);
+    await fs.promises.mkdir(dir, { recursive: true });
+    let data: Record<string, Record<string, { success: boolean; timestamp: number }>> = {};
+    try {
+      const raw = await fs.promises.readFile(filePath, 'utf8');
+      data = JSON.parse(raw);
+    } catch {
+      // new file or invalid
+    }
+    if (!data[changeName]) data[changeName] = {};
+    data[changeName][String(taskIndex)] = { success, timestamp: Date.now() };
+    await fs.promises.writeFile(filePath, JSON.stringify(data, null, 0), 'utf8');
   }
 
   /**

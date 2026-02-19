@@ -7,6 +7,7 @@ export interface AppState {
   loading: boolean;
   error: string | null;
   selectedChange: string | null;
+  debug: boolean;
 }
 
 // Action types
@@ -15,7 +16,8 @@ export type AppAction =
   | { type: 'SET_DATA'; payload: DashboardData }
   | { type: 'SET_ERROR'; payload: string }
   | { type: 'CLEAR_ERROR' }
-  | { type: 'SELECT_CHANGE'; payload: string | null };
+  | { type: 'SELECT_CHANGE'; payload: string | null }
+  | { type: 'SET_DEBUG'; payload: boolean };
 
 // Initial state
 const initialState: AppState = {
@@ -23,6 +25,7 @@ const initialState: AppState = {
   loading: true,
   error: null,
   selectedChange: null,
+  debug: false,
 };
 
 // Reducer
@@ -51,7 +54,10 @@ function appReducer(state: AppState, action: AppAction): AppState {
     
     case 'SELECT_CHANGE':
       return { ...state, selectedChange: action.payload };
-    
+
+    case 'SET_DEBUG':
+      return { ...state, debug: action.payload };
+
     default:
       return state;
   }

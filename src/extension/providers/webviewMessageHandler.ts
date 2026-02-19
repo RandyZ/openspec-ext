@@ -2,28 +2,42 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { logger } from '../utils/logger';
 import { DataManager } from '../services/dataManager';
+import type { WebviewMessage } from '../../webview/types/messages';
+
+/** Returns true if resolvedPath is under workspaceRoot (no .. escape). */
+function isPathUnderWorkspace(resolvedPath: string, workspaceRoot: string): boolean {
+  const normalized = path.normalize(resolvedPath);
+  const rel = path.relative(workspaceRoot, normalized);
+  return !rel.startsWith('..') && !path.isAbsolute(rel);
+}
 
 /**
  * Shared message handler for both sidebar webview and change detail panel.
  * Does NOT handle openChangeDetailInEditor (handled by provider/panel manager).
  */
 export async function handleWebviewMessage(
-  message: any,
+  message: WebviewMessage,
   webview: vscode.Webview,
   dataManager: DataManager
 ): Promise<void> {
+  if (message == null || typeof message !== 'object' || !('type' in message)) {
+    logger.warn('Invalid webview message: missing or invalid object with type');
+    return;
+  }
   logger.debug(`Received message: ${message.type}`);
+
+  const getDebug = () => vscode.workspace.getConfiguration('openspec').get<boolean>('debug') ?? false;
 
   switch (message.type) {
     case 'getDashboardData': {
       const data = await dataManager.getDashboardData();
-      webview.postMessage({ type: 'dashboardData', data });
+      webview.postMessage({ type: 'dashboardData', data, debug: getDebug() });
       break;
     }
 
     case 'refresh': {
       const refreshedData = await dataManager.refresh();
-      webview.postMessage({ type: 'dashboardData', data: refreshedData });
+      webview.postMessage({ type: 'dashboardData', data: refreshedData, debug: getDebug() });
       break;
     }
 
@@ -43,7 +57,7 @@ export async function handleWebviewMessage(
         await dataManager.createChange(name);
         vscode.window.showInformationMessage(`Change "${name}" created`);
         const newData = await dataManager.getDashboardData();
-        webview.postMessage({ type: 'dashboardData', data: newData });
+        webview.postMessage({ type: 'dashboardData', data: newData, debug: getDebug() });
       }
       break;
     }
@@ -76,7 +90,7 @@ export async function handleWebviewMessage(
         dataManager.getDashboardData(),
         dataManager.readArtifact(changeName, 'tasks').catch(() => null),
       ]);
-      webview.postMessage({ type: 'dashboardData', data });
+      webview.postMessage({ type: 'dashboardData', data, debug: getDebug() });
       if (tasksContent != null) {
         webview.postMessage({
           type: 'artifactContent',
@@ -108,9 +122,14 @@ export async function handleWebviewMessage(
       if (!message.path) break;
       const folder = vscode.workspace.workspaceFolders?.[0];
       if (!folder) break;
+      const workspaceRoot = folder.uri.fsPath;
       const specPath = path.isAbsolute(message.path)
-        ? message.path
-        : path.join(folder.uri.fsPath, message.path);
+        ? path.normalize(message.path)
+        : path.normalize(path.join(workspaceRoot, message.path));
+      if (!isPathUnderWorkspace(specPath, workspaceRoot)) {
+        vscode.window.showErrorMessage(`不允许打开工作区外的文件: ${message.path}`);
+        break;
+      }
       try {
         const doc = await vscode.workspace.openTextDocument(specPath);
         await vscode.window.showTextDocument(doc);
@@ -124,12 +143,24 @@ export async function handleWebviewMessage(
     case 'openArtifact': {
       const folder = vscode.workspace.workspaceFolders?.[0];
       if (!folder) break;
-      const changesBase = message.changeName.startsWith('archive:')
-        ? path.join(folder.uri.fsPath, 'openspec', 'changes', 'archive', message.changeName.slice(8))
-        : path.join(folder.uri.fsPath, 'openspec', 'changes', message.changeName);
-      const artifactPath = path.join(changesBase, `${message.artifactType}.md`);
-      const doc = await vscode.workspace.openTextDocument(artifactPath);
-      await vscode.window.showTextDocument(doc);
+      const workspaceRoot = folder.uri.fsPath;
+      const changesBase = path.normalize(
+        message.changeName.startsWith('archive:')
+          ? path.join(workspaceRoot, 'openspec', 'changes', 'archive', message.changeName.slice(8))
+          : path.join(workspaceRoot, 'openspec', 'changes', message.changeName)
+      );
+      const artifactPath = path.normalize(path.join(changesBase, `${message.artifactType}.md`));
+      if (!isPathUnderWorkspace(changesBase, workspaceRoot) || !isPathUnderWorkspace(artifactPath, workspaceRoot)) {
+        vscode.window.showErrorMessage(`不允许打开工作区外的文件。`);
+        break;
+      }
+      try {
+        const doc = await vscode.workspace.openTextDocument(artifactPath);
+        await vscode.window.showTextDocument(doc);
+      } catch (err) {
+        logger.error(`Failed to open artifact: ${artifactPath}`, err as Error);
+        vscode.window.showErrorMessage(`无法打开文件: ${message.artifactType}.md`);
+      }
       break;
     }
 
@@ -152,7 +183,7 @@ export async function handleWebviewMessage(
         await dataManager.archiveChange(name);
         vscode.window.showInformationMessage(`Change "${name}" archived`);
         const afterArchive = await dataManager.getDashboardData();
-        webview.postMessage({ type: 'dashboardData', data: afterArchive });
+        webview.postMessage({ type: 'dashboardData', data: afterArchive, debug: getDebug() });
       }
       break;
     }
@@ -238,12 +269,14 @@ export async function handleWebviewMessage(
       try {
         const result = await dataManager.executeTaskRequest(changeName, taskIndex, taskText);
         success = result.success;
+        await dataManager.setTaskExecutionState(changeName, taskIndex, success);
       } catch (err) {
         logger.error('executeTask failed', err as Error);
         vscode.window.showErrorMessage((err as Error).message || '执行任务失败');
       }
       try {
-        webview.postMessage({ type: 'taskExecutionFinished', changeName, taskIndex, success });
+        const executionState = await dataManager.getTaskExecutionState(changeName);
+        webview.postMessage({ type: 'taskExecutionFinished', changeName, taskIndex, success, executionState });
       } catch (e) {
         const msg = (e as Error).message ?? String(e);
         if (msg.includes('disposed') || msg.includes('Disposed')) {
@@ -251,6 +284,19 @@ export async function handleWebviewMessage(
         } else {
           throw e;
         }
+      }
+      break;
+    }
+
+    case 'getTaskExecutionState': {
+      const changeName = message.changeName;
+      if (!changeName) break;
+      try {
+        const executionState = await dataManager.getTaskExecutionState(changeName);
+        webview.postMessage({ type: 'taskExecutionState', changeName, executionState });
+      } catch (err) {
+        logger.error('getTaskExecutionState failed', err as Error);
+        webview.postMessage({ type: 'taskExecutionState', changeName, executionState: {} });
       }
       break;
     }
@@ -293,11 +339,26 @@ export async function handleWebviewMessage(
       break;
     }
 
+    /**
+     * Verify tab: run an IDE command for debugging. Only commands in the allowlist
+     * are executed. For development/debug use only.
+     */
     case 'runCommand': {
       const commandId = message.commandId;
       const argsJson = message.argsJson;
       if (typeof commandId !== 'string' || !commandId.trim()) {
         webview.postMessage({ type: 'runCommandResult', success: false, message: 'Command ID 不能为空' });
+        break;
+      }
+      const ALLOWED_VERIFY_COMMAND_IDS = new Set<string>([
+        'composer.newAgentChat',
+      ]);
+      if (!ALLOWED_VERIFY_COMMAND_IDS.has(commandId.trim())) {
+        webview.postMessage({
+          type: 'runCommandResult',
+          success: false,
+          message: '该命令不在 Verify 白名单中，仅允许执行预定义命令用于调试。',
+        });
         break;
       }
       let args: unknown[] = [];

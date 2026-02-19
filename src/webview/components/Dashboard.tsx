@@ -21,6 +21,9 @@ export const Dashboard: React.FC = () => {
 
       if (message.type === 'dashboardData') {
         dispatch({ type: 'SET_DATA', payload: message.data });
+        if (message.debug !== undefined) {
+          dispatch({ type: 'SET_DEBUG', payload: message.debug });
+        }
       } else if (message.type === 'error') {
         dispatch({ type: 'SET_ERROR', payload: message.message });
       } else if (message.type === 'archivedChanges') {

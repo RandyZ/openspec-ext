@@ -17,16 +17,25 @@ function AppContent() {
         setPanelChangeName(msg.changeName);
         setExistingArtifactIds(msg.existingArtifactIds);
         dispatch({ type: 'SELECT_CHANGE', payload: msg.changeName });
+        if (msg.debug !== undefined) {
+          dispatch({ type: 'SET_DEBUG', payload: msg.debug });
+        }
       }
     });
     return cleanup;
   }, [onMessage, dispatch]);
 
   if (panelChangeName) {
-    return <ChangeDetail changeName={panelChangeName} existingArtifactIds={existingArtifactIds} />;
+    return (
+      <ChangeDetail
+        changeName={panelChangeName}
+        existingArtifactIds={existingArtifactIds}
+        debug={state.debug}
+      />
+    );
   }
   if (state.selectedChange) {
-    return <ChangeDetail changeName={state.selectedChange} />;
+    return <ChangeDetail changeName={state.selectedChange} debug={state.debug} />;
   }
   return <Dashboard />;
 }

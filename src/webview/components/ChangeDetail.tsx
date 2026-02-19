@@ -5,7 +5,16 @@ import { ActionBar } from './ActionBar';
 import { ArtifactViewer } from './ArtifactViewer';
 import { TaskList } from './TaskList';
 
-const TABS = [
+const MISSING_ARTIFACT_MESSAGE =
+  '该内容尚未创建或文件已丢失。可使用 /opsx:continue 生成对应 artifact，或在编辑器中打开 change 目录查看。';
+
+export interface ChangeDetailProps {
+  changeName: string;
+  existingArtifactIds?: string[];
+  debug?: boolean;
+}
+
+const TABS_WITH_VERIFY = [
   { id: 'proposal' as const, label: 'Proposal' },
   { id: 'specs' as const, label: 'Specs' },
   { id: 'design' as const, label: 'Design' },
@@ -13,17 +22,18 @@ const TABS = [
   { id: 'verify' as const, label: 'Verify' },
 ];
 
-const MISSING_ARTIFACT_MESSAGE =
-  '该内容尚未创建或文件已丢失。可使用 /opsx:continue 生成对应 artifact，或在编辑器中打开 change 目录查看。';
+const TABS_WITHOUT_VERIFY = TABS_WITH_VERIFY.filter((t) => t.id !== 'verify');
 
-export interface ChangeDetailProps {
-  changeName: string;
-  existingArtifactIds?: string[];
-}
-
-export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existingArtifactIds }) => {
+export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existingArtifactIds, debug = false }) => {
   const { postMessage, onMessage } = useVscode();
+  const tabs = debug ? TABS_WITH_VERIFY : TABS_WITHOUT_VERIFY;
   const [activeTab, setActiveTab] = useState<'proposal' | 'specs' | 'design' | 'tasks' | 'verify'>('proposal');
+
+  useEffect(() => {
+    if (!debug && activeTab === 'verify') {
+      setActiveTab('proposal');
+    }
+  }, [debug, activeTab]);
   const [content, setContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +48,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
   const [verifyCommandId, setVerifyCommandId] = useState('');
   const [verifyArgsJson, setVerifyArgsJson] = useState('');
   const [runCommandResult, setRunCommandResult] = useState<{ success: boolean; message?: string } | null>(null);
+  const [taskExecutionState, setTaskExecutionState] = useState<Record<number, { success: boolean; timestamp: number }>>({});
 
   const requestArtifact = (artifactType: string) => {
     setLoading(true);
@@ -130,6 +141,13 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
         });
       } else if (msg.type === 'taskExecutionFinished' && msg.changeName === changeName) {
         setExecutingTaskIndex(null);
+        if (msg.executionState && typeof msg.executionState === 'object') {
+          setTaskExecutionState(msg.executionState);
+        }
+      } else if (msg.type === 'taskExecutionState' && msg.changeName === changeName) {
+        if (msg.executionState && typeof msg.executionState === 'object') {
+          setTaskExecutionState(msg.executionState);
+        }
       } else if (msg.type === 'runCommandResult') {
         setRunCommandResult({ success: msg.success, message: msg.message });
       }
@@ -148,6 +166,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
   useEffect(() => {
     if (activeTab === 'tasks') {
       postMessage(sendMessage.getAgentAdapters());
+      postMessage(sendMessage.getTaskExecutionState(changeName));
     }
   }, [activeTab, changeName]);
 
@@ -222,7 +241,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
       />
 
       <div className="flex border-b gap-1 px-2" style={{ borderColor: 'var(--vscode-panel-border)' }}>
-        {TABS.map((tab) => (
+        {tabs.map((tab) => (
           <button
             key={tab.id}
             type="button"
@@ -354,6 +373,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
               content={content}
               changeName={changeName}
               executingTaskIndex={executingTaskIndex}
+              executionState={taskExecutionState}
               onToggleTask={(name, taskIndex) =>
                 postMessage(sendMessage.toggleTask(name, taskIndex))
               }

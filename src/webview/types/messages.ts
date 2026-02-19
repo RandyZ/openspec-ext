@@ -20,21 +20,23 @@ export type WebviewMessage =
   | { type: 'getAgentAdapters' }
   | { type: 'setPreferredAgentAdapter'; adapterId: string }
   | { type: 'requestCreateArtifact'; changeName: string; artifactType: string }
-  | { type: 'runCommand'; commandId: string; argsJson?: string };
+  | { type: 'runCommand'; commandId: string; argsJson?: string }
+  | { type: 'getTaskExecutionState'; changeName: string };
 
 // Message types from extension to webview
 export type ExtensionMessage =
-  | { type: 'dashboardData'; data: DashboardData }
+  | { type: 'dashboardData'; data: DashboardData; debug?: boolean }
   | { type: 'error'; message: string }
   | { type: 'artifactContent'; changeName: string; artifactType: string; content: string }
   | { type: 'artifactContentError'; changeName: string; artifactType: string; message: string; code?: string }
   | { type: 'deltaSpecList'; changeName: string; specIds: string[] }
   | { type: 'deltaSpecContent'; changeName: string; specId: string; content: string }
   | { type: 'deltaSpecContentError'; changeName: string; specId: string; message: string }
-  | { type: 'setContext'; view: 'changeDetail'; changeName: string; existingArtifactIds?: string[] }
+  | { type: 'setContext'; view: 'changeDetail'; changeName: string; existingArtifactIds?: string[]; debug?: boolean }
   | { type: 'archivedChanges'; items: ArchivedChangeInfo[] }
   | { type: 'agentAdapters'; available: { id: string; displayName: string }[]; currentId: string | null }
-  | { type: 'taskExecutionFinished'; changeName: string; taskIndex: number; success: boolean }
+  | { type: 'taskExecutionFinished'; changeName: string; taskIndex: number; success: boolean; executionState?: Record<number, { success: boolean; timestamp: number }> }
+  | { type: 'taskExecutionState'; changeName: string; executionState: Record<number, { success: boolean; timestamp: number }> }
   | { type: 'runCommandResult'; success: boolean; message?: string };
 
 // Data types
@@ -178,5 +180,10 @@ export const sendMessage = {
     type: 'runCommand',
     commandId,
     ...(argsJson !== undefined && argsJson !== '' ? { argsJson } : {}),
+  }),
+
+  getTaskExecutionState: (changeName: string): WebviewMessage => ({
+    type: 'getTaskExecutionState',
+    changeName,
   }),
 };
