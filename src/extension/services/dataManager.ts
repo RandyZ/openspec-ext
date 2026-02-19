@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import YAML from 'yaml';
 import { logger } from '../utils/logger';
 import { OpenSpecCliService } from './openspecCli';
 import { FileManagerService } from './fileManager';
@@ -54,6 +55,9 @@ export class DataManager {
 
     const version = await this.cliService.getVersion();
     logger.info(`Initialized with OpenSpec CLI ${version}`);
+
+    // One-time migration: move openspec/.execution-state.json into each change's .openspec.yaml
+    await this.migrateExecutionStateFromGlobalFile();
 
     // Start file watcher
     this.fileWatcher.start((events) => {
@@ -219,23 +223,59 @@ export class DataManager {
     };
   }
 
-  /** Execution state: taskIndex -> { success, timestamp } for a change. */
-  private getExecutionStatePath(): string {
-    return path.join(this.workspaceRoot, 'openspec', '.execution-state.json');
+  /**
+   * One-time migration: if openspec/.execution-state.json exists, write each change's state
+   * into that change's .openspec.yaml under extension.taskExecution, then delete the global file.
+   */
+  private async migrateExecutionStateFromGlobalFile(): Promise<void> {
+    const globalPath = path.join(this.workspaceRoot, 'openspec', '.execution-state.json');
+    let data: Record<string, Record<string, { success: boolean; timestamp: number }>> = {};
+    try {
+      const raw = await fs.promises.readFile(globalPath, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) data = parsed;
+    } catch {
+      return; // no file or invalid: nothing to migrate
+    }
+    for (const changeName of Object.keys(data)) {
+      const taskExecution = data[changeName];
+      if (!taskExecution || typeof taskExecution !== 'object') continue;
+      const filePath = this.contentAccess.getChangeOpenspecYamlPath(changeName);
+      const dir = path.dirname(filePath);
+      await fs.promises.mkdir(dir, { recursive: true });
+      let doc: Record<string, unknown> = {};
+      try {
+        const raw = await fs.promises.readFile(filePath, 'utf8');
+        const parsed = YAML.parse(raw);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) doc = parsed as Record<string, unknown>;
+      } catch {
+        // missing or invalid
+      }
+      if (!doc.extension || typeof doc.extension !== 'object') doc.extension = {};
+      (doc.extension as Record<string, unknown>).taskExecution = { ...taskExecution };
+      await fs.promises.writeFile(filePath, YAML.stringify(doc), 'utf8');
+    }
+    try {
+      await fs.promises.unlink(globalPath);
+      logger.info('Migrated execution state from .execution-state.json to per-change .openspec.yaml');
+    } catch (err) {
+      logger.warn('Could not remove legacy .execution-state.json', err as Error);
+    }
   }
 
   /**
-   * Get last execution state per task for a change.
+   * Read task execution state from the change's .openspec.yaml (extension.taskExecution).
+   * Returns {} if file missing, parse error, or extension.taskExecution absent.
    */
   async getTaskExecutionState(changeName: string): Promise<Record<number, { success: boolean; timestamp: number }>> {
-    const filePath = this.getExecutionStatePath();
+    const filePath = this.contentAccess.getChangeOpenspecYamlPath(changeName);
     try {
       const raw = await fs.promises.readFile(filePath, 'utf8');
-      const data = JSON.parse(raw) as Record<string, Record<string, { success: boolean; timestamp: number }>>;
-      const change = data[changeName];
-      if (!change || typeof change !== 'object') return {};
+      const data = YAML.parse(raw) as { extension?: { taskExecution?: Record<string, { success?: boolean; timestamp?: number }> } } | null;
+      const taskExecution = data?.extension?.taskExecution;
+      if (!taskExecution || typeof taskExecution !== 'object') return {};
       const out: Record<number, { success: boolean; timestamp: number }> = {};
-      for (const [k, v] of Object.entries(change)) {
+      for (const [k, v] of Object.entries(taskExecution)) {
         const idx = Number(k);
         if (Number.isInteger(idx) && v && typeof v.success === 'boolean' && typeof v.timestamp === 'number') {
           out[idx] = { success: v.success, timestamp: v.timestamp };
@@ -248,22 +288,30 @@ export class DataManager {
   }
 
   /**
-   * Persist execution result for a task; merge with existing state.
+   * Persist execution result for a task in the change's .openspec.yaml (extension.taskExecution).
+   * Preserves all other top-level keys; ensures parent directory exists.
    */
   async setTaskExecutionState(changeName: string, taskIndex: number, success: boolean): Promise<void> {
-    const filePath = this.getExecutionStatePath();
+    const filePath = this.contentAccess.getChangeOpenspecYamlPath(changeName);
     const dir = path.dirname(filePath);
     await fs.promises.mkdir(dir, { recursive: true });
-    let data: Record<string, Record<string, { success: boolean; timestamp: number }>> = {};
+
+    let data: Record<string, unknown> = {};
     try {
       const raw = await fs.promises.readFile(filePath, 'utf8');
-      data = JSON.parse(raw);
+      const parsed = YAML.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) data = parsed as Record<string, unknown>;
     } catch {
-      // new file or invalid
+      // missing or invalid: start with minimal content
     }
-    if (!data[changeName]) data[changeName] = {};
-    data[changeName][String(taskIndex)] = { success, timestamp: Date.now() };
-    await fs.promises.writeFile(filePath, JSON.stringify(data, null, 0), 'utf8');
+    if (!data.extension || typeof data.extension !== 'object') data.extension = {};
+    const ext = data.extension as Record<string, unknown>;
+    if (!ext.taskExecution || typeof ext.taskExecution !== 'object') ext.taskExecution = {};
+    (ext.taskExecution as Record<string, { success: boolean; timestamp: number }>)[String(taskIndex)] = {
+      success,
+      timestamp: Date.now(),
+    };
+    await fs.promises.writeFile(filePath, YAML.stringify(data), 'utf8');
   }
 
   /**

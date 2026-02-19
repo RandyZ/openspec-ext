@@ -27,4 +27,6 @@ export interface IOpenSpecContentAccess {
   listSpecsFromChanges(): Promise<SpecInfo[]>;
   /** 读主 spec 内容（openspec/specs/<id>/spec.md） */
   readSpec(specId: string): Promise<string>;
+  /** 解析 change 的 .openspec.yaml 绝对路径（draft: openspec/changes/<name>/.openspec.yaml；archive: openspec/changes/archive/<dir>/.openspec.yaml） */
+  getChangeOpenspecYamlPath(changeName: string): string;
 }

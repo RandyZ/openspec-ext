@@ -59,6 +59,20 @@ describe('FileManagerService', () => {
       const p = fm.getArtifactPath('my-change', 'specs');
       expect(p).toBe(path.join(openspecDir, 'changes', 'my-change', 'specs'));
     });
+
+    it('getChangeOpenspecYamlPath returns .openspec.yaml for draft change', () => {
+      const fm = new FileManagerService(openspecDir);
+      const p = fm.getChangeOpenspecYamlPath('my-change');
+      expect(p).toBe(path.join(openspecDir, 'changes', 'my-change', '.openspec.yaml'));
+    });
+
+    it('getChangeOpenspecYamlPath returns .openspec.yaml for archived change', () => {
+      const fm = new FileManagerService(openspecDir);
+      const p = fm.getChangeOpenspecYamlPath('archive:2025-01-15-my-change');
+      expect(p).toBe(
+        path.join(openspecDir, 'changes', 'archive', '2025-01-15-my-change', '.openspec.yaml')
+      );
+    });
   });
 
   describe('error handling for missing files', () => {

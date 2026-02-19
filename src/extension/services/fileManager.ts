@@ -24,10 +24,26 @@ export class FileManagerService implements IOpenSpecContentAccess {
    * Get path to an artifact.
    * For archived changes, changeName must be "archive:YYYY-MM-DD-name" (directoryName under archive).
    */
-  getArtifactPath(changeName: string, artifactType: string): string {
-    const basePath = changeName.startsWith('archive:')
+  /**
+   * Base directory for a change (draft or archive). Reused for artifact paths and .openspec.yaml.
+   */
+  private getChangeBasePath(changeName: string): string {
+    return changeName.startsWith('archive:')
       ? path.join(this.openspecDir, 'changes', 'archive', changeName.slice(8))
       : path.join(this.openspecDir, 'changes', changeName);
+  }
+
+  /**
+   * Resolve absolute path to a change's .openspec.yaml.
+   * Draft: openspec/changes/<name>/.openspec.yaml
+   * Archive: openspec/changes/archive/<dir>/.openspec.yaml
+   */
+  getChangeOpenspecYamlPath(changeName: string): string {
+    return path.join(this.getChangeBasePath(changeName), '.openspec.yaml');
+  }
+
+  getArtifactPath(changeName: string, artifactType: string): string {
+    const basePath = this.getChangeBasePath(changeName);
 
     switch (artifactType) {
       case 'proposal':

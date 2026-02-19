@@ -124,6 +124,7 @@
     "build": "pnpm run compile",
     "build:webview": "vite build",
     "dev:webview": "vite",
+    "postinstall": "node scripts/link-vitest-pnpm.js",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -150,6 +151,7 @@
   },
   "packageManager": "pnpm@10.14.0",
   "dependencies": {
+    "yaml": "^2.7.0",
     "@radix-ui/react-progress": "^1.1.8",
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",

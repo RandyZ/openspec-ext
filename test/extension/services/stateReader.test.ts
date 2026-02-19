@@ -32,6 +32,7 @@ describe('StateReader', () => {
       listArchivedChanges: vi.fn().mockResolvedValue([]),
       listSpecsFromChanges: vi.fn().mockResolvedValue([]),
       readSpec: vi.fn().mockRejectedValue(new Error('not implemented')),
+      getChangeOpenspecYamlPath: vi.fn().mockReturnValue(''),
     };
   });
 
