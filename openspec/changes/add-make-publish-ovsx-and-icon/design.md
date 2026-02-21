@@ -33,6 +33,7 @@
 - make publish-ovsx 可从项目根目录 `.env` 读取 OVSX_TOKEN，无需每次 `OVSX_TOKEN=xxx make publish-ovsx`。
 - 图标：将 openspec.dev 官方 SVG 下载到工程（resources/icon.svg），打包时使用；package.json 根级声明 icon。
 - README：仓库内 README.md 分为「使用说明」与「开发/贡献」两部分（同一文件）；打包时生成仅含使用说明的 README 并作为扩展内 README.md 打入 .vsix。
+- 提供 **make 命令用于测试**：仅执行「从 README 生成打包用 README」的步骤并输出到固定路径（如 build/README.md），不执行完整打包，便于开发时校验生成内容。
 
 **Non-Goals:**
 
@@ -54,13 +55,19 @@
 
 ### 3. README 结构与打包时生成“市场用”README
 
-- **选择（结构）**：README.md 保留一个文件，内部分为两大部分，用固定标题分隔，例如：
-  - 第一部分：**使用/产品说明**（Overview、安装方式、使用、命令、配置等），到某标题为止（如「开发与贡献」或「Contributing」之前）。
-  - 第二部分：**开发与贡献**（Architecture、Development Setup、Publishing、Contributing 等）。
-- **选择（打包）**：在 `package` 脚本或单独脚本中，在调用 vsce 之前：(1) 从 README.md 按分隔标题提取第一部分内容写入临时文件（如 `build/README.md`）；(2) 临时将根目录 README.md 备份并用该内容覆盖；(3) 执行 vsce package；(4) 恢复根目录 README.md。这样打入 .vsix 的 README.md 仅为使用说明部分。
-- **理由**：市场与用户只看到使用说明；仓库内仍是一个 README，便于维护。提取规则需明确（如“从文件开头到「## 开发与贡献」之前”或使用 HTML 注释标记）。
+- **选择（分隔方式）**：README.md 保留一个文件，两大部分用**单行分隔符**切分：
+  - **分隔符**：一行仅包含 `---`（Markdown 水平线，行首行尾可有空白）。该行**不**写入打包用 README。
+  - **第一部分（使用/产品说明）**：从文件开头到**第一个** `---` 行之前的所有内容，作为市场与扩展包内的 README。
+  - **第二部分（开发与贡献）**：从第一个 `---` 行之后到文件末尾（Architecture、Development Setup、Publishing、Contributing 等）。
+- **选择（打包）**：在 `package` 脚本或单独脚本中，在调用 vsce 之前：(1) 从 README.md 按上述规则提取「第一个 `---` 之前」的内容写入临时文件（如 `build/README.md`）；(2) 临时将根目录 README.md 备份并用该内容覆盖；(3) 执行 vsce package；(4) 恢复根目录 README.md。这样打入 .vsix 的 README.md 仅为使用说明部分。
+- **理由**：用 `---` 分隔简单、可见、与 Markdown 习惯一致；解析时只需查找第一行仅含 `---` 的行即可，无需依赖标题文本。
 
-### 4. package.json 根级 icon
+### 4. make 目标：仅测试生成打包用 README
+
+- **选择**：在 Makefile 中增加目标（如 `readme-marketplace` 或 `test-readme-marketplace`），仅调用「从 README.md 提取使用说明并写入 build/README.md」的脚本，不执行 build 与 vsce package。便于开发时运行 `make readme-marketplace` 后查看 `build/README.md` 校验内容。
+- **理由**：打包流程较重的场景下，单独验证 README 提取逻辑可节省时间；与 package 流程共用同一提取脚本，保证一致性。
+
+### 5. package.json 根级 icon
 
 - **选择**：在 package.json 根级增加 `"icon": "resources/icon.svg"`（若已有则改为该路径）。市场使用根级 icon 作为列表/详情头像。
 
@@ -69,7 +76,7 @@
 | 风险 | 缓解 |
 |------|------|
 | make 读 .env 在不同 shell/make 下行为不一 | 文档注明 .env 格式（如 OVSX_TOKEN=xxx）；可选由 Node 脚本统一读 .env。 |
-| README 提取逻辑与后续修改不同步 | 用明确分隔标题或标记；在 CONTRIBUTING/README 中说明“第一部分即市场展示”。 |
+| README 提取逻辑与后续修改不同步 | 分隔符固定为单行 `---`；在 README 顶部或分隔处注释说明“`---` 上方为市场展示用”。 |
 | 打包中途失败导致 README.md 未恢复 | 脚本用 try/finally 或 trap 恢复；或使用临时目录拷贝再替换。 |
 
 ## Migration Plan

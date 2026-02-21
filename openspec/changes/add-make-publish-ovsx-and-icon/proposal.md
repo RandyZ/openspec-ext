@@ -8,7 +8,7 @@
 
 - 新增 **Makefile**，提供 `make publish-ovsx`：先打包再发布到 Open VSX。**从项目根目录的 `.env` 中读取 OVSX_TOKEN**（若存在），无需在命令行显式传入。不涉及 VS Code Marketplace。
 - 使用 [openspec.dev 官方 SVG](https://openspec.dev/_astro/openspec_icon_light.BXKVBxjB.svg) 作为扩展图标：**直接下载到工程**中（如 `resources/icon.svg`），打包时使用该文件；package.json 根级别增加 `icon` 指向该资源。
-- **README 结构调整与打包行为**：当前项目中的 README.md **拆成两部分但保留在一个文件内**（例如「使用/产品说明」与「开发/贡献」）。打包发布时**不直接打包该 README.md**，而是**生成一份新的、仅含使用说明部分的 README**，将该内容作为扩展包内的 README.md 打入 .vsix，供市场展示。
+- **README 结构调整与打包行为**：当前项目中的 README.md **拆成两部分但保留在一个文件内**，用**单行 `---`** 作为分隔符：`---` 之前为「使用/产品说明」，之后为「开发/贡献」。打包发布时**不直接打包该 README.md**，而是**生成一份新的、仅含 `---` 之前使用说明部分的 README**，将该内容作为扩展包内的 README.md 打入 .vsix，供市场展示。
 
 ## Capabilities
 
@@ -16,7 +16,7 @@
 
 - **make-publish-ovsx**：通过 make 命令一键打包并发布到 Open VSX；make 可从根目录 `.env` 读取 OVSX_TOKEN。
 - **extension-marketplace-icon**：扩展图标使用 OpenSpec 官方 SVG，下载到工程（如 resources/icon.svg）并在 manifest 中声明；打包时使用该文件。
-- **marketplace-readme**：README.md 在仓库内分为「使用说明」与「开发/贡献」两部分；打包时生成仅含使用说明的 README 并作为扩展内的 README.md 打入 .vsix。
+- **marketplace-readme**：README.md 在仓库内用单行 `---` 分为「使用说明」（`---` 之前）与「开发/贡献」（`---` 之后）；打包时提取 `---` 之前的内容生成 README 并作为扩展内的 README.md 打入 .vsix。
 
 ### Modified Capabilities
 
