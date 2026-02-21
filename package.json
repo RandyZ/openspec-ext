@@ -1,9 +1,9 @@
 {
-  "name": "openspec-vscode",
+  "name": "openspec-workflow",
   "displayName": "OpenSpec",
   "description": "Visual dashboard and interactive UI for OpenSpec workflows",
-  "version": "0.1.0",
-  "publisher": "openspec",
+  "version": "0.1.1",
+  "publisher": "randysss",
   "license": "MIT",
   "engines": {
     "vscode": "^1.85.0"
@@ -18,6 +18,10 @@
     "dashboard",
     "task management"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RandyZ/openspec-ext.git"
+  },
   "activationEvents": [
     "workspaceContains:openspec/config.yaml"
   ],
@@ -38,7 +42,10 @@
         },
         "openspec.taskExecutionMode": {
           "type": "string",
-          "enum": ["auto", "fillChat"],
+          "enum": [
+            "auto",
+            "fillChat"
+          ],
           "default": "fillChat",
           "description": "When clicking task execute: auto = run via adapter; fillChat = fill chat or copy to clipboard."
         },
@@ -49,7 +56,10 @@
         },
         "openspec.taskDependencyPolicy": {
           "type": "string",
-          "enum": ["block", "warn"],
+          "enum": [
+            "block",
+            "warn"
+          ],
           "default": "block",
           "description": "When preceding tasks are incomplete: block = prevent execution; warn = show warning and let user proceed."
         },
@@ -126,15 +136,20 @@
     "dev:webview": "vite",
     "postinstall": "node scripts/link-vitest-pnpm.js",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "package": "pnpm run build && pnpm exec vsce package --no-dependencies",
+    "publish:marketplace": "pnpm exec vsce publish",
+    "publish:openvsx": "node scripts/publish-openvsx.js"
   },
   "devDependencies": {
+    "@vscode/vsce": "^3.2.2",
+    "ovsx": "^0.10.9",
     "@tailwindcss/postcss": "^4.1.18",
     "@tailwindcss/vite": "^4.1.18",
     "@types/node": "^25.2.1",
     "@types/react": "^19.2.13",
     "@types/react-dom": "^19.2.3",
-    "@types/vscode": "^1.109.0",
+    "@types/vscode": "^1.85.0",
     "@typescript-eslint/eslint-plugin": "^8.54.0",
     "@typescript-eslint/parser": "^8.54.0",
     "@vitejs/plugin-react": "^5.1.3",

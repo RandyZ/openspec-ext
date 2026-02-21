@@ -1,6 +1,6 @@
-# OpenSpec VSCode Extension
+# OpenSpec Extension
 
-> Visual interface for managing OpenSpec workflows in VSCode
+> Visual interface for managing OpenSpec workflows in VSCode, Cursor.
 
 [![Status](https://img.shields.io/badge/status-in%20development-yellow)](openspec/changes/vscode-extension-mvp/PROGRESS.md)
 [![Progress](https://img.shields.io/badge/progress-MVP-blue)](openspec/changes/vscode-extension-mvp/tasks.md)
@@ -14,7 +14,7 @@ A VSCode extension that provides a visual dashboard for [OpenSpec](https://githu
 - **Visual Dashboard**: React UI with changes and specs, progress bars, empty states
 - **Change Detail**: Tabs for Proposal, Specs, Design, Tasks; markdown artifact viewer; task checkboxes with write-back
 - **CLI Integration**: OpenSpec CLI (list, status, new, archive) with retry and 30s timeout
-- **Real-time Updates**: File watcher (openspec/**/*.md, *.yaml) with 300ms debounce; cache 10s TTL
+- **Real-time Updates**: File watcher (openspec/**/*.md,*.yaml) with 300ms debounce; cache 10s TTL
 - **Quick Actions**: Copy /opsx:ff, /opsx:apply; Archive; Open in Editor; Refresh
 - **Commands**: Open Dashboard, Refresh Data, Create New Change, Archive Change
 - **Logging**: Output panel "OpenSpec" channel
@@ -35,6 +35,7 @@ Extension Host (Node.js)          Webview (Browser)
 ```
 
 **Design Decisions:**
+
 - Data Source: Hybrid (CLI + FileWatcher + Direct reads)
 - Backend: OpenSpec CLI via `child_process`
 - Frontend: React + Tailwind CSS + Radix UI (planned)
@@ -69,6 +70,10 @@ pnpm run watch      # Watch mode
 # Debug
 # Press F5 in VSCode to launch Extension Development Host
 ```
+
+### Publishing
+
+To package and publish the extension to [VS Code Marketplace](https://marketplace.visualstudio.com/) and [Open VSX](https://open-vsx.org/) (e.g. for Cursor), see **[docs/PUBLISHING.md](docs/PUBLISHING.md)** for publisher setup, tokens, and release steps.
 
 ---
 
@@ -224,6 +229,7 @@ pnpm run build         # Build everything (future)
 Currently in active development. Contributions welcome after MVP release.
 
 **To contribute:**
+
 1. Review [ARCHITECTURE.md](ARCHITECTURE.md)
 2. Check [tasks.md](openspec/changes/vscode-extension-mvp/tasks.md)
 3. Follow code style (ESLint + Prettier)

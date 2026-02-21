@@ -6,3 +6,4 @@ out
 .DS_Store
 pnpm-lock.yaml
 *.log
+.env

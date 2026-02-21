@@ -6,20 +6,21 @@ context: |
   Tech stack: TypeScript, React, Node.js, Tailwind CSS, Radix UI, Vite, esbuild
   Package Manager: pnpm (use pnpm for all dependency management)
   Target: VSCode Extension (independent project)
-  
+  Language: Chinese Simplified
+
   Architecture decisions:
   - Data source: Mixed approach (CLI + File watching + On-demand read)
   - Backend: Call openspec CLI via child_process
   - Frontend: React + Tailwind CSS + Radix UI
   - Build: Vite (webview) + esbuild (extension)
   - Package manager: pnpm (NOT npm or yarn)
-  
+
   Key concepts:
   - OpenSpec has changes (proposals with artifacts) and specs (requirements)
   - Artifacts: proposal.md, specs/, design.md, tasks.md
   - Changes have three states: draft (no tasks), active (incomplete), completed (all done)
   - Tasks in tasks.md can be toggled [x] / [ ]
-  
+
   Reference:
   - OpenSpec CLI: @/Users/randy/workspace/project/opensource/AI/OpenSpec
   - Reference VSCode extension: https://github.com/Pimzino/spec-workflow-mcp/tree/main/vscode-extension
