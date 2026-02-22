@@ -142,6 +142,26 @@ export async function handleWebviewMessage(
       break;
     }
 
+    case 'openDeltaSpec': {
+      const { changeName, specId } = message;
+      if (!changeName || !specId) break;
+      const workspaceRoot = dataManager.getWorkspaceRoot();
+      const changesBase = getChangesBasePath(workspaceRoot, changeName);
+      const absPath = path.normalize(path.join(changesBase, 'specs', specId, 'spec.md'));
+      if (!isPathUnderWorkspace(absPath, workspaceRoot)) {
+        vscode.window.showErrorMessage('不允许打开工作区外的文件。');
+        break;
+      }
+      try {
+        const doc = await vscode.workspace.openTextDocument(absPath);
+        await vscode.window.showTextDocument(doc);
+      } catch (err) {
+        logger.error(`Failed to open delta spec: ${changeName}/specs/${specId}`, err as Error);
+        vscode.window.showErrorMessage(`无法打开 spec 文件: ${specId}`);
+      }
+      break;
+    }
+
     case 'openArtifact': {
       const workspaceRoot = dataManager.getWorkspaceRoot();
       const changesBase = path.normalize(getChangesBasePath(workspaceRoot, message.changeName));

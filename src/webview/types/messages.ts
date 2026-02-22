@@ -9,6 +9,7 @@ export type WebviewMessage =
   | { type: 'requestNewChange' }
   | { type: 'copyToClipboard'; text: string }
   | { type: 'openSpec'; path: string }
+  | { type: 'openDeltaSpec'; changeName: string; specId: string }
   | { type: 'archiveChange'; name: string }
   | { type: 'getArtifactContent'; changeName: string; artifactType: string }
   | { type: 'listDeltaSpecs'; changeName: string }
@@ -117,6 +118,12 @@ export const sendMessage = {
   openSpec: (path: string): WebviewMessage => ({
     type: 'openSpec',
     path,
+  }),
+
+  openDeltaSpec: (changeName: string, specId: string): WebviewMessage => ({
+    type: 'openDeltaSpec',
+    changeName,
+    specId,
   }),
 
   archiveChange: (name: string): WebviewMessage => ({

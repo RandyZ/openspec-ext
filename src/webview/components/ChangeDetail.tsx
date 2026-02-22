@@ -208,10 +208,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
   const handleOpenInEditor = () => {
     if (activeTab === 'verify') return;
     if (activeTab === 'specs' && selectedSpecId) {
-      const specPath = changeName.startsWith('archive:')
-        ? `openspec/changes/archive/${changeName.slice(8)}/specs/${selectedSpecId}/spec.md`
-        : `openspec/changes/${changeName}/specs/${selectedSpecId}/spec.md`;
-      postMessage(sendMessage.openSpec(specPath));
+      postMessage(sendMessage.openDeltaSpec(changeName, selectedSpecId));
     } else {
       postMessage(sendMessage.openArtifact(changeName, activeTab));
     }

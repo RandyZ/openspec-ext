@@ -327,12 +327,11 @@ export class FileManagerService implements IOpenSpecContentAccess {
             const specPath = path.join(specsDir, se.name, 'spec.md');
             try {
               await fs.promises.access(specPath);
-              const relativePath = path.relative(this.openspecDir, specPath);
               const requirementCount = await this.countRequirementsInSpec(specPath);
               result.push({
                 id: `${changeName} / ${se.name}`,
                 requirementCount,
-                path: relativePath,
+                path: specPath,
               });
             } catch {
               // no spec.md
