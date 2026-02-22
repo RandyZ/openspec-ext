@@ -26,6 +26,7 @@
     "workspaceContains:openspec/config.yaml"
   ],
   "main": "./dist/extension.js",
+  "icon": "resources/icon.png",
   "contributes": {
     "configuration": {
       "title": "OpenSpec",
@@ -137,12 +138,14 @@
     "postinstall": "node scripts/link-vitest-pnpm.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "package": "pnpm run build && pnpm exec vsce package --no-dependencies",
+    "package": "node scripts/package-with-marketplace-readme.js",
     "publish:marketplace": "pnpm exec vsce publish",
     "publish:openvsx": "node scripts/publish-openvsx.js"
   },
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@vscode/vsce": "^3.2.2",
+    "sharp": "^0.33.5",
     "ovsx": "^0.10.9",
     "@tailwindcss/postcss": "^4.1.18",
     "@tailwindcss/vite": "^4.1.18",

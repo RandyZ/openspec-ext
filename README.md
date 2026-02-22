@@ -2,82 +2,25 @@
 
 > Visual interface for managing OpenSpec workflows in VSCode, Cursor.
 
-[![Status](https://img.shields.io/badge/status-in%20development-yellow)](openspec/changes/vscode-extension-mvp/PROGRESS.md)
-[![Progress](https://img.shields.io/badge/progress-MVP-blue)](openspec/changes/vscode-extension-mvp/tasks.md)
+## Overview
 
-## 📖 Overview
+A VSCode/Cursor extension that provides a visual dashboard for [OpenSpec](https://github.com/Fission-AI/OpenSpec), making it easier to manage changes, view specs, and track tasks without leaving your editor.
 
-A VSCode extension that provides a visual dashboard for [OpenSpec](https://github.com/Fission-AI/OpenSpec), making it easier to manage changes, view specs, and track tasks without leaving your editor.
+### Features
 
-### ✅ Current Features (v0.1.0)
-
-- **Visual Dashboard**: React UI with changes and specs, progress bars, empty states
-- **Change Detail**: Tabs for Proposal, Specs, Design, Tasks; markdown artifact viewer; task checkboxes with write-back
-- **CLI Integration**: OpenSpec CLI (list, status, new, archive) with retry and 30s timeout
-- **Real-time Updates**: File watcher (openspec/**/*.md,*.yaml) with 300ms debounce; cache 10s TTL
+- **Visual Dashboard**: Changes and specs list, progress bars, empty states
+- **Change Detail**: Tabs for Proposal, Specs, Design, Tasks; markdown viewer; task checkboxes with write-back
+- **CLI Integration**: OpenSpec CLI (list, status, new, archive) with retry and timeout
 - **Quick Actions**: Copy /opsx:ff, /opsx:apply; Archive; Open in Editor; Refresh
 - **Commands**: Open Dashboard, Refresh Data, Create New Change, Archive Change
 - **Logging**: Output panel "OpenSpec" channel
-- **Error Handling**: User-facing messages, CLI-not-found and timeout handling
 
----
+## Installation
 
-## 🏗️ Architecture
+- **From marketplace**: Install **OpenSpec** from the [VS Code Marketplace](https://marketplace.visualstudio.com/) or [Open VSX](https://open-vsx.org/) (e.g. in Cursor).
+- **Requirements**: [OpenSpec CLI](https://github.com/Fission-AI/OpenSpec#quick-start) on your PATH; a workspace that contains (or will contain) `openspec/config.yaml`. The extension activates when it finds an OpenSpec workspace.
 
-```
-Extension Host (Node.js)          Webview (Browser)
-├── DataManager                   ├── HTML (current)
-│   ├── OpenSpecCliService        └── React App (Phase 7-9)
-│   ├── FileManagerService            ├── Dashboard
-│   └── FileWatcherService            ├── TaskList
-├── CommandManager                    └── ArtifactViewer
-└── DashboardProvider
-```
-
-**Design Decisions:**
-
-- Data Source: Hybrid (CLI + FileWatcher + Direct reads)
-- Backend: OpenSpec CLI via `child_process`
-- Frontend: React + Tailwind CSS + Radix UI (planned)
-- Build: esbuild + Vite
-- Package Manager: pnpm
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for details.
-
----
-
-## 📦 Installation
-
-### Prerequisites
-
-- **Node.js** 18.0.0+
-- **pnpm** 8.0.0+ (`npm install -g pnpm`)
-- **VSCode** 1.85.0+
-- **OpenSpec CLI** 1.1.0+ ([installation](https://github.com/Fission-AI/OpenSpec#quick-start))
-
-### Development Setup
-
-```bash
-# Clone and install
-git clone <repo-url>
-cd openspce-ui
-pnpm install
-
-# Build
-pnpm run compile    # One-time build
-pnpm run watch      # Watch mode
-
-# Debug
-# Press F5 in VSCode to launch Extension Development Host
-```
-
-### Publishing
-
-To package and publish the extension to [VS Code Marketplace](https://marketplace.visualstudio.com/) and [Open VSX](https://open-vsx.org/) (e.g. for Cursor), see **[docs/PUBLISHING.md](docs/PUBLISHING.md)** for publisher setup, tokens, and release steps.
-
----
-
-## 🚀 Usage
+## Usage
 
 ### Commands
 
@@ -125,9 +68,70 @@ Open Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`):
 2. Select **"OpenSpec"** from dropdown
 3. View timestamped logs (INFO, WARN, ERROR, DEBUG)
 
+### Troubleshooting
+
+- **Extension doesn’t activate**: Open a folder that contains (or will contain) an OpenSpec workspace (`openspec/config.yaml`). The extension only activates in OpenSpec workspaces.
+- **"OpenSpec CLI not found"**: Install [OpenSpec CLI](https://github.com/Fission-AI/OpenSpec#quick-start) and ensure it’s on your PATH.
+- **Dashboard empty**: Run **OpenSpec: Refresh Data**; check the **OpenSpec** output channel for errors.
+
 ---
+<!-- Below: development/contributing only; above: user-facing (packaged as extension README) -->
+
+[![Status](https://img.shields.io/badge/status-in%20development-yellow)](openspec/changes/vscode-extension-mvp/PROGRESS.md)
+[![Progress](https://img.shields.io/badge/progress-MVP-blue)](openspec/changes/vscode-extension-mvp/tasks.md)
+
+## 🏗️ Architecture
+
+```
+Extension Host (Node.js)          Webview (Browser)
+├── DataManager                   ├── HTML (current)
+│   ├── OpenSpecCliService        └── React App (Phase 7-9)
+│   ├── FileManagerService            ├── Dashboard
+│   └── FileWatcherService            ├── TaskList
+├── CommandManager                    └── ArtifactViewer
+└── DashboardProvider
+```
+
+**Design Decisions:**
+
+- Data Source: Hybrid (CLI + FileWatcher + Direct reads)
+- Backend: OpenSpec CLI via `child_process`
+- Frontend: React + Tailwind CSS + Radix UI (planned)
+- Build: esbuild + Vite
+- Package Manager: pnpm
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for details.
+
+***
 
 ## 🛠️ Development
+
+### Prerequisites
+
+- **Node.js** 18.0.0+
+- **pnpm** 8.0.0+ (`npm install -g pnpm`)
+- **VSCode** 1.85.0+
+- **OpenSpec CLI** 1.1.0+ ([installation](https://github.com/Fission-AI/OpenSpec#quick-start))
+
+### Development Setup
+
+```bash
+# Clone and install
+git clone <repo-url>
+cd openspce-ui
+pnpm install
+
+# Build
+pnpm run compile    # One-time build
+pnpm run watch      # Watch mode
+
+# Debug
+# Press F5 in VSCode to launch Extension Development Host
+```
+
+### Publishing
+
+To package and publish the extension to [VS Code Marketplace](https://marketplace.visualstudio.com/) and [Open VSX](https://open-vsx.org/) (e.g. for Cursor), see **[docs/PUBLISHING.md](docs/PUBLISHING.md)** for publisher setup, tokens, and release steps.
 
 ### Project Structure
 
@@ -170,7 +174,7 @@ pnpm run build         # Build everything (future)
 | Build | esbuild (extension), Vite (webview) |
 | Tools | pnpm, ESLint, Prettier |
 
----
+***
 
 ## 📊 Progress
 
@@ -185,7 +189,7 @@ pnpm run build         # Build everything (future)
 
 **Detailed progress**: [tasks.md](openspec/changes/vscode-extension-mvp/tasks.md)
 
----
+***
 
 ## 🐛 Known Issues & Troubleshooting
 
@@ -210,7 +214,7 @@ pnpm run build         # Build everything (future)
 
 - ✅ JSON parse error with "No specs found" (v0.1.0)
 
----
+***
 
 ## 📚 Documentation
 
@@ -222,7 +226,7 @@ pnpm run build         # Build everything (future)
 | [design.md](openspec/changes/vscode-extension-mvp/design.md) | Technical design |
 | [tasks.md](openspec/changes/vscode-extension-mvp/tasks.md) | Task breakdown |
 
----
+***
 
 ## 🤝 Contributing
 
@@ -234,20 +238,20 @@ Currently in active development. Contributions welcome after MVP release.
 2. Check [tasks.md](openspec/changes/vscode-extension-mvp/tasks.md)
 3. Follow code style (ESLint + Prettier)
 
----
+***
 
 ## 📄 License
 
 MIT (TBD)
 
----
+***
 
 ## 🙏 Acknowledgments
 
 - [OpenSpec](https://github.com/Fission-AI/OpenSpec) - Spec-driven workflow tool
 - [VSCode Extension Samples](https://github.com/microsoft/vscode-extension-samples)
 
----
+***
 
 **Version**: 0.1.0  
 **Last Updated**: 2026-02  

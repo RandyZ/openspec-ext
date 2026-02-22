@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { logger } from '../utils/logger';
 import { DataManager } from '../services/dataManager';
+import { getChangesBasePath } from '../utils/workspaceRoot';
 import type { WebviewMessage } from '../../webview/types/messages';
 
 /** Returns true if resolvedPath is under workspaceRoot (no .. escape). */
@@ -103,9 +104,8 @@ export async function handleWebviewMessage(
     }
 
     case 'openChange': {
-      const folder = vscode.workspace.workspaceFolders?.[0];
-      if (!folder) break;
-      const changeDir = path.join(folder.uri.fsPath, 'openspec', 'changes', message.changeName);
+      const workspaceRoot = dataManager.getWorkspaceRoot();
+      const changeDir = getChangesBasePath(workspaceRoot, message.changeName);
       const tasksPath = path.join(changeDir, 'tasks.md');
       const proposalPath = path.join(changeDir, 'proposal.md');
       const fs = await import('fs');
@@ -120,9 +120,7 @@ export async function handleWebviewMessage(
 
     case 'openSpec': {
       if (!message.path) break;
-      const folder = vscode.workspace.workspaceFolders?.[0];
-      if (!folder) break;
-      const workspaceRoot = folder.uri.fsPath;
+      const workspaceRoot = dataManager.getWorkspaceRoot();
       const specPath = path.isAbsolute(message.path)
         ? path.normalize(message.path)
         : path.normalize(path.join(workspaceRoot, message.path));
@@ -141,14 +139,8 @@ export async function handleWebviewMessage(
     }
 
     case 'openArtifact': {
-      const folder = vscode.workspace.workspaceFolders?.[0];
-      if (!folder) break;
-      const workspaceRoot = folder.uri.fsPath;
-      const changesBase = path.normalize(
-        message.changeName.startsWith('archive:')
-          ? path.join(workspaceRoot, 'openspec', 'changes', 'archive', message.changeName.slice(8))
-          : path.join(workspaceRoot, 'openspec', 'changes', message.changeName)
-      );
+      const workspaceRoot = dataManager.getWorkspaceRoot();
+      const changesBase = path.normalize(getChangesBasePath(workspaceRoot, message.changeName));
       const artifactPath = path.normalize(path.join(changesBase, `${message.artifactType}.md`));
       if (!isPathUnderWorkspace(changesBase, workspaceRoot) || !isPathUnderWorkspace(artifactPath, workspaceRoot)) {
         vscode.window.showErrorMessage(`不允许打开工作区外的文件。`);

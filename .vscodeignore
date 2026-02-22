@@ -2,10 +2,12 @@
 node_modules/
 .pnpm-store/
 src/
+build/
 .git/
 .gitignore
 *.md
 !README.md
+README.md.bak
 docs/
 openspec/
 .vscode/**

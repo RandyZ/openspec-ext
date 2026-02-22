@@ -42,6 +42,11 @@ export class DataManager {
     this.taskExecutorService = new TaskExecutorService(workspaceRoot, this.contentAccess);
   }
 
+  /** Workspace root used for openspec (same root used by "Open in Editor" and content read). */
+  getWorkspaceRoot(): string {
+    return this.workspaceRoot;
+  }
+
   /**
    * Initialize services
    */

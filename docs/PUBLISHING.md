@@ -62,7 +62,18 @@ For CI or non-interactive use, you can use the `VSCE_PAT` environment variable i
 
 ### 2.2 Publish to Open VSX
 
-Set your token and run the publish script:
+Set your token and run the publish script. You can use **make** (reads `OVSX_TOKEN` from `.env` if present) or run the steps manually:
+
+**Option A: make (recommended if you use .env)**
+
+```bash
+# Put OVSX_TOKEN=your-token in project root .env (do not commit .env)
+make publish-ovsx
+```
+
+`make publish-ovsx` loads `.env` if it exists, then runs `pnpm run package` and `pnpm run publish:openvsx`. No need to export `OVSX_TOKEN` in the shell.
+
+**Option B: pnpm (set token in environment)**
 
 ```bash
 # Build and create .vsix (if not already done)

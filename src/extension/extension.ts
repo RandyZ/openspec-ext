@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { initLogger, logger } from './utils/logger';
+import { getOpenSpecWorkspaceRoot } from './utils/workspaceRoot';
 import { DataManager } from './services/dataManager';
 import { CommandManager } from './commands/commandManager';
 import { DashboardViewProvider } from './providers/dashboardViewProvider';
@@ -12,16 +13,12 @@ export async function activate(context: vscode.ExtensionContext) {
   logger.info('OpenSpec extension is activating...');
 
   try {
-    // Get workspace root
-    const workspaceFolders = vscode.workspace.workspaceFolders;
-    if (!workspaceFolders || workspaceFolders.length === 0) {
+    const workspaceRoot = await getOpenSpecWorkspaceRoot();
+    if (!workspaceRoot) {
       logger.error('No workspace folder found');
       vscode.window.showErrorMessage('OpenSpec: No workspace folder found');
       return;
     }
-
-    const workspaceRoot = workspaceFolders[0].uri.fsPath;
-    logger.info(`Workspace root: ${workspaceRoot}`);
 
     // Initialize data manager
     dataManager = new DataManager(workspaceRoot);

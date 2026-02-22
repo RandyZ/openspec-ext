@@ -7,3 +7,4 @@ out
 pnpm-lock.yaml
 *.log
 .env
+build/
