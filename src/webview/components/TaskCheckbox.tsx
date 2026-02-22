@@ -27,7 +27,7 @@ export const TaskCheckbox: React.FC<TaskCheckboxProps> = ({
         alignItems: 'flex-start',
         gap: '8px',
         paddingLeft: indent * INDENT_PX,
-        cursor: disabled ? 'default' : 'pointer',
+        cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.7 : 1,
         transition: animate ? 'opacity 0.15s ease' : undefined,
       }}

@@ -65,6 +65,10 @@ export async function handleWebviewMessage(
 
     case 'toggleTask': {
       const changeName = message.changeName;
+      if (changeName.startsWith('archive:')) {
+        vscode.window.showInformationMessage('已归档，仅可查看');
+        break;
+      }
       const taskIndex = message.taskIndex;
       const tasks = await dataManager.readTasks(changeName);
       const task = tasks[taskIndex];
@@ -264,6 +268,10 @@ export async function handleWebviewMessage(
     case 'executeTask': {
       const { changeName, taskIndex, taskText } = message;
       if (!changeName || typeof taskIndex !== 'number' || !taskText) break;
+      if (changeName.startsWith('archive:')) {
+        vscode.window.showInformationMessage('已归档，仅可查看');
+        break;
+      }
       let success = false;
       try {
         const result = await dataManager.executeTaskRequest(changeName, taskIndex, taskText);
@@ -332,6 +340,10 @@ export async function handleWebviewMessage(
     case 'requestCreateArtifact': {
       const changeName = message.changeName;
       const artifactType = message.artifactType;
+      if (typeof changeName === 'string' && changeName.startsWith('archive:')) {
+        vscode.window.showInformationMessage('已归档，仅可查看');
+        break;
+      }
       if (typeof changeName === 'string' && typeof artifactType === 'string') {
         await vscode.commands.executeCommand('openspec.continueArtifact', changeName, artifactType);
       }
@@ -343,6 +355,11 @@ export async function handleWebviewMessage(
      * are executed. For development/debug use only.
      */
     case 'runCommand': {
+      const changeName = message.changeName;
+      if (typeof changeName === 'string' && changeName.startsWith('archive:')) {
+        vscode.window.showInformationMessage('已归档，仅可查看');
+        break;
+      }
       const commandId = message.commandId;
       const argsJson = message.argsJson;
       if (typeof commandId !== 'string' || !commandId.trim()) {

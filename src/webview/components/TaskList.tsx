@@ -10,6 +10,7 @@ export interface TaskExecutionStateItem {
 export interface TaskListProps {
   content: string;
   changeName: string;
+  isArchived?: boolean;
   executingTaskIndex?: number | null;
   executionState?: Record<number, TaskExecutionStateItem>;
   onToggleTask: (changeName: string, taskIndex: number) => void;
@@ -28,6 +29,7 @@ function formatExecutionTime(ts: number): string {
 export const TaskList: React.FC<TaskListProps> = ({
   content,
   changeName,
+  isArchived = false,
   executingTaskIndex = null,
   executionState = {},
   onToggleTask,
@@ -79,6 +81,7 @@ export const TaskList: React.FC<TaskListProps> = ({
               onToggle={() => handleToggle(task)}
               label={task.text}
               indent={task.indent}
+              disabled={isArchived}
               animate
             />
           </div>
@@ -96,7 +99,7 @@ export const TaskList: React.FC<TaskListProps> = ({
                 {formatExecutionTime(executionState[task.taskIndex].timestamp)} {executionState[task.taskIndex].success ? '✓' : '✗'}
               </span>
             )}
-            {onExecuteTask && (
+            {onExecuteTask && !isArchived && (
               <button
                 type="button"
                 disabled={executingTaskIndex === task.taskIndex}

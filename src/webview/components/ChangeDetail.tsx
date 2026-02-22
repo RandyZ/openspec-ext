@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useVscode } from '../hooks/useVscode';
 import { sendMessage } from '../types/messages';
 import { ActionBar } from './ActionBar';
@@ -24,10 +24,15 @@ const TABS_WITH_VERIFY = [
 
 const TABS_WITHOUT_VERIFY = TABS_WITH_VERIFY.filter((t) => t.id !== 'verify');
 
+/** Cache key: artifactType (e.g. proposal, design, tasks) or specs:${specId} */
+const cacheKey = (type: string, specId?: string | null) =>
+  type === 'specs' && specId ? `specs:${specId}` : type;
+
 export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existingArtifactIds, debug = false }) => {
   const { postMessage, onMessage } = useVscode();
   const tabs = debug ? TABS_WITH_VERIFY : TABS_WITHOUT_VERIFY;
   const [activeTab, setActiveTab] = useState<'proposal' | 'specs' | 'design' | 'tasks' | 'verify'>('proposal');
+  const contentCacheRef = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
     if (!debug && activeTab === 'verify') {
@@ -105,6 +110,15 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
     if (activeTab === 'specs') {
       requestSpecsList();
     } else {
+      const key = cacheKey(activeTab, null);
+      const cached = contentCacheRef.current.get(key);
+      if (cached !== undefined) {
+        setContent(cached);
+        setLoading(false);
+        setError(null);
+        setErrorCode(undefined);
+        return;
+      }
       requestArtifact(activeTab);
     }
   }, [changeName, activeTab, existingArtifactIds]);
@@ -113,6 +127,8 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
     const cleanup = onMessage((event: MessageEvent) => {
       const msg = event.data;
       if (msg.type === 'artifactContent' && msg.changeName === changeName) {
+        const key = cacheKey(msg.artifactType, null);
+        contentCacheRef.current.set(key, msg.content ?? '');
         setContent(msg.content ?? '');
         setLoading(false);
         setError(null);
@@ -132,6 +148,8 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
           setError(null);
         }
       } else if (msg.type === 'deltaSpecContent' && msg.changeName === changeName) {
+        const key = cacheKey('specs', msg.specId);
+        contentCacheRef.current.set(key, msg.content ?? '');
         setContent(msg.content ?? '');
         setLoading(false);
         setError(null);
@@ -162,11 +180,19 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
 
   useEffect(() => {
     if (activeTab === 'specs' && selectedSpecId) {
+      const key = cacheKey('specs', selectedSpecId);
+      const cached = contentCacheRef.current.get(key);
+      if (cached !== undefined) {
+        setContent(cached);
+        setLoading(false);
+        setError(null);
+        return;
+      }
       setLoading(true);
       setError(null);
       postMessage(sendMessage.getDeltaSpecContent(changeName, selectedSpecId));
     }
-  }, [activeTab, selectedSpecId]);
+  }, [activeTab, selectedSpecId, changeName, postMessage]);
 
   useEffect(() => {
     if (activeTab === 'tasks') {
@@ -192,6 +218,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
   };
 
   const handleRefresh = () => {
+    contentCacheRef.current.clear();
     postMessage(sendMessage.refresh());
     if (activeTab === 'verify') return;
     if (activeTab === 'specs') {
@@ -205,7 +232,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
     const commandId = verifyCommandId.trim();
     if (!commandId) return;
     setRunCommandResult(null);
-    postMessage(sendMessage.runCommand(commandId, verifyArgsJson.trim() || undefined));
+    postMessage(sendMessage.runCommand(commandId, verifyArgsJson.trim() || undefined, changeName));
   };
 
   const isArchived = changeName.startsWith('archive:');
@@ -319,17 +346,19 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
                 }}
               />
             </div>
-            <button
-              type="button"
-              onClick={handleRunCommand}
-              className="px-3 py-1.5 text-sm rounded cursor-pointer w-fit"
-              style={{
-                background: 'var(--vscode-button-background)',
-                color: 'var(--vscode-button-foreground)',
-              }}
-            >
-              执行
-            </button>
+            {!isArchived && (
+              <button
+                type="button"
+                onClick={handleRunCommand}
+                className="px-3 py-1.5 text-sm rounded cursor-pointer w-fit"
+                style={{
+                  background: 'var(--vscode-button-background)',
+                  color: 'var(--vscode-button-foreground)',
+                }}
+              >
+                执行
+              </button>
+            )}
             {runCommandResult !== null && (
               <div
                 className="text-sm px-2 py-1.5 rounded"
@@ -374,15 +403,21 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
                 </select>
               </div>
             )}
+            {isArchived && (
+              <p className="text-xs mb-2" style={{ color: 'var(--vscode-descriptionForeground)' }}>
+                此 change 已归档，仅可查看
+              </p>
+            )}
             <TaskList
               content={content}
               changeName={changeName}
+              isArchived={isArchived}
               executingTaskIndex={executingTaskIndex}
               executionState={taskExecutionState}
               onToggleTask={(name, taskIndex) =>
                 postMessage(sendMessage.toggleTask(name, taskIndex))
               }
-              onExecuteTask={(name, taskIndex, taskText) => {
+              onExecuteTask={isArchived ? undefined : (name, taskIndex, taskText) => {
                 setExecutingTaskIndex(taskIndex);
                 postMessage(sendMessage.executeTask(name, taskIndex, taskText));
               }}
@@ -395,7 +430,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
             error={error}
             errorCode={errorCode}
             onOpenInEditor={handleOpenInEditor}
-            onCreateWithAi={() =>
+            onCreateWithAi={isArchived ? undefined : () =>
               postMessage(sendMessage.requestCreateArtifact(changeName, activeTab))
             }
           />

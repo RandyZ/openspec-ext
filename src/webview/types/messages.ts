@@ -20,7 +20,7 @@ export type WebviewMessage =
   | { type: 'getAgentAdapters' }
   | { type: 'setPreferredAgentAdapter'; adapterId: string }
   | { type: 'requestCreateArtifact'; changeName: string; artifactType: string }
-  | { type: 'runCommand'; commandId: string; argsJson?: string }
+  | { type: 'runCommand'; commandId: string; argsJson?: string; changeName?: string }
   | { type: 'getTaskExecutionState'; changeName: string };
 
 // Message types from extension to webview
@@ -176,10 +176,11 @@ export const sendMessage = {
     artifactType,
   }),
 
-  runCommand: (commandId: string, argsJson?: string): WebviewMessage => ({
+  runCommand: (commandId: string, argsJson?: string, changeName?: string): WebviewMessage => ({
     type: 'runCommand',
     commandId,
     ...(argsJson !== undefined && argsJson !== '' ? { argsJson } : {}),
+    ...(changeName !== undefined ? { changeName } : {}),
   }),
 
   getTaskExecutionState: (changeName: string): WebviewMessage => ({

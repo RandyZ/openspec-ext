@@ -4,6 +4,15 @@ import type { IOpenSpecCliGateway } from '@extension/services/stateReader';
 import type { IOpenSpecContentAccess, Task } from '@extension/services/contentAccess';
 import type { ChangeInfo, ChangeDetails, SpecInfo, ArchivedChangeInfo } from '@extension/services/types';
 
+vi.mock('@extension/utils/logger', () => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
+
 describe('StateReader', () => {
   let mockGateway: IOpenSpecCliGateway;
   let mockContentAccess: IOpenSpecContentAccess;
