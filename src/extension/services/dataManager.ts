@@ -23,6 +23,20 @@ export interface AgentAdapterInfo {
   currentId: string | null;
 }
 
+/** Downstream artifacts that should be invalidated when an upstream artifact changes */
+const ARTIFACT_DOWNSTREAM: Record<string, string[]> = {
+  proposal: ['design', 'specs', 'tasks'],
+  design: ['tasks'],
+  specs: ['tasks'],
+  tasks: [],
+};
+
+export interface ArtifactChangedEvent {
+  changeName: string;
+  /** The artifact types whose cached content should be invalidated in the webview */
+  artifactTypes: string[];
+}
+
 export class DataManager {
   private cliService: OpenSpecCliService;
   private stateReader: StateReader;
@@ -31,6 +45,7 @@ export class DataManager {
   private taskExecutorService: TaskExecutorService;
   private cachedData: DashboardData | null = null;
   private refreshCallbacks: Set<() => void> = new Set();
+  private artifactChangedCallbacks: Set<(event: ArtifactChangedEvent) => void> = new Set();
 
   constructor(private workspaceRoot: string) {
     const openspecDir = path.join(workspaceRoot, 'openspec');
@@ -66,20 +81,92 @@ export class DataManager {
 
     // Start file watcher
     this.fileWatcher.start((events) => {
+      // Collect artifact-specific changes to notify open panels
+      const artifactChanges = new Map<string, Set<string>>();
+
       for (const e of events) {
         const relative = path.relative(this.workspaceRoot, e.uri.fsPath).replace(/\\/g, '/');
-        const archiveMatch = relative.match(/^openspec\/changes\/archive\/([^/]+)\/tasks\.md$/);
-        const draftMatch = relative.match(/^openspec\/changes\/(?!archive)([^/]+)\/tasks\.md$/);
-        const changeName = archiveMatch ? `archive:${archiveMatch[1]}` : draftMatch ? draftMatch[1] : null;
-        if (changeName) {
-          this.contentAccess.autoCompleteParents(changeName).catch((err) =>
+
+        // tasks.md auto-complete parents
+        const archiveTasksMatch = relative.match(/^openspec\/changes\/archive\/([^/]+)\/tasks\.md$/);
+        const draftTasksMatch = relative.match(/^openspec\/changes\/(?!archive)([^/]+)\/tasks\.md$/);
+        const tasksChangeName = archiveTasksMatch
+          ? `archive:${archiveTasksMatch[1]}`
+          : draftTasksMatch ? draftTasksMatch[1] : null;
+        if (tasksChangeName) {
+          this.contentAccess.autoCompleteParents(tasksChangeName).catch((err) =>
             logger.warn('autoCompleteParents after tasks.md change', err as Error)
           );
         }
+
+        // Detect which artifact changed and compute downstream invalidations
+        const parsed = this.parseArtifactFromPath(relative);
+        if (parsed) {
+          const { changeName, artifactType } = parsed;
+          if (!artifactChanges.has(changeName)) {
+            artifactChanges.set(changeName, new Set());
+          }
+          // Invalidate the changed artifact itself + its downstream dependents
+          const invalidate = [artifactType, ...(ARTIFACT_DOWNSTREAM[artifactType] ?? [])];
+          for (const t of invalidate) {
+            artifactChanges.get(changeName)!.add(t);
+          }
+        }
       }
+
+      // Notify artifact-level change subscribers (e.g. open change detail panels)
+      for (const [changeName, types] of artifactChanges) {
+        this.notifyArtifactChanged({ changeName, artifactTypes: [...types] });
+      }
+
       logger.info(`File changes detected (${events.length} events), refreshing...`);
       this.refresh();
     });
+  }
+
+  /**
+   * Parse a workspace-relative path to identify which change and artifact type changed.
+   * Handles: proposal.md, design.md, tasks.md, specs/<id>/spec.md
+   */
+  private parseArtifactFromPath(
+    relative: string
+  ): { changeName: string; artifactType: string } | null {
+    // Draft change artifact: openspec/changes/<name>/<artifact>.md
+    const draftMatch = relative.match(
+      /^openspec\/changes\/(?!archive\/)([^/]+)\/(proposal|design|tasks)\.md$/
+    );
+    if (draftMatch) {
+      return { changeName: draftMatch[1], artifactType: draftMatch[2] };
+    }
+    // Delta spec: openspec/changes/<name>/specs/<specId>/spec.md
+    const specMatch = relative.match(
+      /^openspec\/changes\/(?!archive\/)([^/]+)\/specs\/[^/]+\/spec\.md$/
+    );
+    if (specMatch) {
+      return { changeName: specMatch[1], artifactType: 'specs' };
+    }
+    return null;
+  }
+
+  /**
+   * Register a callback for artifact-level changes (e.g. proposal.md modified → notify
+   * open change detail panels to invalidate downstream artifact caches).
+   */
+  onArtifactChanged(callback: (event: ArtifactChangedEvent) => void): vscode.Disposable {
+    this.artifactChangedCallbacks.add(callback);
+    return new vscode.Disposable(() => {
+      this.artifactChangedCallbacks.delete(callback);
+    });
+  }
+
+  private notifyArtifactChanged(event: ArtifactChangedEvent): void {
+    for (const cb of this.artifactChangedCallbacks) {
+      try {
+        cb(event);
+      } catch (err) {
+        logger.error('Error in artifactChanged callback', err as Error);
+      }
+    }
   }
 
   /**

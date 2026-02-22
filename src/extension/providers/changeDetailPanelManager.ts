@@ -124,4 +124,19 @@ export class ChangeDetailPanelManager {
 
     logger.info(`Change detail panel opened: ${changeName}`);
   }
+
+  /**
+   * Notify an open panel that certain artifact caches should be invalidated.
+   * Called by DataManager's onArtifactChanged subscriber when upstream files change.
+   */
+  public notifyArtifactChanged(changeName: string, artifactTypes: string[]): void {
+    const panel = this.panels.get(changeName);
+    if (!panel) return;
+    try {
+      panel.webview.postMessage({ type: 'artifactInvalidated', changeName, artifactTypes });
+      logger.debug(`Sent artifactInvalidated to panel ${changeName}: ${artifactTypes.join(', ')}`);
+    } catch (err) {
+      logger.warn(`notifyArtifactChanged: panel ${changeName} may be disposed`, err as Error);
+    }
+  }
 }

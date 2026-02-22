@@ -56,6 +56,13 @@ export async function activate(context: vscode.ExtensionContext) {
       )
     );
 
+    // Subscribe to artifact-level changes so open panels can invalidate their caches
+    context.subscriptions.push(
+      dataManager.onArtifactChanged(({ changeName, artifactTypes }) => {
+        changeDetailPanelManager.notifyArtifactChanged(changeName, artifactTypes);
+      })
+    );
+
     // Register commands
     const commandManager = new CommandManager(dataManager, context, dashboardViewProvider);
     commandManager.register();

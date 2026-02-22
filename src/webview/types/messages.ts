@@ -38,7 +38,8 @@ export type ExtensionMessage =
   | { type: 'agentAdapters'; available: { id: string; displayName: string }[]; currentId: string | null }
   | { type: 'taskExecutionFinished'; changeName: string; taskIndex: number; success: boolean; executionState?: Record<number, { success: boolean; timestamp: number }> }
   | { type: 'taskExecutionState'; changeName: string; executionState: Record<number, { success: boolean; timestamp: number }> }
-  | { type: 'runCommandResult'; success: boolean; message?: string };
+  | { type: 'runCommandResult'; success: boolean; message?: string }
+  | { type: 'artifactInvalidated'; changeName: string; artifactTypes: string[] };
 
 // Data types
 export interface DashboardData {

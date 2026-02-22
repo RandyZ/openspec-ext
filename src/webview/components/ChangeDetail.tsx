@@ -28,6 +28,34 @@ const TABS_WITHOUT_VERIFY = TABS_WITH_VERIFY.filter((t) => t.id !== 'verify');
 const cacheKey = (type: string, specId?: string | null) =>
   type === 'specs' && specId ? `specs:${specId}` : type;
 
+/**
+ * Artifact dependency chain (OpenSpec workflow order):
+ *   proposal → specs, design → tasks
+ * Returns a disabled reason string if the artifact cannot be created yet,
+ * or undefined if it can be created.
+ */
+function getCreateDisabledReason(
+  artifactType: string,
+  existingArtifactIds: string[] | undefined
+): string | undefined {
+  const has = (id: string) => existingArtifactIds?.includes(id) ?? false;
+  switch (artifactType) {
+    case 'proposal':
+      return undefined;
+    case 'specs':
+    case 'design':
+      return has('proposal') ? undefined : '需要先创建 Proposal';
+    case 'tasks': {
+      const missing: string[] = [];
+      if (!has('specs')) missing.push('Specs');
+      if (!has('design')) missing.push('Design');
+      return missing.length === 0 ? undefined : `需要先创建 ${missing.join(' 和 ')}`;
+    }
+    default:
+      return undefined;
+  }
+}
+
 export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existingArtifactIds, debug = false }) => {
   const { postMessage, onMessage } = useVscode();
   const tabs = debug ? TABS_WITH_VERIFY : TABS_WITHOUT_VERIFY;
@@ -173,10 +201,33 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
         }
       } else if (msg.type === 'runCommandResult') {
         setRunCommandResult({ success: msg.success, message: msg.message });
+      } else if (msg.type === 'artifactInvalidated' && msg.changeName === changeName) {
+        // Clear cached content for invalidated artifact types so next access re-fetches
+        const invalidated: string[] = msg.artifactTypes ?? [];
+        for (const type of invalidated) {
+          if (type === 'specs') {
+            // Clear all spec entries (keyed as "specs:<specId>")
+            for (const key of Array.from(contentCacheRef.current.keys())) {
+              if (key === 'specs' || key.startsWith('specs:')) {
+                contentCacheRef.current.delete(key);
+              }
+            }
+          } else {
+            contentCacheRef.current.delete(type);
+          }
+        }
+        // Re-fetch if the current tab is affected
+        if (invalidated.includes(activeTab)) {
+          if (activeTab === 'specs') {
+            requestSpecsList();
+          } else {
+            requestArtifact(activeTab);
+          }
+        }
       }
     });
     return cleanup;
-  }, [changeName, onMessage, postMessage]);
+  }, [changeName, onMessage, postMessage, activeTab]);
 
   useEffect(() => {
     if (activeTab === 'specs' && selectedSpecId) {
@@ -430,6 +481,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
             onCreateWithAi={isArchived ? undefined : () =>
               postMessage(sendMessage.requestCreateArtifact(changeName, activeTab))
             }
+            createDisabledReason={getCreateDisabledReason(activeTab, existingArtifactIds)}
           />
         )}
       </div>

@@ -187,16 +187,46 @@ export class CommandManager {
   }
 
   /**
-   * Copy /opsx:continue (with change name when provided) to clipboard for AI to create artifact.
+   * Copy /opsx:continue with artifact-specific prompt to clipboard.
+   * Each artifact type gets a different prompt so the AI knows exactly what to create.
    */
-  private async handleContinueArtifact(changeName?: string, _artifactType?: string): Promise<void> {
-    const text = changeName?.trim() ? `/opsx:continue ${changeName.trim()}` : '/opsx:continue';
+  private async handleContinueArtifact(changeName?: string, artifactType?: string): Promise<void> {
+    const name = changeName?.trim();
+    const text = this.buildContinuePrompt(name, artifactType);
     await vscode.env.clipboard.writeText(text);
+    const artifactLabel = this.getArtifactLabel(artifactType);
     vscode.window.showInformationMessage(
-      changeName?.trim()
-        ? `已复制「${text}」，请在 AI 对话中粘贴以生成对应 artifact`
+      name
+        ? `已复制命令，请在 AI 对话中粘贴以生成 ${artifactLabel}`
         : '已复制 /opsx:continue，请在 AI 对话中粘贴以生成对应 artifact'
     );
+  }
+
+  private buildContinuePrompt(changeName: string | undefined, artifactType: string | undefined): string {
+    const base = changeName ? `/opsx:continue ${changeName}` : '/opsx:continue';
+    if (!changeName || !artifactType) return base;
+    switch (artifactType) {
+      case 'proposal':
+        return `${base}\n请创建 Proposal artifact（change 的需求提案文档）`;
+      case 'specs':
+        return `${base}\n请创建 Specs artifacts（基于 Proposal 的功能规格文档）`;
+      case 'design':
+        return `${base}\n请创建 Design artifact（基于 Proposal 的技术设计文档）`;
+      case 'tasks':
+        return `${base}\n请创建 Tasks artifact（基于 Specs 和 Design 的实施任务清单）`;
+      default:
+        return base;
+    }
+  }
+
+  private getArtifactLabel(artifactType: string | undefined): string {
+    switch (artifactType) {
+      case 'proposal': return 'Proposal';
+      case 'specs': return 'Specs';
+      case 'design': return 'Design';
+      case 'tasks': return 'Tasks';
+      default: return 'artifact';
+    }
   }
 
   /**
