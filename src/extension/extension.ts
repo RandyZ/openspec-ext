@@ -19,6 +19,7 @@ export async function activate(context: vscode.ExtensionContext) {
       vscode.window.showErrorMessage('OpenSpec: No workspace folder found');
       return;
     }
+    logger.info(`[archived] activate: using workspaceRoot=${workspaceRoot}`);
 
     // Initialize data manager
     dataManager = new DataManager(workspaceRoot);

@@ -2,6 +2,7 @@
  * State Reader：提供变更列表、变更详情、任务列表、spec 列表、归档列表等状态。
  * 优先从 CLI 获取，CLI 不提供的部分经 Content Access 获取；不直接调 fs。
  */
+import { logger } from '../utils/logger';
 import type { IOpenSpecContentAccess, Task } from './contentAccess';
 import type {
   ChangeInfo,
@@ -69,15 +70,20 @@ export class StateReader {
 
   /** Artifact 是否存在：由 show 的 artifacts 推导，否则 Content Access */
   async artifactExists(changeName: string, artifactType: string): Promise<boolean> {
+    // CLI does not support "archive:YYYY-MM-DD-name"; skip to file check to avoid failed command + retries.
+    if (changeName.startsWith('archive:')) {
+      return this.contentAccess.artifactExists(changeName, artifactType);
+    }
     try {
       const details = await this.gateway.showChange(changeName);
       const artifacts = details.artifacts ?? [];
       const found = artifacts.some(
         (a: { id?: string }) => (a.id ?? '').toLowerCase() === artifactType.toLowerCase()
       );
+      logger.info(`[archived] StateReader.artifactExists: CLI showChange ok, found=${found}, artifactType=${artifactType}`);
       if (found) return true;
-    } catch {
-      // fallback
+    } catch (e) {
+      logger.info(`[archived] StateReader.artifactExists: CLI showChange failed, fallback to contentAccess: ${(e as Error)?.message}`);
     }
     return this.contentAccess.artifactExists(changeName, artifactType);
   }

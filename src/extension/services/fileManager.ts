@@ -64,10 +64,14 @@ export class FileManagerService implements IOpenSpecContentAccess {
    */
   async artifactExists(changeName: string, artifactType: string): Promise<boolean> {
     const artifactPath = this.getArtifactPath(changeName, artifactType);
+    logger.info(`[archived] artifactExists: openspecDir=${this.openspecDir}, changeName=${changeName}, artifactType=${artifactType}, path=${artifactPath}`);
     try {
       await fs.promises.access(artifactPath);
+      logger.info(`[archived] artifactExists: OK`);
       return true;
-    } catch {
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException)?.code ?? (e as Error)?.message;
+      logger.info(`[archived] artifactExists: MISSING (${code})`);
       return false;
     }
   }
@@ -77,6 +81,7 @@ export class FileManagerService implements IOpenSpecContentAccess {
    */
   async readArtifact(changeName: string, artifactType: string): Promise<string> {
     const artifactPath = this.getArtifactPath(changeName, artifactType);
+    logger.info(`[archived] readArtifact: path=${artifactPath}`);
 
     try {
       const content = await fs.promises.readFile(artifactPath, 'utf-8');

@@ -142,6 +142,7 @@ export async function handleWebviewMessage(
       const workspaceRoot = dataManager.getWorkspaceRoot();
       const changesBase = path.normalize(getChangesBasePath(workspaceRoot, message.changeName));
       const artifactPath = path.normalize(path.join(changesBase, `${message.artifactType}.md`));
+      logger.info(`[archived] openArtifact: changeName=${message.changeName}, artifactType=${message.artifactType}, workspaceRoot=${workspaceRoot}, artifactPath=${artifactPath}`);
       if (!isPathUnderWorkspace(changesBase, workspaceRoot) || !isPathUnderWorkspace(artifactPath, workspaceRoot)) {
         vscode.window.showErrorMessage(`不允许打开工作区外的文件。`);
         break;
@@ -149,6 +150,7 @@ export async function handleWebviewMessage(
       try {
         const doc = await vscode.workspace.openTextDocument(artifactPath);
         await vscode.window.showTextDocument(doc);
+        logger.info(`[archived] openArtifact: opened OK`);
       } catch (err) {
         logger.error(`Failed to open artifact: ${artifactPath}`, err as Error);
         vscode.window.showErrorMessage(`无法打开文件: ${message.artifactType}.md`);
@@ -183,8 +185,11 @@ export async function handleWebviewMessage(
     case 'getArtifactContent': {
       const { changeName, artifactType } = message;
       if (!changeName || !artifactType) break;
+      const workspaceRoot = dataManager.getWorkspaceRoot();
+      logger.info(`[archived] getArtifactContent: changeName=${changeName}, artifactType=${artifactType}, workspaceRoot=${workspaceRoot}`);
       const exists = await dataManager.artifactExists(changeName, artifactType);
       if (!exists) {
+        logger.info(`[archived] getArtifactContent: artifactExists=false -> ARTIFACT_MISSING`);
         webview.postMessage({
           type: 'artifactContentError',
           changeName,
@@ -196,8 +201,10 @@ export async function handleWebviewMessage(
       }
       try {
         const content = await dataManager.readArtifact(changeName, artifactType);
+        logger.info(`[archived] getArtifactContent: readArtifact ok, sending content`);
         webview.postMessage({ type: 'artifactContent', changeName, artifactType, content });
       } catch (err) {
+        logger.info(`[archived] getArtifactContent: readArtifact threw -> ARTIFACT_READ_ERROR`);
         webview.postMessage({
           type: 'artifactContentError',
           changeName,

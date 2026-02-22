@@ -82,8 +82,13 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
       return;
     }
     const artifactId = activeTab;
+    // Archived changes are not in dashboard data, so existingArtifactIds is empty.
+    // Never treat archived as "known missing" — always request from extension so backend can read from disk.
+    const isArchived = changeName.startsWith('archive:');
     const knownMissing =
-      Array.isArray(existingArtifactIds) && !existingArtifactIds.includes(artifactId);
+      !isArchived &&
+      Array.isArray(existingArtifactIds) &&
+      !existingArtifactIds.includes(artifactId);
 
     if (knownMissing) {
       setLoading(false);

@@ -18,10 +18,10 @@ export async function getOpenSpecWorkspaceRoot(): Promise<string | null> {
     try {
       await vscode.workspace.fs.stat(configUri);
       const root = folder.uri.fsPath;
-      logger.info(`OpenSpec workspace root: ${root} (folder: ${folder.name})`);
+      logger.info(`[archived] OpenSpec workspace root resolved: ${root} (folder: ${folder.name})`);
       return root;
-    } catch {
-      // this folder doesn't have openspec/config.yaml, try next
+    } catch (e) {
+      logger.info(`[archived] Folder "${folder.name}" has no openspec/config.yaml, skip`);
     }
   }
 
