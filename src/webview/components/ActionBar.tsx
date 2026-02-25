@@ -1,5 +1,6 @@
 import React from 'react';
 import { type WorkflowState } from '../utils/workflowState';
+import { t } from '../../i18n';
 
 const buttonBase: React.CSSProperties = {
   padding: '6px 10px',
@@ -94,7 +95,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
               style={warningStyle}
               onClick={() => onArchive(changeName)}
             >
-              Archive Change
+              {t('action.archiveChange')}
             </button>
           ) : (
             <button
@@ -109,11 +110,11 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         )}
 
       <button type="button" style={secondaryStyle} onClick={onOpenInEditor}>
-        Open in Editor
+        {t('action.openInEditor')}
       </button>
 
       <button type="button" style={secondaryStyle} onClick={onRefresh}>
-        Refresh
+        {t('action.refresh')}
       </button>
     </div>
   );
@@ -143,15 +144,15 @@ const LegacyActionBar: React.FC<{
       Copy /opsx:apply
     </button>
     <button type="button" style={secondaryStyle} onClick={onOpenInEditor}>
-      Open in Editor
+      {t('action.openInEditor')}
     </button>
     {!isArchived && (
       <button type="button" style={warningStyle} onClick={() => onArchive(changeName)}>
-        Archive Change
+        {t('action.archiveChange')}
       </button>
     )}
     <button type="button" style={secondaryStyle} onClick={onRefresh}>
-      Refresh
+      {t('action.refresh')}
     </button>
   </div>
 );

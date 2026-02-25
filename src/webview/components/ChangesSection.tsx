@@ -2,6 +2,7 @@ import React from 'react';
 import { ChangeInfo, ArchivedChangeInfo } from '../types/messages';
 import { ChangeCard } from './ChangeCard';
 import { EmptyState } from './EmptyState';
+import { t } from '../../i18n';
 
 interface ChangesSectionProps {
   changes: ChangeInfo[];
@@ -22,9 +23,9 @@ type StatusGroup = 'in-progress' | 'draft' | 'complete';
 
 const STATUS_ORDER: StatusGroup[] = ['in-progress', 'draft', 'complete'];
 const STATUS_LABELS: Record<StatusGroup, string> = {
-  'in-progress': 'In progress',
-  draft: 'Draft',
-  complete: 'Complete',
+  'in-progress': t('dashboard.statusInProgress'),
+  draft: t('dashboard.statusDraft'),
+  complete: t('dashboard.statusComplete'),
 };
 
 function groupByStatus(changes: ChangeInfo[]): Map<StatusGroup, ChangeInfo[]> {
@@ -61,13 +62,13 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
         className="text-base font-semibold mb-2"
         style={{ color: 'var(--vscode-foreground)' }}
       >
-        Changes ({changes.length})
+        {t('dashboard.changes', { count: changes.length })}
       </h2>
 
       {changes.length === 0 ? (
         <EmptyState
-          message="No active changes. Create one to get started."
-          actionLabel="Create New Change"
+          message={t('dashboard.emptyChanges')}
+          actionLabel={t('dashboard.createNew')}
           onAction={onRequestNewChange}
         />
       ) : (
@@ -116,7 +117,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
             >
               ▶
             </span>
-            <span className="text-xs font-medium">Archived</span>
+            <span className="text-xs font-medium">{t('dashboard.archived')}</span>
             {archivedExpanded && archivedItems.length > 0 && (
               <span className="text-xs">({archivedItems.length})</span>
             )}
@@ -125,11 +126,11 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
             <div className="mt-2 pl-4">
               {archivedLoading ? (
                 <div className="text-xs py-2" style={{ color: 'var(--vscode-descriptionForeground)' }}>
-                  Loading...
+                  {t('dashboard.archivedLoading')}
                 </div>
               ) : archivedItems.length === 0 ? (
                 <div className="text-xs py-2" style={{ color: 'var(--vscode-descriptionForeground)' }}>
-                  No archived changes.
+                  {t('dashboard.archivedEmpty')}
                 </div>
               ) : (
                 <div className="space-y-2">

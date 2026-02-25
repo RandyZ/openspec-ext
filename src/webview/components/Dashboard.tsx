@@ -6,6 +6,7 @@ import type { ArchivedChangeInfo } from '../types/messages';
 import { Header } from './Header';
 import { ChangesSection } from './ChangesSection';
 import { SpecsSection } from './SpecsSection';
+import { t } from '../../i18n';
 
 export const Dashboard: React.FC = () => {
   const { postMessage, onMessage } = useVscode();
@@ -135,13 +136,13 @@ export const Dashboard: React.FC = () => {
           <div className="text-xs py-4" style={{ 
             color: 'var(--vscode-descriptionForeground)' 
           }}>
-            Loading OpenSpec data...
+            {t('dashboard.loading')}
           </div>
         ) : (
           <div className="text-xs py-4" style={{ 
             color: 'var(--vscode-errorForeground)' 
           }}>
-            Failed to load data. Try refreshing.
+            {t('dashboard.loadFailed')}
           </div>
         )}
       </div>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { ChangeInfo } from '../types/messages';
+import { t } from '../../i18n';
 
 const ArtifactBadge: React.FC<{ id: string; status: 'done' | 'ready' | 'blocked' }> = ({ id, status }) => {
   const colors = {
@@ -24,10 +25,10 @@ function formatLastModified(iso: string): string {
     const now = new Date();
     const diffMs = now.getTime() - d.getTime();
     const diffDays = Math.floor(diffMs / (24 * 60 * 60 * 1000));
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays}d ago`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
+    if (diffDays === 0) return t('time.today');
+    if (diffDays === 1) return t('time.yesterday');
+    if (diffDays < 7) return t('time.daysAgo', { days: diffDays });
+    if (diffDays < 30) return t('time.weeksAgo', { weeks: Math.floor(diffDays / 7) });
     return d.toLocaleDateString();
   } catch {
     return '';

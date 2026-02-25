@@ -1,5 +1,6 @@
 import React from 'react';
 import { SpecInfo } from '../types/messages';
+import { t } from '../../i18n';
 
 export interface SpecCardProps {
   spec: SpecInfo;
@@ -29,7 +30,7 @@ export const SpecCard: React.FC<SpecCardProps> = ({ spec, onClick }) => {
         className="text-xs mt-1"
         style={{ color: 'var(--vscode-descriptionForeground)' }}
       >
-        {spec.requirementCount} requirement{spec.requirementCount !== 1 ? 's' : ''}
+        {t('spec.requirements', { count: spec.requirementCount })}
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 import React from 'react';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { t } from '../../i18n';
 
 export interface ArtifactViewerProps {
   content: string | null;
@@ -31,7 +32,7 @@ export const ArtifactViewer: React.FC<ArtifactViewerProps> = ({
         className="py-6 text-sm"
         style={{ color: 'var(--vscode-descriptionForeground)' }}
       >
-        Loading...
+        {t('loading')}
       </div>
     );
   }
@@ -52,7 +53,7 @@ export const ArtifactViewer: React.FC<ArtifactViewerProps> = ({
       >
         <p className="mb-2">
           {isMissing
-            ? '该内容尚未创建或文件已丢失。可使用 /opsx:continue 生成对应 artifact，或在编辑器中打开 change 目录查看。'
+            ? t('artifact.missing')
             : error}
         </p>
         {isMissing && (onCreateWithAi !== undefined || onContinue !== undefined) && (
@@ -132,7 +133,7 @@ export const ArtifactViewer: React.FC<ArtifactViewerProps> = ({
               }}
               onClick={onOpenInEditor}
             >
-              在编辑器中打开
+              {t('action.openInEditor')}
             </button>
           </div>
         )}
@@ -146,7 +147,7 @@ export const ArtifactViewer: React.FC<ArtifactViewerProps> = ({
         className="py-6 text-sm"
         style={{ color: 'var(--vscode-descriptionForeground)' }}
       >
-        No content
+        {t('noContent')}
       </div>
     );
   }

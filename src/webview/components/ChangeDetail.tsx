@@ -6,9 +6,9 @@ import { ArtifactViewer } from './ArtifactViewer';
 import { TaskList } from './TaskList';
 import { WorkflowStepIndicator } from './WorkflowStepIndicator';
 import { deriveWorkflowState, type WorkflowStep } from '../utils/workflowState';
+import { t } from '../../i18n';
 
-const MISSING_ARTIFACT_MESSAGE =
-  '该内容尚未创建或文件已丢失。可使用 /opsx:continue 生成对应 artifact，或在编辑器中打开 change 目录查看。';
+const MISSING_ARTIFACT_MESSAGE = t('artifact.missing');
 
 export interface ChangeDetailProps {
   changeName: string;
@@ -47,12 +47,12 @@ function getCreateDisabledReason(
       return undefined;
     case 'specs':
     case 'design':
-      return has('proposal') ? undefined : '需要先创建 Proposal';
+      return has('proposal') ? undefined : t('artifact.needProposal');
     case 'tasks': {
       const missing: string[] = [];
       if (!has('specs')) missing.push('Specs');
       if (!has('design')) missing.push('Design');
-      return missing.length === 0 ? undefined : `需要先创建 ${missing.join(' 和 ')}`;
+      return missing.length === 0 ? undefined : t('artifact.needBefore', { items: missing.join(t('artifact.and')) });
     }
     default:
       return undefined;
@@ -346,7 +346,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
           }}
           onClick={handleShowInSidebar}
         >
-          Show in sidebar
+          {t('action.showInSidebar')}
         </button>
         <span className="font-semibold text-sm">
           {changeName.startsWith('archive:') ? `${changeName.slice(8)} (archived)` : changeName}
@@ -413,12 +413,12 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
           <div className="flex flex-col gap-4 max-w-lg">
             <div className="text-sm" style={{ color: 'var(--vscode-foreground)' }}>
               <p className="mb-2">
-                <strong>/opsx:verify</strong> 会验证实现与 artifact 的一致性，检查三个维度：
+                <strong>/opsx:verify</strong> {t('verify.description')}
               </p>
               <ul className="list-disc pl-5 space-y-1" style={{ color: 'var(--vscode-descriptionForeground)' }}>
-                <li><strong>完整性</strong>：所有 tasks 完成、所有 requirements 有对应代码</li>
-                <li><strong>正确性</strong>：实现匹配 spec intent、边界情况已处理</li>
-                <li><strong>一致性</strong>：设计决策反映在代码中、命名约定一致</li>
+                <li><strong>{t('verify.completeness').split(':')[0]}</strong>：{t('verify.completeness').split(':').slice(1).join(':').trim()}</li>
+                <li><strong>{t('verify.correctness').split(':')[0]}</strong>：{t('verify.correctness').split(':').slice(1).join(':').trim()}</li>
+                <li><strong>{t('verify.coherence').split(':')[0]}</strong>：{t('verify.coherence').split(':').slice(1).join(':').trim()}</li>
               </ul>
             </div>
             {!isArchived && (
@@ -431,13 +431,13 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
                   color: 'var(--vscode-button-foreground)',
                 }}
               >
-                Run Verify
+                {t('verify.run')}
               </button>
             )}
             {debug && (
               <>
                 <hr style={{ borderColor: 'var(--vscode-panel-border)' }} />
-                <div className="text-xs" style={{ color: 'var(--vscode-descriptionForeground)' }}>Debug: Run IDE Command</div>
+                <div className="text-xs" style={{ color: 'var(--vscode-descriptionForeground)' }}>{t('verify.debugLabel')}</div>
                 <div className="flex flex-col gap-2">
                   <input
                     type="text"
@@ -472,7 +472,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
                       color: 'var(--vscode-button-secondaryForeground)',
                     }}
                   >
-                    执行
+                    {t('task.execute')}
                   </button>
                   {runCommandResult !== null && (
                     <div
@@ -486,7 +486,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
                           : 'var(--vscode-errorForeground)',
                       }}
                     >
-                      {runCommandResult.success ? 'Command executed.' : runCommandResult.message ?? 'Failed'}
+                      {runCommandResult.success ? t('verify.executed') : runCommandResult.message ?? 'Failed'}
                     </div>
                   )}
                 </div>
@@ -497,7 +497,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
           <>
             {agentAdapters.available.length > 0 && (
               <div className="flex items-center gap-2 mb-3 text-sm">
-                <span style={{ color: 'var(--vscode-descriptionForeground)' }}>执行者：</span>
+                <span style={{ color: 'var(--vscode-descriptionForeground)' }}>{t('task.executor')}</span>
                 <select
                   value={agentAdapters.currentId ?? ''}
                   onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -523,7 +523,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
             )}
             {isArchived && (
               <p className="text-xs mb-2" style={{ color: 'var(--vscode-descriptionForeground)' }}>
-                此 change 已归档，仅可查看
+                {t('archive.readOnlyLabel')}
               </p>
             )}
             <TaskList
