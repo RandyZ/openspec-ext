@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { IAgentExecutorAdapter, TaskExecuteRequest, TaskExecuteResult } from '../services/agentExecutor.types';
+import { t } from '../../i18n';
 
 const ADAPTER_ID = 'clipboard';
 const DISPLAY_NAME = 'Clipboard (copy to clipboard)';
@@ -19,14 +20,14 @@ export const clipboardAdapter: IAgentExecutorAdapter = {
   async executeTask(request: TaskExecuteRequest): Promise<TaskExecuteResult> {
     const text = request.promptOverride ?? buildPromptText(request);
     await vscode.env.clipboard.writeText(text);
-    vscode.window.showInformationMessage('已复制到剪贴板，可粘贴到 Chat 或终端执行。');
+    vscode.window.showInformationMessage(t('clipboard.copiedGeneral'));
     return { success: true, adapterId: ADAPTER_ID, message: 'Copied to clipboard' };
   },
 
   async fillChat(request: TaskExecuteRequest): Promise<TaskExecuteResult> {
     const text = request.promptOverride ?? buildPromptText(request);
     await vscode.env.clipboard.writeText(text);
-    vscode.window.showInformationMessage('已复制到剪贴板，可粘贴到 Chat 输入框。');
+    vscode.window.showInformationMessage(t('clipboard.copiedChat'));
     return { success: true, adapterId: ADAPTER_ID, message: 'Copied to clipboard' };
   },
 };

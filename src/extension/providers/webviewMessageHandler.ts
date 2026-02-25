@@ -5,6 +5,7 @@ import { DataManager } from '../services/dataManager';
 import { getChangesBasePath } from '../utils/workspaceRoot';
 import { getCurrentAdapter } from '../adapters';
 import type { WebviewMessage } from '../../webview/types/messages';
+import { t } from '../../i18n';
 
 /** Returns true if resolvedPath is under workspaceRoot (no .. escape). */
 function isPathUnderWorkspace(resolvedPath: string, workspaceRoot: string): boolean {
@@ -67,7 +68,7 @@ export async function handleWebviewMessage(
     case 'toggleTask': {
       const changeName = message.changeName;
       if (changeName.startsWith('archive:')) {
-        vscode.window.showInformationMessage('已归档，仅可查看');
+        vscode.window.showInformationMessage(t('archive.readOnly'));
         break;
       }
       const taskIndex = message.taskIndex;
@@ -76,20 +77,20 @@ export async function handleWebviewMessage(
       const isMarkingDone = task && !task.done;
       if (isMarkingDone) {
         const confirm = await vscode.window.showWarningMessage(
-          '确定将此任务标记为已完成？（跳过）',
+          t('confirm.markDone'),
           { modal: true },
-          '确定跳过',
-          '取消'
+          t('confirm.markDoneBtn'),
+          t('confirm.cancel')
         );
-        if (confirm !== '确定跳过') break;
+        if (confirm !== t('confirm.markDoneBtn')) break;
       } else if (task?.done) {
         const confirm = await vscode.window.showWarningMessage(
-          '确定要取消完成该任务？',
+          t('confirm.markUndone'),
           { modal: true },
-          '确定',
-          '取消'
+          t('confirm.ok'),
+          t('confirm.cancel')
         );
-        if (confirm !== '确定') break;
+        if (confirm !== t('confirm.ok')) break;
       }
       await dataManager.toggleTask(changeName, taskIndex);
       const [data, tasksContent] = await Promise.all([
@@ -130,7 +131,7 @@ export async function handleWebviewMessage(
         ? path.normalize(message.path)
         : path.normalize(path.join(workspaceRoot, message.path));
       if (!isPathUnderWorkspace(specPath, workspaceRoot)) {
-        vscode.window.showErrorMessage(`不允许打开工作区外的文件: ${message.path}`);
+        vscode.window.showErrorMessage(t('file.outsideWorkspace', { path: message.path }));
         break;
       }
       try {
@@ -150,7 +151,7 @@ export async function handleWebviewMessage(
       const changesBase = getChangesBasePath(workspaceRoot, changeName);
       const absPath = path.normalize(path.join(changesBase, 'specs', specId, 'spec.md'));
       if (!isPathUnderWorkspace(absPath, workspaceRoot)) {
-        vscode.window.showErrorMessage('不允许打开工作区外的文件。');
+        vscode.window.showErrorMessage(t('file.outsideWorkspaceShort'));
         break;
       }
       try {
@@ -158,7 +159,7 @@ export async function handleWebviewMessage(
         await vscode.window.showTextDocument(doc);
       } catch (err) {
         logger.error(`Failed to open delta spec: ${changeName}/specs/${specId}`, err as Error);
-        vscode.window.showErrorMessage(`无法打开 spec 文件: ${specId}`);
+        vscode.window.showErrorMessage(t('file.cannotOpenSpec', { id: specId }));
       }
       break;
     }
@@ -169,7 +170,7 @@ export async function handleWebviewMessage(
       const artifactPath = path.normalize(path.join(changesBase, `${message.artifactType}.md`));
       logger.info(`[archived] openArtifact: changeName=${message.changeName}, artifactType=${message.artifactType}, workspaceRoot=${workspaceRoot}, artifactPath=${artifactPath}`);
       if (!isPathUnderWorkspace(changesBase, workspaceRoot) || !isPathUnderWorkspace(artifactPath, workspaceRoot)) {
-        vscode.window.showErrorMessage(`不允许打开工作区外的文件。`);
+        vscode.window.showErrorMessage(t('file.outsideWorkspaceShort'));
         break;
       }
       try {
@@ -178,7 +179,7 @@ export async function handleWebviewMessage(
         logger.info(`[archived] openArtifact: opened OK`);
       } catch (err) {
         logger.error(`Failed to open artifact: ${artifactPath}`, err as Error);
-        vscode.window.showErrorMessage(`无法打开文件: ${message.artifactType}.md`);
+        vscode.window.showErrorMessage(t('file.cannotOpen', { name: message.artifactType }));
       }
       break;
     }
@@ -219,7 +220,7 @@ export async function handleWebviewMessage(
           type: 'artifactContentError',
           changeName,
           artifactType,
-          message: '该内容尚未创建或文件已丢失。',
+          message: t('artifact.missingShort'),
           code: 'ARTIFACT_MISSING',
         });
         break;
@@ -234,7 +235,7 @@ export async function handleWebviewMessage(
           type: 'artifactContentError',
           changeName,
           artifactType,
-          message: '读取文件失败，请检查权限或文件编码。',
+          message: t('artifact.readError'),
           code: 'ARTIFACT_READ_ERROR',
         });
       }
@@ -290,7 +291,7 @@ export async function handleWebviewMessage(
       const { changeName, taskIndex, taskText } = message;
       if (!changeName || typeof taskIndex !== 'number' || !taskText) break;
       if (changeName.startsWith('archive:')) {
-        vscode.window.showInformationMessage('已归档，仅可查看');
+        vscode.window.showInformationMessage(t('archive.readOnly'));
         break;
       }
       let success = false;
@@ -300,7 +301,7 @@ export async function handleWebviewMessage(
         await dataManager.setTaskExecutionState(changeName, taskIndex, success);
       } catch (err) {
         logger.error('executeTask failed', err as Error);
-        vscode.window.showErrorMessage((err as Error).message || '执行任务失败');
+        vscode.window.showErrorMessage((err as Error).message || t('task.executionFailed'));
       }
       try {
         const executionState = await dataManager.getTaskExecutionState(changeName);
@@ -350,10 +351,10 @@ export async function handleWebviewMessage(
       try {
         const config = vscode.workspace.getConfiguration('openspec');
         await config.update('preferredAgentAdapter', adapterId, vscode.ConfigurationTarget.Global);
-        vscode.window.showInformationMessage(`已切换执行者: ${adapterId}`);
+        vscode.window.showInformationMessage(t('adapter.switched', { name: adapterId }));
       } catch (err) {
         logger.error('setPreferredAgentAdapter failed', err as Error);
-        vscode.window.showErrorMessage('保存设置失败');
+        vscode.window.showErrorMessage(t('adapter.saveFailed'));
       }
       break;
     }
@@ -362,7 +363,7 @@ export async function handleWebviewMessage(
       const changeName = message.changeName;
       const artifactType = message.artifactType;
       if (typeof changeName === 'string' && changeName.startsWith('archive:')) {
-        vscode.window.showInformationMessage('已归档，仅可查看');
+        vscode.window.showInformationMessage(t('archive.readOnly'));
         break;
       }
       if (typeof changeName === 'string' && typeof artifactType === 'string') {
@@ -388,11 +389,11 @@ export async function handleWebviewMessage(
           });
         } else {
           await vscode.env.clipboard.writeText(prompt);
-          vscode.window.showInformationMessage('已复制到剪贴板，可粘贴到 Chat 输入框。');
+          vscode.window.showInformationMessage(t('clipboard.copiedChat'));
         }
       } catch (err) {
         logger.error('fillChat failed', err as Error);
-        vscode.window.showErrorMessage(`fillChat 失败: ${(err as Error).message}`);
+        vscode.window.showErrorMessage(t('fillChat.failed', { error: (err as Error).message }));
       }
       break;
     }
@@ -404,13 +405,13 @@ export async function handleWebviewMessage(
     case 'runCommand': {
       const changeName = message.changeName;
       if (typeof changeName === 'string' && changeName.startsWith('archive:')) {
-        vscode.window.showInformationMessage('已归档，仅可查看');
+        vscode.window.showInformationMessage(t('archive.readOnly'));
         break;
       }
       const commandId = message.commandId;
       const argsJson = message.argsJson;
       if (typeof commandId !== 'string' || !commandId.trim()) {
-        webview.postMessage({ type: 'runCommandResult', success: false, message: 'Command ID 不能为空' });
+        webview.postMessage({ type: 'runCommandResult', success: false, message: t('verify.commandIdEmpty') });
         break;
       }
       const ALLOWED_VERIFY_COMMAND_IDS = new Set<string>([
@@ -420,7 +421,7 @@ export async function handleWebviewMessage(
         webview.postMessage({
           type: 'runCommandResult',
           success: false,
-          message: '该命令不在 Verify 白名单中，仅允许执行预定义命令用于调试。',
+          message: t('verify.notInAllowlist'),
         });
         break;
       }
@@ -430,7 +431,7 @@ export async function handleWebviewMessage(
           const parsed = JSON.parse(argsJson) as unknown;
           args = Array.isArray(parsed) ? parsed : [parsed];
         } catch {
-          webview.postMessage({ type: 'runCommandResult', success: false, message: '参数不是合法 JSON' });
+          webview.postMessage({ type: 'runCommandResult', success: false, message: t('verify.invalidJson') });
           break;
         }
       }

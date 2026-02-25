@@ -6,6 +6,7 @@ import type {
   TaskExecuteResult,
 } from '../services/agentExecutor.types';
 import { logger } from '../utils/logger';
+import { t } from '../../i18n';
 
 const ADAPTER_ID = 'cursor';
 const DISPLAY_NAME = 'Cursor (agent CLI)';
@@ -56,15 +57,15 @@ export const cursorAdapter: IAgentExecutorAdapter = {
     const channel = _outputChannel;
     channel.clear();
     channel.show(true);
-    channel.appendLine(`[OpenSpec] 正在执行: ${request.taskText}`);
-    channel.appendLine(`[OpenSpec] Prompt 长度: ${prompt.length} 字符`);
+    channel.appendLine(`[OpenSpec] ${t('cursor.executing', { task: request.taskText })}`);
+    channel.appendLine(`[OpenSpec] ${t('cursor.promptLength', { length: prompt.length })}`);
     const modelOpt = getAgentModelOption();
-    channel.appendLine(`[OpenSpec] 模型: ${modelOpt}`);
+    channel.appendLine(`[OpenSpec] ${t('cursor.model', { model: modelOpt })}`);
     const debug = vscode.workspace.getConfiguration('openspec').get<boolean>('debug') ?? false;
     if (debug) {
-      channel.appendLine('[OpenSpec] --- 发送给 Agent 的内容 (debug) ---');
+      channel.appendLine(`[OpenSpec] ${t('cursor.debugPromptStart')}`);
       channel.appendLine(prompt);
-      channel.appendLine('[OpenSpec] --- 以上为发送给 Agent 的内容 ---');
+      channel.appendLine(`[OpenSpec] ${t('cursor.debugPromptEnd')}`);
     }
     channel.appendLine('---');
 
@@ -84,7 +85,7 @@ export const cursorAdapter: IAgentExecutorAdapter = {
     return new Promise<TaskExecuteResult>((resolve) => {
       child.on('error', (err) => {
         const msg = (err as Error).message;
-        channel.appendLine(`[OpenSpec] 启动 agent 失败: ${msg}`);
+        channel.appendLine(`[OpenSpec] ${t('cursor.spawnFailed', { error: msg })}`);
         logger.error('cursor-adapter: spawn failed', err as Error);
         resolve({ success: false, adapterId: ADAPTER_ID, message: msg });
       });
@@ -92,11 +93,11 @@ export const cursorAdapter: IAgentExecutorAdapter = {
       child.on('close', (code, signal) => {
         channel.appendLine('---');
         if (code === 0) {
-          channel.appendLine('[OpenSpec] 执行完成。');
+          channel.appendLine(`[OpenSpec] ${t('cursor.done')}`);
           resolve({ success: true, adapterId: ADAPTER_ID });
         } else {
-          const msg = signal ? `进程收到信号 ${signal}` : `退出码 ${code}`;
-          channel.appendLine(`[OpenSpec] 执行结束: ${msg}`);
+          const msg = signal ? t('cursor.signal', { signal }) : t('cursor.exitCode', { code: code ?? -1 });
+          channel.appendLine(`[OpenSpec] ${t('cursor.finished', { msg })}`);
           resolve({ success: false, adapterId: ADAPTER_ID, message: msg });
         }
       });
@@ -111,7 +112,7 @@ export const cursorAdapter: IAgentExecutorAdapter = {
     } catch {
       // Chat 可能不可用（非 Cursor 或版本差异），忽略
     }
-    vscode.window.showInformationMessage('已复制到剪贴板，Chat 已打开，请粘贴到输入框后发送。');
+    vscode.window.showInformationMessage(t('clipboard.copiedCursorChat'));
     return { success: true, adapterId: ADAPTER_ID, message: 'Copied to clipboard' };
   },
 };
