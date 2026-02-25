@@ -10,6 +10,7 @@ interface ChangesSectionProps {
   onCopyFf?: (changeName: string) => void;
   onCopyApply?: (changeName: string) => void;
   onArchive?: (changeName: string) => void;
+  onFillChat?: (command: string) => void;
   archivedExpanded?: boolean;
   onArchivedToggle?: () => void;
   archivedItems?: ArchivedChangeInfo[];
@@ -45,6 +46,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
   onCopyFf,
   onCopyApply,
   onArchive,
+  onFillChat,
   archivedExpanded = false,
   onArchivedToggle,
   archivedItems = [],
@@ -90,6 +92,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
                       onCopyFf={onCopyFf}
                       onCopyApply={onCopyApply}
                       onArchive={onArchive}
+                      onFillChat={onFillChat}
                     />
                   ))}
                 </div>

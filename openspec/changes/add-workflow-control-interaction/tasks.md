@@ -31,29 +31,29 @@
 
 ## 5. ArtifactViewer 改造
 
-- [ ] 5.1 修改 ArtifactViewer 的 "用 AI 创建" 按钮行为：改为通过 `handleWorkflowAction` 发送 `/opsx:continue <changeName>`
-- [ ] 5.2 无 artifact 的空状态增加 **Explore** 按钮，发送 `/opsx:explore`
+- [x] 5.1 修改 ArtifactViewer 的 "用 AI 创建" 按钮行为：改为通过 `handleWorkflowAction` 发送 `/opsx:continue <changeName>`
+- [x] 5.2 无 artifact 的空状态增加 **Explore** 按钮，发送 `/opsx:explore`
 
 ## 6. Verify 入口改造
 
-- [ ] 6.1 修改 ChangeDetail 的 Verify tab 显示条件：有 task 已完成时显示（移除 debug-only 限制）
-- [ ] 6.2 Verify tab 内容：展示说明文字和触发按钮，点击后 fillChat 发送 `/opsx:verify <changeName>`
-- [ ] 6.3 Archive 按钮点击时增加 verify 引导：若 tasks 全部完成且未 verify，弹窗建议先 verify
+- [x] 6.1 修改 ChangeDetail 的 Verify tab 显示条件：有 task 已完成时显示（移除 debug-only 限制）
+- [x] 6.2 Verify tab 内容：展示说明文字和触发按钮，点击后 fillChat 发送 `/opsx:verify <changeName>`
+- [x] 6.3 Archive 按钮点击时增加 verify 引导：若 tasks 全部完成且未 verify，弹窗建议先 verify
 
 ## 7. Sync Specs 入口
 
-- [ ] 7.1 ActionBar 增加 Sync Specs 按钮：change 有 delta specs 且非归档时显示
-- [ ] 7.2 点击后通过 adapter fillChat 发送 `/opsx:sync <changeName>`
+- [x] 7.1 ActionBar 增加 Sync Specs 按钮：change 有 delta specs 且非归档时显示
+- [x] 7.2 点击后通过 adapter fillChat 发送 `/opsx:sync <changeName>`
 
 ## 8. ChangeCard 智能操作
 
-- [ ] 8.1 修改 ChangeCard 的 hover 操作：根据 change 状态动态生成按钮（Continue/FF/Apply/Verify/Archive）
-- [ ] 8.2 hover 操作按钮通过 adapter fillChat 发送对应命令
+- [x] 8.1 修改 ChangeCard 的 hover 操作：根据 change 状态动态生成按钮（Continue/FF/Apply/Verify/Archive）
+- [x] 8.2 hover 操作按钮通过 adapter fillChat 发送对应命令
 
 ## 9. 集成与 ChangeDetail 组装
 
-- [ ] 9.1 在 ChangeDetail 中引入 WorkflowStepIndicator，传递 workflowState 和步骤点击回调
-- [ ] 9.2 在 ChangeDetail 中调用 deriveWorkflowState，将结果传递给 ActionBar 和 WorkflowStepIndicator
+- [x] 9.1 在 ChangeDetail 中引入 WorkflowStepIndicator，传递 workflowState 和步骤点击回调
+- [x] 9.2 在 ChangeDetail 中调用 deriveWorkflowState，将结果传递给 ActionBar 和 WorkflowStepIndicator
 - [ ] 9.3 端到端测试：创建新 change → 逐步 continue → apply → verify → archive 全流程
 
 ## 10. 文档与收尾

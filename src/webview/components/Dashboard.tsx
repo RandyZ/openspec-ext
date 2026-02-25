@@ -77,6 +77,10 @@ export const Dashboard: React.FC = () => {
     postMessage(sendMessage.archiveChange(changeName));
   };
 
+  const handleFillChat = (command: string) => {
+    postMessage(sendMessage.fillChat(command));
+  };
+
   const handleOpenSpec = (spec: { id: string; path?: string }) => {
     if (spec.path) {
       postMessage(sendMessage.openSpec(spec.path));
@@ -118,6 +122,7 @@ export const Dashboard: React.FC = () => {
               onCopyFf={handleCopyFf}
               onCopyApply={handleCopyApply}
               onArchive={handleArchive}
+              onFillChat={handleFillChat}
               archivedExpanded={archivedExpanded}
               onArchivedToggle={handleArchivedToggle}
               archivedItems={archivedItems}

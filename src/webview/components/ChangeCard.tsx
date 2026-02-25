@@ -40,6 +40,27 @@ export interface ChangeCardProps {
   onCopyFf?: (changeName: string) => void;
   onCopyApply?: (changeName: string) => void;
   onArchive?: (changeName: string) => void;
+  onFillChat?: (command: string) => void;
+}
+
+function getSmartActions(change: ChangeInfo): { label: string; command: string }[] {
+  const hasAllArtifacts = change.artifacts?.every((a) => a.status === 'done') ?? false;
+  const allTasksDone = change.totalTasks > 0 && change.completedTasks === change.totalTasks;
+
+  if (!hasAllArtifacts) {
+    return [
+      { label: 'Continue', command: `/opsx:continue ${change.name}` },
+      { label: 'FF', command: `/opsx:ff ${change.name}` },
+    ];
+  }
+  if (allTasksDone) {
+    return [
+      { label: 'Verify', command: `/opsx:verify ${change.name}` },
+    ];
+  }
+  return [
+    { label: 'Apply', command: `/opsx:apply ${change.name}` },
+  ];
 }
 
 export const ChangeCard: React.FC<ChangeCardProps> = ({
@@ -48,6 +69,7 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
   onCopyFf,
   onCopyApply,
   onArchive,
+  onFillChat,
 }) => {
   const [hover, setHover] = React.useState(false);
 
@@ -121,12 +143,47 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
         </div>
       )}
 
-      {hover && (onCopyFf || onCopyApply || onArchive) && (
+      {hover && (onFillChat || onCopyFf || onCopyApply || onArchive) && (
         <div
           className="flex flex-wrap gap-1 mt-2 pt-2 border-t"
           style={{ borderColor: 'var(--vscode-panel-border)' }}
           data-action
         >
+          {onFillChat && getSmartActions(change).map((action) => (
+            <button
+              key={action.label}
+              type="button"
+              data-action
+              className="px-2 py-0.5 text-xs rounded cursor-pointer border-none"
+              style={{
+                background: 'var(--vscode-button-background)',
+                color: 'var(--vscode-button-foreground)',
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onFillChat(action.command);
+              }}
+            >
+              {action.label}
+            </button>
+          ))}
+          {onArchive && change.totalTasks > 0 && change.completedTasks === change.totalTasks && (
+            <button
+              type="button"
+              data-action
+              className="px-2 py-0.5 text-xs rounded cursor-pointer border-none"
+              style={{
+                background: 'var(--vscode-inputValidation-warningBackground)',
+                color: 'var(--vscode-editor-foreground)',
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onArchive(change.name);
+              }}
+            >
+              Archive
+            </button>
+          )}
           {onCopyFf && (
             <button
               type="button"
@@ -159,23 +216,6 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
               }}
             >
               Copy /opsx:apply
-            </button>
-          )}
-          {onArchive && (
-            <button
-              type="button"
-              data-action
-              className="px-2 py-0.5 text-xs rounded cursor-pointer border-none"
-              style={{
-                background: 'var(--vscode-inputValidation-warningBackground)',
-                color: 'var(--vscode-editor-foreground)',
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onArchive(change.name);
-              }}
-            >
-              Archive
             </button>
           )}
         </div>
