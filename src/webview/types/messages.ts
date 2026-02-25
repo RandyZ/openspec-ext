@@ -22,6 +22,7 @@ export type WebviewMessage =
   | { type: 'setPreferredAgentAdapter'; adapterId: string }
   | { type: 'requestCreateArtifact'; changeName: string; artifactType: string }
   | { type: 'runCommand'; commandId: string; argsJson?: string; changeName?: string }
+  | { type: 'fillChat'; prompt: string }
   | { type: 'getTaskExecutionState'; changeName: string };
 
 // Message types from extension to webview
@@ -189,6 +190,11 @@ export const sendMessage = {
     commandId,
     ...(argsJson !== undefined && argsJson !== '' ? { argsJson } : {}),
     ...(changeName !== undefined ? { changeName } : {}),
+  }),
+
+  fillChat: (prompt: string): WebviewMessage => ({
+    type: 'fillChat',
+    prompt,
   }),
 
   getTaskExecutionState: (changeName: string): WebviewMessage => ({

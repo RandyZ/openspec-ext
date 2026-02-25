@@ -3,6 +3,7 @@ import * as path from 'path';
 import { logger } from '../utils/logger';
 import { DataManager } from '../services/dataManager';
 import { getChangesBasePath } from '../utils/workspaceRoot';
+import { getCurrentAdapter } from '../adapters';
 import type { WebviewMessage } from '../../webview/types/messages';
 
 /** Returns true if resolvedPath is under workspaceRoot (no .. escape). */
@@ -366,6 +367,32 @@ export async function handleWebviewMessage(
       }
       if (typeof changeName === 'string' && typeof artifactType === 'string') {
         await vscode.commands.executeCommand('openspec.continueArtifact', changeName, artifactType);
+      }
+      break;
+    }
+
+    case 'fillChat': {
+      const prompt = message.prompt;
+      if (typeof prompt !== 'string' || !prompt.trim()) break;
+      logger.info(`fillChat: ${prompt}`);
+      try {
+        const adapter = await getCurrentAdapter();
+        if (adapter) {
+          await adapter.fillChat({
+            changeName: '',
+            taskIndex: -1,
+            taskText: '',
+            contextFiles: [],
+            workspaceRoot: dataManager['workspaceRoot'] ?? '',
+            promptOverride: prompt,
+          });
+        } else {
+          await vscode.env.clipboard.writeText(prompt);
+          vscode.window.showInformationMessage('已复制到剪贴板，可粘贴到 Chat 输入框。');
+        }
+      } catch (err) {
+        logger.error('fillChat failed', err as Error);
+        vscode.window.showErrorMessage(`fillChat 失败: ${(err as Error).message}`);
       }
       break;
     }
