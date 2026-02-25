@@ -54,9 +54,9 @@
 
 - [x] 9.1 在 ChangeDetail 中引入 WorkflowStepIndicator，传递 workflowState 和步骤点击回调
 - [x] 9.2 在 ChangeDetail 中调用 deriveWorkflowState，将结果传递给 ActionBar 和 WorkflowStepIndicator
-- [ ] 9.3 端到端测试：创建新 change → 逐步 continue → apply → verify → archive 全流程
+- [x] 9.3 端到端测试：创建新 change → 逐步 continue → apply → verify → archive 全流程
 
 ## 10. 文档与收尾
 
-- [ ] 10.1 更新 README 的 Dashboard / Change Detail 部分说明新增的工作流控制交互
-- [ ] 10.2 运行扩展并验证：各状态下 ActionBar 按钮、步骤条、ChangeCard hover 操作正确
+- [x] 10.1 更新 README 的 Dashboard / Change Detail 部分说明新增的工作流控制交互
+- [x] 10.2 运行扩展并验证：各状态下 ActionBar 按钮、步骤条、ChangeCard hover 操作正确
