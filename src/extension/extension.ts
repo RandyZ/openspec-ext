@@ -5,11 +5,13 @@ import { DataManager } from './services/dataManager';
 import { CommandManager } from './commands/commandManager';
 import { DashboardViewProvider } from './providers/dashboardViewProvider';
 import { ChangeDetailPanelManager } from './providers/changeDetailPanelManager';
+import { setLocale } from '../i18n';
 
 let dataManager: DataManager | null = null;
 
 export async function activate(context: vscode.ExtensionContext) {
   initLogger();
+  setLocale(vscode.env.language);
   logger.info('OpenSpec extension is activating...');
 
   try {

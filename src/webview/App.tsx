@@ -3,6 +3,7 @@ import { AppProvider, useAppState } from './context/AppContext';
 import { useVscode } from './hooks/useVscode';
 import { Dashboard } from './components/Dashboard';
 import { ChangeDetail } from './components/ChangeDetail';
+import { setLocale } from '../i18n';
 
 function idsEqual(a: string[] | undefined, b: string[] | undefined): boolean {
   if (a === b) return true;
@@ -13,11 +14,18 @@ function idsEqual(a: string[] | undefined, b: string[] | undefined): boolean {
   return sa.every((id, i) => id === sb[i]);
 }
 
+function initWebviewLocale() {
+  const lang = document.documentElement.lang || navigator.language || 'en';
+  setLocale(lang);
+}
+
 function AppContent() {
   const { state, dispatch } = useAppState();
   const { onMessage } = useVscode();
   const [panelChangeName, setPanelChangeName] = useState<string | null>(null);
   const [existingArtifactIds, setExistingArtifactIds] = useState<string[] | undefined>(undefined);
+
+  useEffect(() => { initWebviewLocale(); }, []);
 
   useEffect(() => {
     const cleanup = onMessage((event: MessageEvent) => {
