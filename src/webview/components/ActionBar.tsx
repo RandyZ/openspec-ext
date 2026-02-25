@@ -108,17 +108,6 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           )
         )}
 
-      {!isArchived && (
-        <>
-          <button type="button" style={secondaryStyle} onClick={() => onCopyFf(changeName)}>
-            Copy /opsx:ff
-          </button>
-          <button type="button" style={secondaryStyle} onClick={() => onCopyApply(changeName)}>
-            Copy /opsx:apply
-          </button>
-        </>
-      )}
-
       <button type="button" style={secondaryStyle} onClick={onOpenInEditor}>
         Open in Editor
       </button>

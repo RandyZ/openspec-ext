@@ -184,40 +184,6 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
               Archive
             </button>
           )}
-          {onCopyFf && (
-            <button
-              type="button"
-              data-action
-              className="px-2 py-0.5 text-xs rounded cursor-pointer border-none"
-              style={{
-                background: 'var(--vscode-button-secondaryBackground)',
-                color: 'var(--vscode-button-secondaryForeground)',
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onCopyFf(change.name);
-              }}
-            >
-              Copy /opsx:ff
-            </button>
-          )}
-          {onCopyApply && (
-            <button
-              type="button"
-              data-action
-              className="px-2 py-0.5 text-xs rounded cursor-pointer border-none"
-              style={{
-                background: 'var(--vscode-button-secondaryBackground)',
-                color: 'var(--vscode-button-secondaryForeground)',
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onCopyApply(change.name);
-              }}
-            >
-              Copy /opsx:apply
-            </button>
-          )}
         </div>
       )}
     </div>
