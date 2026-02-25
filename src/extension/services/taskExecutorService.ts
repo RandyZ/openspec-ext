@@ -3,8 +3,6 @@ import { logger } from '../utils/logger';
 import type { TaskExecuteRequest } from './agentExecutor.types';
 import type { IOpenSpecContentAccess } from './contentAccess';
 import { getCurrentAdapter } from '../adapters';
-import { getPromptForFlow } from './openspecPromptHandler';
-import { OpenSpecCliService } from './openspecCli';
 
 export class TaskExecutorService {
   constructor(
@@ -90,37 +88,14 @@ export class TaskExecutorService {
       return { success: false };
     }
 
-    const base = `openspec/changes/${changeName}`;
-    const contextFiles = [
-      `${base}/proposal.md`,
-      `${base}/design.md`,
-      `${base}/tasks.md`,
-    ];
     const request: TaskExecuteRequest = {
       changeName,
       taskIndex,
       taskText,
-      contextFiles,
+      contextFiles: [],
       workspaceRoot: this.workspaceRoot,
+      promptOverride: `/opsx:apply ${changeName}`,
     };
-
-    try {
-      const cliService = new OpenSpecCliService(this.workspaceRoot);
-      const formattedPrompt = await getPromptForFlow(
-        {
-          flow: 'apply',
-          changeName,
-          taskIndex,
-          taskText,
-          contextFiles,
-          workspaceRoot: this.workspaceRoot,
-        },
-        cliService
-      );
-      request.promptOverride = formattedPrompt;
-    } catch (e) {
-      logger.debug('TaskExecutorService: getPromptForFlow failed, adapter will use fallback', e as Error);
-    }
 
     try {
       const result =

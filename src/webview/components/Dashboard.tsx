@@ -66,11 +66,11 @@ export const Dashboard: React.FC = () => {
   };
 
   const handleCopyFf = (changeName: string) => {
-    postMessage(sendMessage.copyToClipboard(`/opsx-ff ${changeName}`));
+    postMessage(sendMessage.copyToClipboard(`/opsx:ff ${changeName}`));
   };
 
   const handleCopyApply = (changeName: string) => {
-    postMessage(sendMessage.copyToClipboard(`/opsx-apply ${changeName}`));
+    postMessage(sendMessage.copyToClipboard(`/opsx:apply ${changeName}`));
   };
 
   const handleArchive = (changeName: string) => {
