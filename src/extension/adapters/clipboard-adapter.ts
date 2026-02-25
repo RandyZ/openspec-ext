@@ -5,16 +5,7 @@ const ADAPTER_ID = 'clipboard';
 const DISPLAY_NAME = 'Clipboard (copy to clipboard)';
 
 function buildPromptText(request: TaskExecuteRequest): string {
-  const refs = request.contextFiles.length
-    ? `\n参考文档：\n${request.contextFiles.map((f) => `- ${f}`).join('\n')}`
-    : '';
-  return `请实现以下任务：
-
-Change: ${request.changeName}
-Task: ${request.taskText}
-${refs}
-
-完成后请按 OpenSpec 流程在 tasks.md 中标记该任务为已完成。`;
+  return `/opsx:apply ${request.changeName}`;
 }
 
 export const clipboardAdapter: IAgentExecutorAdapter = {

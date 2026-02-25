@@ -8,24 +8,7 @@ import * as path from 'path';
 import { logger } from '../utils/logger';
 import type { OpenSpecCliService } from './openspecCli';
 
-const DEFAULT_APPLY_TEMPLATE = `Implement tasks from an OpenSpec change.
-
-**Change:** {{changeName}}
-**Schema:** {{schemaName}}
-
-{{instruction}}
-
-**Context files** (read these for requirements and design):
-{{contextFiles}}
-
-**Tasks:**
-{{taskList}}
-
-**Focus:** Implement this task now: {{currentTask}}
-After completing it, mark the task as done in tasks.md (change \`- [ ]\` to \`- [x]\`).
-
-Follow the OpenSpec workflow; keep changes minimal and scoped to the current task.
-`;
+const DEFAULT_APPLY_TEMPLATE = `/opsx:apply {{changeName}}`;
 
 export type FlowType = 'apply';
 
@@ -48,18 +31,8 @@ function substituteTemplate(template: string, vars: Record<string, string>): str
 /**
  * Fallback when CLI or JSON fails: static prompt compatible with current adapter behavior.
  */
-function buildFallbackApplyPrompt(changeName: string, taskText: string, contextFiles: string[]): string {
-  const refs =
-    contextFiles.length > 0
-      ? `\n参考文档：\n${contextFiles.map((f) => `- ${f}`).join('\n')}`
-      : '';
-  return `请实现以下任务：
-
-Change: ${changeName}
-Task: ${taskText}
-${refs}
-
-完成后请按 OpenSpec 流程在 tasks.md 中标记该任务为已完成。`;
+function buildFallbackApplyPrompt(changeName: string, _taskText: string, _contextFiles: string[]): string {
+  return `/opsx:apply ${changeName}`;
 }
 
 /**
