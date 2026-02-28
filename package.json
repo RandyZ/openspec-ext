@@ -2,7 +2,7 @@
   "name": "openspec-workflow",
   "displayName": "OpenSpec",
   "description": "Visual dashboard and interactive UI for OpenSpec workflows",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "randysss",
   "license": "MIT",
   "engines": {
