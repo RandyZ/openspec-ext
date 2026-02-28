@@ -2,8 +2,9 @@ import * as vscode from 'vscode';
 import type { IAgentExecutorAdapter } from '../services/agentExecutor.types';
 import { clipboardAdapter } from './clipboard-adapter';
 import { cursorAdapter } from './cursor-adapter';
+import { vscodeCopilotAdapter } from './vscode-copilot-adapter';
 
-const registeredAdapters: IAgentExecutorAdapter[] = [clipboardAdapter, cursorAdapter];
+const registeredAdapters: IAgentExecutorAdapter[] = [vscodeCopilotAdapter, cursorAdapter, clipboardAdapter];
 
 /**
  * Discover all adapters that are currently available (isAvailable() resolves to true).
@@ -30,8 +31,7 @@ export async function getCurrentAdapter(): Promise<IAgentExecutorAdapter | null>
     if (found) return found;
   }
 
-  const clipboard = available.find((a) => a.id === 'clipboard');
-  return clipboard ?? available[0];
+  return available[0];
 }
 
-export { clipboardAdapter, cursorAdapter };
+export { clipboardAdapter, cursorAdapter, vscodeCopilotAdapter };
