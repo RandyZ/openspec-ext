@@ -127,6 +127,15 @@
   "spec.label": "Spec:",
   "spec.requirements": "{count} 个需求",
 
+  "extension.noWorkspace": "OpenSpec：未找到工作区文件夹",
+
+  "cli.notFound": "未找到 OpenSpec CLI，请先安装。",
+  "cli.installInstructions": "安装说明",
+  "cli.notInitialized": "此工作区尚未初始化 OpenSpec。",
+  "cli.initializeNow": "立即初始化",
+  "cli.learnMore": "了解更多",
+  "cli.runInit": "运行: openspec init",
+
   "noContent": "暂无内容",
   "loading": "加载中..."
 }

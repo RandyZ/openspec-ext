@@ -127,6 +127,15 @@
   "spec.label": "Spec:",
   "spec.requirements": "{count} requirements",
 
+  "extension.noWorkspace": "OpenSpec: No workspace folder found",
+
+  "cli.notFound": "OpenSpec CLI not found. Please install it first.",
+  "cli.installInstructions": "Install Instructions",
+  "cli.notInitialized": "OpenSpec not initialized in this workspace.",
+  "cli.initializeNow": "Initialize Now",
+  "cli.learnMore": "Learn More",
+  "cli.runInit": "Run: openspec init",
+
   "noContent": "No content",
   "loading": "Loading..."
 }

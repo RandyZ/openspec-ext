@@ -58,7 +58,7 @@ export async function handleWebviewMessage(
       });
       if (name) {
         await dataManager.createChange(name);
-        vscode.window.showInformationMessage(`Change "${name}" created`);
+        vscode.window.showInformationMessage(t('command.created', { name }));
         const newData = await dataManager.getDashboardData();
         webview.postMessage({ type: 'dashboardData', data: newData, debug: getDebug() });
       }
@@ -139,7 +139,7 @@ export async function handleWebviewMessage(
         await vscode.window.showTextDocument(doc);
       } catch (err) {
         logger.error(`Failed to open spec: ${message.path}`, err as Error);
-        vscode.window.showErrorMessage(`Could not open spec file: ${message.path}`);
+        vscode.window.showErrorMessage(t('file.cannotOpenSpec', { id: message.path }));
       }
       break;
     }
@@ -187,7 +187,7 @@ export async function handleWebviewMessage(
     case 'copyToClipboard':
       if (typeof message.text === 'string') {
         await vscode.env.clipboard.writeText(message.text);
-        vscode.window.showInformationMessage('Copied to clipboard');
+        vscode.window.showInformationMessage(t('clipboard.copiedGeneral'));
       }
       break;
 
@@ -195,13 +195,13 @@ export async function handleWebviewMessage(
       const name = message.name;
       if (!name) break;
       const confirm = await vscode.window.showWarningMessage(
-        `Archive change "${name}"?`,
+        t('command.archiveConfirm', { name }),
         { modal: true },
-        'Archive'
+        t('command.archive')
       );
-      if (confirm === 'Archive') {
+      if (confirm === t('command.archive')) {
         await dataManager.archiveChange(name);
-        vscode.window.showInformationMessage(`Change "${name}" archived`);
+        vscode.window.showInformationMessage(t('command.archived', { name }));
         const afterArchive = await dataManager.getDashboardData();
         webview.postMessage({ type: 'dashboardData', data: afterArchive, debug: getDebug() });
       }

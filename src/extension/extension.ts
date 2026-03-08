@@ -5,7 +5,7 @@ import { DataManager } from './services/dataManager';
 import { CommandManager } from './commands/commandManager';
 import { DashboardViewProvider } from './providers/dashboardViewProvider';
 import { ChangeDetailPanelManager } from './providers/changeDetailPanelManager';
-import { setLocale } from '../i18n';
+import { setLocale, t } from '../i18n';
 
 let dataManager: DataManager | null = null;
 
@@ -18,7 +18,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const workspaceRoot = await getOpenSpecWorkspaceRoot();
     if (!workspaceRoot) {
       logger.error('No workspace folder found');
-      vscode.window.showErrorMessage('OpenSpec: No workspace folder found');
+      vscode.window.showErrorMessage(t('extension.noWorkspace'));
       return;
     }
     logger.info(`[archived] activate: using workspaceRoot=${workspaceRoot}`);
