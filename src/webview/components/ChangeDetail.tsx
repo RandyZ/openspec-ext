@@ -390,7 +390,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
 
       {activeTab === 'specs' && deltaSpecIds.length > 1 && (
         <div className="px-3 py-2 flex items-center gap-2 border-b" style={{ borderColor: 'var(--vscode-panel-border)' }}>
-          <span className="text-xs" style={{ color: 'var(--vscode-descriptionForeground)' }}>Spec:</span>
+          <span className="text-xs" style={{ color: 'var(--vscode-descriptionForeground)' }}>{t('spec.label')}</span>
           <select
             className="text-xs rounded px-2 py-1 flex-1 max-w-[200px]"
             style={{

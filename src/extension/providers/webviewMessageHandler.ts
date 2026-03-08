@@ -461,9 +461,10 @@ export function getWebviewContent(webview: vscode.Webview, extensionPath: string
   const styleUri = webview.asWebviewUri(
     vscode.Uri.file(path.join(extensionPath, 'dist', 'webview', 'index.css'))
   );
+  const lang = vscode.env.language || 'en';
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${lang}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
