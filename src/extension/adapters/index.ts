@@ -3,12 +3,17 @@ import type { IAgentExecutorAdapter } from '../services/agentExecutor.types';
 import { clipboardAdapter } from './clipboard-adapter';
 import { cursorAdapter } from './cursor-adapter';
 import { vscodeCopilotAdapter } from './vscode-copilot-adapter';
+import { claudeCodeAdapter } from './claude-code-adapter';
+import { opencodeAdapter } from './opencode-adapter';
 
-const registeredAdapters: IAgentExecutorAdapter[] = [vscodeCopilotAdapter, cursorAdapter, clipboardAdapter];
+const registeredAdapters: IAgentExecutorAdapter[] = [
+  vscodeCopilotAdapter,
+  claudeCodeAdapter,
+  opencodeAdapter,
+  cursorAdapter,
+  clipboardAdapter,
+];
 
-/**
- * Discover all adapters that are currently available (isAvailable() resolves to true).
- */
 export async function getAvailableAdapters(): Promise<IAgentExecutorAdapter[]> {
   const results = await Promise.all(
     registeredAdapters.map(async (a) => ({ adapter: a, ok: await a.isAvailable() }))
@@ -16,9 +21,6 @@ export async function getAvailableAdapters(): Promise<IAgentExecutorAdapter[]> {
   return results.filter((r) => r.ok).map((r) => r.adapter);
 }
 
-/**
- * Get the current adapter to use: preferred from config if available, otherwise first available or clipboard.
- */
 export async function getCurrentAdapter(): Promise<IAgentExecutorAdapter | null> {
   const available = await getAvailableAdapters();
   if (available.length === 0) return null;
@@ -34,4 +36,4 @@ export async function getCurrentAdapter(): Promise<IAgentExecutorAdapter | null>
   return available[0];
 }
 
-export { clipboardAdapter, cursorAdapter, vscodeCopilotAdapter };
+export { clipboardAdapter, cursorAdapter, vscodeCopilotAdapter, claudeCodeAdapter, opencodeAdapter };
