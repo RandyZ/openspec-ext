@@ -203,21 +203,8 @@ export class CommandManager {
     );
   }
 
-  private buildContinuePrompt(changeName: string | undefined, artifactType: string | undefined): string {
-    const base = changeName ? `/opsx:continue ${changeName}` : '/opsx:continue';
-    if (!changeName || !artifactType) return base;
-    switch (artifactType) {
-      case 'proposal':
-        return `${base}\n${t('command.promptProposal')}`;
-      case 'specs':
-        return `${base}\n${t('command.promptSpecs')}`;
-      case 'design':
-        return `${base}\n${t('command.promptDesign')}`;
-      case 'tasks':
-        return `${base}\n${t('command.promptTasks')}`;
-      default:
-        return base;
-    }
+  private buildContinuePrompt(changeName: string | undefined, _artifactType: string | undefined): string {
+    return changeName ? `/opsx:continue ${changeName}` : '/opsx:continue';
   }
 
   private getArtifactLabel(artifactType: string | undefined): string {

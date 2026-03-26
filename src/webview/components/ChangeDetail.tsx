@@ -556,7 +556,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
             }
             onExplore={
               !isArchived && activeTab === 'proposal' && !(existingArtifactIds?.includes('proposal'))
-                ? () => handleFillChat('/opsx:explore')
+                ? () => handleFillChat(`/opsx:explore ${changeName}`)
                 : undefined
             }
             createDisabledReason={getCreateDisabledReason(activeTab, existingArtifactIds)}
