@@ -372,6 +372,18 @@ export async function handleWebviewMessage(
       break;
     }
 
+    case 'getSpecRequirements': {
+      const specId = message.specId;
+      if (typeof specId !== 'string' || !specId.trim()) break;
+      try {
+        const requirements = await dataManager.getSpecRequirements(specId);
+        webview.postMessage({ type: 'specRequirements', specId, requirements });
+      } catch (err) {
+        webview.postMessage({ type: 'specRequirements', specId, requirements: [] });
+      }
+      break;
+    }
+
     case 'getSpecContent': {
       const specId = message.specId;
       if (typeof specId !== 'string' || !specId.trim()) break;

@@ -3,6 +3,7 @@ import { AppProvider, useAppState } from './context/AppContext';
 import { useVscode } from './hooks/useVscode';
 import { Dashboard } from './components/Dashboard';
 import { ChangeDetail } from './components/ChangeDetail';
+import { SpecViewer } from './components/SpecViewer';
 import { setLocale } from '../i18n';
 
 function idsEqual(a: string[] | undefined, b: string[] | undefined): boolean {
@@ -24,6 +25,8 @@ function AppContent() {
   const { onMessage } = useVscode();
   const [panelChangeName, setPanelChangeName] = useState<string | null>(null);
   const [existingArtifactIds, setExistingArtifactIds] = useState<string[] | undefined>(undefined);
+  const [panelSpecId, setPanelSpecId] = useState<string | null>(null);
+  const [panelSpecContent, setPanelSpecContent] = useState<string | null>(null);
 
   useEffect(() => { initWebviewLocale(); }, []);
 
@@ -32,6 +35,7 @@ function AppContent() {
       const msg = event.data;
       if (msg.type === 'setContext' && msg.view === 'changeDetail' && msg.changeName) {
         setPanelChangeName(msg.changeName);
+        setPanelSpecId(null);
         setExistingArtifactIds((prev) => {
           const next = msg.existingArtifactIds as string[] | undefined;
           if (idsEqual(prev, next)) return prev;
@@ -41,10 +45,13 @@ function AppContent() {
         if (msg.debug !== undefined) {
           dispatch({ type: 'SET_DEBUG', payload: msg.debug });
         }
+      } else if (msg.type === 'specContent' && msg.specId && !panelChangeName) {
+        setPanelSpecId(msg.specId);
+        setPanelSpecContent(msg.content ?? '');
       }
     });
     return cleanup;
-  }, [onMessage, dispatch]);
+  }, [onMessage, dispatch, panelChangeName]);
 
   if (panelChangeName) {
     return (
@@ -54,6 +61,9 @@ function AppContent() {
         debug={state.debug}
       />
     );
+  }
+  if (panelSpecId) {
+    return <SpecViewer specId={panelSpecId} initialContent={panelSpecContent ?? undefined} />;
   }
   if (state.selectedChange) {
     return <ChangeDetail changeName={state.selectedChange} debug={state.debug} />;

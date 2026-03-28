@@ -6,7 +6,6 @@ import type { ArchivedChangeInfo, SpecInfo } from '../types/messages';
 import { Header } from './Header';
 import { ChangesSection } from './ChangesSection';
 import { SpecsSection } from './SpecsSection';
-import { MarkdownRenderer } from './MarkdownRenderer';
 import { t } from '../../i18n';
 
 export const Dashboard: React.FC = () => {
@@ -15,9 +14,7 @@ export const Dashboard: React.FC = () => {
   const [archivedExpanded, setArchivedExpanded] = useState(false);
   const [archivedItems, setArchivedItems] = useState<ArchivedChangeInfo[]>([]);
   const [archivedLoading, setArchivedLoading] = useState(false);
-  const [selectedSpec, setSelectedSpec] = useState<SpecInfo | null>(null);
-  const [specContent, setSpecContent] = useState<string | null>(null);
-  const [specLoading, setSpecLoading] = useState(false);
+  const [specRequirements, setSpecRequirements] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
     // Listen for messages from extension
@@ -29,14 +26,18 @@ export const Dashboard: React.FC = () => {
         if (message.debug !== undefined) {
           dispatch({ type: 'SET_DEBUG', payload: message.debug });
         }
+        if (message.data?.specs) {
+          for (const spec of message.data.specs) {
+            postMessage(sendMessage.getSpecRequirements(spec.id));
+          }
+        }
       } else if (message.type === 'error') {
         dispatch({ type: 'SET_ERROR', payload: message.message });
-      } else if (message.type === 'specContent') {
-        setSpecContent(message.content ?? '');
-        setSpecLoading(false);
-      } else if (message.type === 'specContentError') {
-        setSpecContent(null);
-        setSpecLoading(false);
+      } else if (message.type === 'specRequirements') {
+        setSpecRequirements((prev) => ({
+          ...prev,
+          [message.specId]: message.requirements ?? [],
+        }));
       } else if (message.type === 'archivedChanges') {
         setArchivedItems(message.items ?? []);
         setArchivedLoading(false);
@@ -93,15 +94,14 @@ export const Dashboard: React.FC = () => {
   };
 
   const handleOpenSpec = (spec: SpecInfo) => {
-    setSelectedSpec(spec);
-    setSpecContent(null);
-    setSpecLoading(true);
-    postMessage(sendMessage.getSpecContent(spec.id));
+    postMessage(sendMessage.openSpecInEditor(spec.id));
+    if (!specRequirements[spec.id]) {
+      postMessage(sendMessage.getSpecRequirements(spec.id));
+    }
   };
 
-  const handleBackFromSpec = () => {
-    setSelectedSpec(null);
-    setSpecContent(null);
+  const handleRequirementClick = (spec: SpecInfo, requirementIndex: number) => {
+    postMessage(sendMessage.openSpecInEditor(spec.id, requirementIndex));
   };
 
   const { data, loading, error } = state;
@@ -130,40 +130,7 @@ export const Dashboard: React.FC = () => {
           </div>
         )}
 
-        {selectedSpec ? (
-          <div>
-            <button
-              type="button"
-              className="flex items-center gap-1 mb-3 px-2 py-1 text-xs rounded cursor-pointer border-none"
-              style={{
-                background: 'var(--vscode-button-secondaryBackground)',
-                color: 'var(--vscode-button-secondaryForeground)',
-              }}
-              onClick={handleBackFromSpec}
-            >
-              ← Back
-            </button>
-            <h2 className="text-base font-semibold mb-1" style={{ color: 'var(--vscode-foreground)' }}>
-              {selectedSpec.id}
-            </h2>
-            <div className="text-xs mb-3" style={{ color: 'var(--vscode-descriptionForeground)' }}>
-              {t('spec.requirements', { count: selectedSpec.requirementCount })}
-            </div>
-            {specLoading ? (
-              <div className="text-xs py-4" style={{ color: 'var(--vscode-descriptionForeground)' }}>
-                {t('loading')}
-              </div>
-            ) : specContent ? (
-              <div className="overflow-auto">
-                <MarkdownRenderer content={specContent} />
-              </div>
-            ) : (
-              <div className="text-xs py-4" style={{ color: 'var(--vscode-descriptionForeground)' }}>
-                {t('noContent')}
-              </div>
-            )}
-          </div>
-        ) : data ? (
+        {data ? (
           <>
             <ChangesSection
               changes={data.changes}
@@ -179,7 +146,12 @@ export const Dashboard: React.FC = () => {
               archivedLoading={archivedLoading}
               onOpenArchivedChange={handleOpenArchivedChange}
             />
-            <SpecsSection specs={data.specs} onOpenSpec={handleOpenSpec} />
+            <SpecsSection
+              specs={data.specs}
+              specRequirements={specRequirements}
+              onOpenSpec={handleOpenSpec}
+              onRequirementClick={handleRequirementClick}
+            />
           </>
         ) : loading ? (
           <div className="text-xs py-4" style={{ 

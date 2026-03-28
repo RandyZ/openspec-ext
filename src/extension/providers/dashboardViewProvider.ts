@@ -79,6 +79,31 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       this.panelManager.open(message.changeName);
       return;
     }
+    if (message.type === 'openSpecInEditor' && message.specId) {
+      this.openSpecPanel(message.specId, message.requirementIndex);
+      return;
+    }
     await handleWebviewMessage(message, webview, this.dataManager);
+  }
+
+  private async openSpecPanel(specId: string, _requirementIndex?: number): Promise<void> {
+    try {
+      const content = await this.dataManager.readSpec(specId);
+      const panel = vscode.window.createWebviewPanel(
+        'openspecSpecPreview',
+        `Spec: ${specId}`,
+        vscode.ViewColumn.One,
+        { enableScripts: true, localResourceRoots: [vscode.Uri.file(path.join(this.extensionPath, 'dist'))] }
+      );
+      panel.webview.html = getWebviewContent(panel.webview, this.extensionPath);
+      setTimeout(() => {
+        panel.webview.postMessage({ type: 'specContent', specId, content });
+      }, 200);
+      panel.webview.onDidReceiveMessage(async (msg) => {
+        await handleWebviewMessage(msg, panel.webview, this.dataManager);
+      });
+    } catch (err) {
+      vscode.window.showErrorMessage(`Failed to open spec: ${specId}`);
+    }
   }
 }

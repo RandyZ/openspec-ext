@@ -376,6 +376,24 @@ export class FileManagerService implements IOpenSpecContentAccess {
     return result;
   }
 
+  async getSpecRequirements(specId: string): Promise<string[]> {
+    const specPath = path.join(this.openspecDir, 'specs', specId, 'spec.md');
+    try {
+      const content = await fs.promises.readFile(specPath, 'utf-8');
+      const lines = content.split('\n');
+      const requirements: string[] = [];
+      for (const line of lines) {
+        const match = line.match(/^### Requirement:\s*(.+)/);
+        if (match) {
+          requirements.push(match[1].trim());
+        }
+      }
+      return requirements;
+    } catch {
+      return [];
+    }
+  }
+
   private async countRequirementsInSpec(specPath: string): Promise<number> {
     try {
       const content = await fs.promises.readFile(specPath, 'utf-8');

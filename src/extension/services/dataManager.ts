@@ -242,6 +242,10 @@ export class DataManager {
     return await this.contentAccess.readSpec(specId);
   }
 
+  async getSpecRequirements(specId: string): Promise<string[]> {
+    return await (this.contentAccess as any).getSpecRequirements?.(specId) ?? [];
+  }
+
   /**
    * Read delta spec (Content Access)
    */

@@ -6,10 +6,17 @@ import { t } from '../../i18n';
 
 interface SpecsSectionProps {
   specs: SpecInfo[];
+  specRequirements?: Record<string, string[]>;
   onOpenSpec?: (spec: SpecInfo) => void;
+  onRequirementClick?: (spec: SpecInfo, requirementIndex: number) => void;
 }
 
-export const SpecsSection: React.FC<SpecsSectionProps> = ({ specs, onOpenSpec }) => {
+export const SpecsSection: React.FC<SpecsSectionProps> = ({
+  specs,
+  specRequirements,
+  onOpenSpec,
+  onRequirementClick,
+}) => {
   return (
     <div className="mb-6">
       <h2
@@ -28,6 +35,8 @@ export const SpecsSection: React.FC<SpecsSectionProps> = ({ specs, onOpenSpec })
               key={spec.id}
               spec={spec}
               onClick={onOpenSpec}
+              requirements={specRequirements?.[spec.id]}
+              onRequirementClick={onRequirementClick}
             />
           ))}
         </div>

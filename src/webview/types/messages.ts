@@ -24,6 +24,8 @@ export type WebviewMessage =
   | { type: 'runCommand'; commandId: string; argsJson?: string; changeName?: string }
   | { type: 'fillChat'; prompt: string }
   | { type: 'getSpecContent'; specId: string }
+  | { type: 'getSpecRequirements'; specId: string }
+  | { type: 'openSpecInEditor'; specId: string; requirementIndex?: number }
   | { type: 'getTaskExecutionState'; changeName: string };
 
 // Message types from extension to webview
@@ -43,6 +45,7 @@ export type ExtensionMessage =
   | { type: 'runCommandResult'; success: boolean; message?: string }
   | { type: 'specContent'; specId: string; content: string }
   | { type: 'specContentError'; specId: string; message: string }
+  | { type: 'specRequirements'; specId: string; requirements: string[] }
   | { type: 'artifactInvalidated'; changeName: string; artifactTypes: string[] };
 
 // Data types
@@ -203,6 +206,17 @@ export const sendMessage = {
   getSpecContent: (specId: string): WebviewMessage => ({
     type: 'getSpecContent',
     specId,
+  }),
+
+  getSpecRequirements: (specId: string): WebviewMessage => ({
+    type: 'getSpecRequirements',
+    specId,
+  }),
+
+  openSpecInEditor: (specId: string, requirementIndex?: number): WebviewMessage => ({
+    type: 'openSpecInEditor',
+    specId,
+    ...(requirementIndex !== undefined ? { requirementIndex } : {}),
   }),
 
   getTaskExecutionState: (changeName: string): WebviewMessage => ({
