@@ -347,6 +347,35 @@ export class FileManagerService implements IOpenSpecContentAccess {
     return result;
   }
 
+  async listMainSpecs(): Promise<SpecInfo[]> {
+    const specsDir = path.join(this.openspecDir, 'specs');
+    const result: SpecInfo[] = [];
+    try {
+      const entries = await fs.promises.readdir(specsDir, { withFileTypes: true });
+      for (const ent of entries) {
+        if (!ent.isDirectory()) continue;
+        const specPath = path.join(specsDir, ent.name, 'spec.md');
+        try {
+          await fs.promises.access(specPath);
+          const requirementCount = await this.countRequirementsInSpec(specPath);
+          const relativePath = path.relative(path.dirname(this.openspecDir), specPath);
+          result.push({
+            id: ent.name,
+            requirementCount,
+            path: relativePath,
+          });
+        } catch {
+          // no spec.md
+        }
+      }
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        logger.debug(`Could not list main specs: ${(err as Error).message}`);
+      }
+    }
+    return result;
+  }
+
   private async countRequirementsInSpec(specPath: string): Promise<number> {
     try {
       const content = await fs.promises.readFile(specPath, 'utf-8');

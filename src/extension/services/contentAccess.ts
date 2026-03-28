@@ -25,6 +25,8 @@ export interface IOpenSpecContentAccess {
   listArchivedChanges(): Promise<ArchivedChangeInfo[]>;
   /** 当 CLI list --specs 为空时，从 changes 目录扫描 delta specs */
   listSpecsFromChanges(): Promise<SpecInfo[]>;
+  /** 列出主 specs（openspec/specs/ 目录） */
+  listMainSpecs(): Promise<SpecInfo[]>;
   /** 读主 spec 内容（openspec/specs/<id>/spec.md） */
   readSpec(specId: string): Promise<string>;
   /** 解析 change 的 .openspec.yaml 绝对路径（draft: openspec/changes/<name>/.openspec.yaml；archive: openspec/changes/archive/<dir>/.openspec.yaml） */

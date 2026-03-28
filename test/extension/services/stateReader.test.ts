@@ -40,6 +40,7 @@ describe('StateReader', () => {
       readDeltaSpec: vi.fn().mockResolvedValue(null),
       listArchivedChanges: vi.fn().mockResolvedValue([]),
       listSpecsFromChanges: vi.fn().mockResolvedValue([]),
+      listMainSpecs: vi.fn().mockResolvedValue([]),
       readSpec: vi.fn().mockRejectedValue(new Error('not implemented')),
       getChangeOpenspecYamlPath: vi.fn().mockReturnValue(''),
     };
@@ -99,23 +100,27 @@ describe('StateReader', () => {
     expect(mockContentAccess.readTasks).toHaveBeenCalledWith('my-change');
   });
 
-  it('listSpecs uses gateway first, then contentAccess when empty', async () => {
-    vi.mocked(mockGateway.listSpecs).mockResolvedValue([]);
-    const specs: SpecInfo[] = [{ id: 'delta-1', requirementCount: 2 }];
-    vi.mocked(mockContentAccess.listSpecsFromChanges).mockResolvedValue(specs);
+  it('listSpecs merges main specs and delta specs', async () => {
+    const mainSpecs: SpecInfo[] = [{ id: 'dashboard', requirementCount: 5 }];
+    const deltaSpecs: SpecInfo[] = [{ id: 'new-feature', requirementCount: 2 }];
+    vi.mocked(mockContentAccess.listMainSpecs).mockResolvedValue(mainSpecs);
+    vi.mocked(mockContentAccess.listSpecsFromChanges).mockResolvedValue(deltaSpecs);
     const reader = new StateReader(mockGateway, mockContentAccess);
     const result = await reader.listSpecs();
-    expect(result).toEqual(specs);
-    expect(mockContentAccess.listSpecsFromChanges).toHaveBeenCalledTimes(1);
+    expect(result).toHaveLength(2);
+    expect(result[0].id).toBe('dashboard');
+    expect(result[1].id).toBe('new-feature');
   });
 
-  it('listSpecs returns gateway result when non-empty', async () => {
-    const cliSpecs: SpecInfo[] = [{ id: 'main-spec', requirementCount: 5 }];
-    vi.mocked(mockGateway.listSpecs).mockResolvedValue(cliSpecs);
+  it('listSpecs deduplicates by id (main takes precedence)', async () => {
+    const mainSpecs: SpecInfo[] = [{ id: 'dashboard', requirementCount: 5 }];
+    const deltaSpecs: SpecInfo[] = [{ id: 'dashboard', requirementCount: 1 }];
+    vi.mocked(mockContentAccess.listMainSpecs).mockResolvedValue(mainSpecs);
+    vi.mocked(mockContentAccess.listSpecsFromChanges).mockResolvedValue(deltaSpecs);
     const reader = new StateReader(mockGateway, mockContentAccess);
     const result = await reader.listSpecs();
-    expect(result).toEqual(cliSpecs);
-    expect(mockContentAccess.listSpecsFromChanges).not.toHaveBeenCalled();
+    expect(result).toHaveLength(1);
+    expect(result[0].requirementCount).toBe(5);
   });
 
   it('listArchivedChanges delegates to contentAccess', async () => {

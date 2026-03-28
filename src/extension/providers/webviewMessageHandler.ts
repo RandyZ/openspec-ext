@@ -372,6 +372,22 @@ export async function handleWebviewMessage(
       break;
     }
 
+    case 'getSpecContent': {
+      const specId = message.specId;
+      if (typeof specId !== 'string' || !specId.trim()) break;
+      try {
+        const content = await dataManager.readSpec(specId);
+        webview.postMessage({ type: 'specContent', specId, content });
+      } catch (err) {
+        webview.postMessage({
+          type: 'specContentError',
+          specId,
+          message: (err as Error).message || 'Failed to read spec',
+        });
+      }
+      break;
+    }
+
     case 'fillChat': {
       const prompt = message.prompt;
       if (typeof prompt !== 'string' || !prompt.trim()) break;

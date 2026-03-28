@@ -23,6 +23,7 @@ export type WebviewMessage =
   | { type: 'requestCreateArtifact'; changeName: string; artifactType: string }
   | { type: 'runCommand'; commandId: string; argsJson?: string; changeName?: string }
   | { type: 'fillChat'; prompt: string }
+  | { type: 'getSpecContent'; specId: string }
   | { type: 'getTaskExecutionState'; changeName: string };
 
 // Message types from extension to webview
@@ -40,6 +41,8 @@ export type ExtensionMessage =
   | { type: 'taskExecutionFinished'; changeName: string; taskIndex: number; success: boolean; executionState?: Record<number, { success: boolean; timestamp: number }> }
   | { type: 'taskExecutionState'; changeName: string; executionState: Record<number, { success: boolean; timestamp: number }> }
   | { type: 'runCommandResult'; success: boolean; message?: string }
+  | { type: 'specContent'; specId: string; content: string }
+  | { type: 'specContentError'; specId: string; message: string }
   | { type: 'artifactInvalidated'; changeName: string; artifactTypes: string[] };
 
 // Data types
@@ -195,6 +198,11 @@ export const sendMessage = {
   fillChat: (prompt: string): WebviewMessage => ({
     type: 'fillChat',
     prompt,
+  }),
+
+  getSpecContent: (specId: string): WebviewMessage => ({
+    type: 'getSpecContent',
+    specId,
   }),
 
   getTaskExecutionState: (changeName: string): WebviewMessage => ({
