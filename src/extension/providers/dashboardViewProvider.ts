@@ -98,7 +98,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       panel.webview.html = getWebviewContent(panel.webview, this.extensionPath);
       setTimeout(() => {
         panel.webview.postMessage({ type: 'specContent', specId, content });
-      }, 200);
+      }, 1000);
       panel.webview.onDidReceiveMessage(async (msg) => {
         await handleWebviewMessage(msg, panel.webview, this.dataManager);
       });
