@@ -3,8 +3,7 @@ import { logger } from '../utils/logger';
 import type { TaskExecuteRequest } from './agentExecutor.types';
 import type { IOpenSpecContentAccess } from './contentAccess';
 import { getCurrentAdapter } from '../adapters';
-import { getPromptForFlow } from './openspecPromptHandler';
-import { OpenSpecCliService } from './openspecCli';
+import { t } from '../../i18n';
 
 export class TaskExecutorService {
   constructor(
@@ -23,7 +22,7 @@ export class TaskExecutorService {
 
     const tasks = await this.contentAccess.readTasks(changeName);
     if (taskIndex < 0 || taskIndex >= tasks.length) {
-      vscode.window.showErrorMessage(`任务索引无效: ${taskIndex}`);
+      vscode.window.showErrorMessage(t('task.invalidIndex', { index: taskIndex }));
       return { success: false };
     }
 
@@ -65,62 +64,39 @@ export class TaskExecutorService {
         .map((t) => `  ${t.taskNumber}. ${t.text}`)
         .join('\n');
       const more = incompletePreceding.length > maxShow
-        ? `\n  … 还有 ${incompletePreceding.length - maxShow} 项未完成`
+        ? t('task.moreIncomplete', { count: incompletePreceding.length - maxShow })
         : '';
       if (policy === 'block') {
         vscode.window.showErrorMessage(
-          `请先完成以下任务（当前为「先完成前置任务」策略）：\n${list}${more}\n\n可在设置中将 openspec.taskDependencyPolicy 改为 warn 以允许跳过前置任务执行。`
+          t('task.blockPolicy', { list, more })
         );
         return { success: false };
       }
       const choice = await vscode.window.showWarningMessage(
-        `以下任务尚未完成，是否仍要执行？\n${list}${more}`,
+        t('task.warnPrompt', { list, more }),
         { modal: true },
-        '继续执行',
-        '取消'
+        t('task.continue'),
+        t('task.cancel')
       );
-      if (choice !== '继续执行') return { success: false };
+      if (choice !== t('task.continue')) return { success: false };
     }
 
     const adapter = await getCurrentAdapter();
     if (!adapter) {
       vscode.window.showErrorMessage(
-        '当前没有可用的执行者。请安装 Cursor 或使用剪贴板（Clipboard）适配器。'
+        t('task.noAdapter')
       );
       return { success: false };
     }
 
-    const base = `openspec/changes/${changeName}`;
-    const contextFiles = [
-      `${base}/proposal.md`,
-      `${base}/design.md`,
-      `${base}/tasks.md`,
-    ];
     const request: TaskExecuteRequest = {
       changeName,
       taskIndex,
       taskText,
-      contextFiles,
+      contextFiles: [],
       workspaceRoot: this.workspaceRoot,
+      promptOverride: `/opsx:apply ${changeName}`,
     };
-
-    try {
-      const cliService = new OpenSpecCliService(this.workspaceRoot);
-      const formattedPrompt = await getPromptForFlow(
-        {
-          flow: 'apply',
-          changeName,
-          taskIndex,
-          taskText,
-          contextFiles,
-          workspaceRoot: this.workspaceRoot,
-        },
-        cliService
-      );
-      request.promptOverride = formattedPrompt;
-    } catch (e) {
-      logger.debug('TaskExecutorService: getPromptForFlow failed, adapter will use fallback', e as Error);
-    }
 
     try {
       const result =
@@ -130,15 +106,15 @@ export class TaskExecutorService {
 
       if (result.success) {
         vscode.window.showInformationMessage(
-          result.message || `已通过 ${adapter.displayName} 处理`
+          result.message || t('task.processedVia', { adapter: adapter.displayName })
         );
       } else {
-        vscode.window.showErrorMessage(result.message || '执行失败');
+        vscode.window.showErrorMessage(result.message || t('task.executionFailed'));
       }
       return { success: result.success };
     } catch (err) {
       logger.error('Task execution failed', err as Error);
-      vscode.window.showErrorMessage((err as Error).message || '执行失败');
+      vscode.window.showErrorMessage((err as Error).message || t('task.executionFailed'));
       return { success: false };
     }
   }

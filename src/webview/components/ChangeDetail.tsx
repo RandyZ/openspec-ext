@@ -1,12 +1,14 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useVscode } from '../hooks/useVscode';
 import { sendMessage } from '../types/messages';
 import { ActionBar } from './ActionBar';
 import { ArtifactViewer } from './ArtifactViewer';
 import { TaskList } from './TaskList';
+import { WorkflowStepIndicator } from './WorkflowStepIndicator';
+import { deriveWorkflowState, type WorkflowStep } from '../utils/workflowState';
+import { t } from '../../i18n';
 
-const MISSING_ARTIFACT_MESSAGE =
-  '该内容尚未创建或文件已丢失。可使用 /opsx:continue 生成对应 artifact，或在编辑器中打开 change 目录查看。';
+const MISSING_ARTIFACT_MESSAGE = t('artifact.missing');
 
 export interface ChangeDetailProps {
   changeName: string;
@@ -14,7 +16,7 @@ export interface ChangeDetailProps {
   debug?: boolean;
 }
 
-const TABS_WITH_VERIFY = [
+const ALL_TABS = [
   { id: 'proposal' as const, label: 'Proposal' },
   { id: 'specs' as const, label: 'Specs' },
   { id: 'design' as const, label: 'Design' },
@@ -22,7 +24,8 @@ const TABS_WITH_VERIFY = [
   { id: 'verify' as const, label: 'Verify' },
 ];
 
-const TABS_WITHOUT_VERIFY = TABS_WITH_VERIFY.filter((t) => t.id !== 'verify');
+const TABS_WITH_VERIFY = ALL_TABS;
+const TABS_WITHOUT_VERIFY = ALL_TABS.filter((t) => t.id !== 'verify');
 
 /** Cache key: artifactType (e.g. proposal, design, tasks) or specs:${specId} */
 const cacheKey = (type: string, specId?: string | null) =>
@@ -44,12 +47,12 @@ function getCreateDisabledReason(
       return undefined;
     case 'specs':
     case 'design':
-      return has('proposal') ? undefined : '需要先创建 Proposal';
+      return has('proposal') ? undefined : t('artifact.needProposal');
     case 'tasks': {
       const missing: string[] = [];
       if (!has('specs')) missing.push('Specs');
       if (!has('design')) missing.push('Design');
-      return missing.length === 0 ? undefined : `需要先创建 ${missing.join(' 和 ')}`;
+      return missing.length === 0 ? undefined : t('artifact.needBefore', { items: missing.join(t('artifact.and')) });
     }
     default:
       return undefined;
@@ -58,15 +61,34 @@ function getCreateDisabledReason(
 
 export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existingArtifactIds, debug = false }) => {
   const { postMessage, onMessage } = useVscode();
-  const tabs = debug ? TABS_WITH_VERIFY : TABS_WITHOUT_VERIFY;
   const [activeTab, setActiveTab] = useState<'proposal' | 'specs' | 'design' | 'tasks' | 'verify'>('proposal');
   const contentCacheRef = useRef<Map<string, string>>(new Map());
+  const [completedTasks, setCompletedTasks] = useState(0);
+  const [totalTasks, setTotalTasks] = useState(0);
+
+  const isArchived = changeName.startsWith('archive:');
+
+  const workflowState = useMemo(
+    () =>
+      deriveWorkflowState(
+        changeName,
+        existingArtifactIds,
+        completedTasks,
+        totalTasks,
+        isArchived,
+        false
+      ),
+    [changeName, existingArtifactIds, completedTasks, totalTasks, isArchived]
+  );
+
+  const showVerifyTab = debug || (completedTasks > 0 && totalTasks > 0);
+  const tabs = showVerifyTab ? TABS_WITH_VERIFY : TABS_WITHOUT_VERIFY;
 
   useEffect(() => {
-    if (!debug && activeTab === 'verify') {
+    if (!showVerifyTab && activeTab === 'verify') {
       setActiveTab('proposal');
     }
-  }, [debug, activeTab]);
+  }, [showVerifyTab, activeTab]);
   const [content, setContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -160,6 +182,13 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
         setContent(msg.content ?? '');
         setLoading(false);
         setError(null);
+        if (msg.artifactType === 'tasks' && msg.content) {
+          const lines = msg.content.split('\n');
+          const taskLines = lines.filter((l: string) => /^\s*-\s*\[[ x]\]/.test(l));
+          const doneLines = taskLines.filter((l: string) => /^\s*-\s*\[x\]/i.test(l));
+          setTotalTasks(taskLines.length);
+          setCompletedTasks(doneLines.length);
+        }
       } else if (msg.type === 'artifactContentError' && msg.changeName === changeName) {
         setError(msg.message ?? 'Failed to load');
         setErrorCode(msg.code);
@@ -283,7 +312,21 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
     postMessage(sendMessage.runCommand(commandId, verifyArgsJson.trim() || undefined, changeName));
   };
 
-  const isArchived = changeName.startsWith('archive:');
+  const handleFillChat = (command: string) => {
+    if (!command) return;
+    postMessage(sendMessage.fillChat(command));
+  };
+
+  const handleStepClick = (step: WorkflowStep) => {
+    const tabSteps: WorkflowStep[] = ['proposal', 'specs', 'design', 'tasks'];
+    if (tabSteps.includes(step)) {
+      setActiveTab(step as 'proposal' | 'specs' | 'design' | 'tasks');
+    } else if (step === 'verify') {
+      if (showVerifyTab) setActiveTab('verify');
+    } else if (step === 'apply' && !isArchived) {
+      handleFillChat(`/opsx:apply ${changeName}`);
+    }
+  };
 
   return (
     <div
@@ -303,18 +346,26 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
           }}
           onClick={handleShowInSidebar}
         >
-          Show in sidebar
+          {t('action.showInSidebar')}
         </button>
         <span className="font-semibold text-sm">
           {changeName.startsWith('archive:') ? `${changeName.slice(8)} (archived)` : changeName}
         </span>
       </div>
 
+      <WorkflowStepIndicator
+        steps={workflowState.steps}
+        onStepClick={handleStepClick}
+        isArchived={isArchived}
+      />
+
       <ActionBar
         changeName={changeName}
         isArchived={isArchived}
-        onCopyFf={(name) => postMessage(sendMessage.copyToClipboard(`/opsx-ff ${name}`))}
-        onCopyApply={(name) => postMessage(sendMessage.copyToClipboard(`/opsx-apply ${name}`))}
+        workflowState={workflowState}
+        onAction={handleFillChat}
+        onCopyFf={(name) => postMessage(sendMessage.copyToClipboard(`/opsx:ff ${name}`))}
+        onCopyApply={(name) => postMessage(sendMessage.copyToClipboard(`/opsx:apply ${name}`))}
         onOpenInEditor={handleOpenInEditor}
         onArchive={(name) => postMessage(sendMessage.archiveChange(name))}
         onRefresh={handleRefresh}
@@ -339,7 +390,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
 
       {activeTab === 'specs' && deltaSpecIds.length > 1 && (
         <div className="px-3 py-2 flex items-center gap-2 border-b" style={{ borderColor: 'var(--vscode-panel-border)' }}>
-          <span className="text-xs" style={{ color: 'var(--vscode-descriptionForeground)' }}>Spec:</span>
+          <span className="text-xs" style={{ color: 'var(--vscode-descriptionForeground)' }}>{t('spec.label')}</span>
           <select
             className="text-xs rounded px-2 py-1 flex-1 max-w-[200px]"
             style={{
@@ -359,75 +410,94 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
 
       <div className="p-3 flex-1 overflow-auto">
         {activeTab === 'verify' ? (
-          <div className="flex flex-col gap-3 max-w-lg">
-            <div>
-              <label className="block text-xs mb-1" style={{ color: 'var(--vscode-descriptionForeground)' }}>
-                Command ID
-              </label>
-              <input
-                type="text"
-                value={verifyCommandId}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setVerifyCommandId(e.target.value)}
-                placeholder="composer.newAgentChat"
-                className="w-full px-2 py-1.5 text-sm rounded"
-                style={{
-                  background: 'var(--vscode-input-background)',
-                  color: 'var(--vscode-input-foreground)',
-                  border: '1px solid var(--vscode-input-border)',
-                }}
-              />
-            </div>
-            <div>
-              <label className="block text-xs mb-1" style={{ color: 'var(--vscode-descriptionForeground)' }}>
-                参数 (JSON，可选)
-              </label>
-              <textarea
-                value={verifyArgsJson}
-                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setVerifyArgsJson(e.target.value)}
-                placeholder='{"initialPrompt": "hello"}'
-                rows={4}
-                className="w-full px-2 py-1.5 text-sm rounded font-mono"
-                style={{
-                  background: 'var(--vscode-input-background)',
-                  color: 'var(--vscode-input-foreground)',
-                  border: '1px solid var(--vscode-input-border)',
-                }}
-              />
+          <div className="flex flex-col gap-4 max-w-lg">
+            <div className="text-sm" style={{ color: 'var(--vscode-foreground)' }}>
+              <p className="mb-2">
+                <strong>/opsx:verify</strong> {t('verify.description')}
+              </p>
+              <ul className="list-disc pl-5 space-y-1" style={{ color: 'var(--vscode-descriptionForeground)' }}>
+                <li><strong>{t('verify.completeness').split(':')[0]}</strong>：{t('verify.completeness').split(':').slice(1).join(':').trim()}</li>
+                <li><strong>{t('verify.correctness').split(':')[0]}</strong>：{t('verify.correctness').split(':').slice(1).join(':').trim()}</li>
+                <li><strong>{t('verify.coherence').split(':')[0]}</strong>：{t('verify.coherence').split(':').slice(1).join(':').trim()}</li>
+              </ul>
             </div>
             {!isArchived && (
               <button
                 type="button"
-                onClick={handleRunCommand}
-                className="px-3 py-1.5 text-sm rounded cursor-pointer w-fit"
+                onClick={() => handleFillChat(`/opsx:verify ${changeName}`)}
+                className="px-4 py-2 text-sm rounded cursor-pointer w-fit font-medium"
                 style={{
                   background: 'var(--vscode-button-background)',
                   color: 'var(--vscode-button-foreground)',
                 }}
               >
-                执行
+                {t('verify.run')}
               </button>
             )}
-            {runCommandResult !== null && (
-              <div
-                className="text-sm px-2 py-1.5 rounded"
-                style={{
-                  background: runCommandResult.success
-                    ? 'var(--vscode-editor-inactiveSelectionBackground)'
-                    : 'var(--vscode-inputValidation-errorBackground)',
-                  color: runCommandResult.success
-                    ? 'var(--vscode-foreground)'
-                    : 'var(--vscode-errorForeground)',
-                }}
-              >
-                {runCommandResult.success ? 'Command executed.' : runCommandResult.message ?? 'Failed'}
-              </div>
+            {debug && (
+              <>
+                <hr style={{ borderColor: 'var(--vscode-panel-border)' }} />
+                <div className="text-xs" style={{ color: 'var(--vscode-descriptionForeground)' }}>{t('verify.debugLabel')}</div>
+                <div className="flex flex-col gap-2">
+                  <input
+                    type="text"
+                    value={verifyCommandId}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setVerifyCommandId(e.target.value)}
+                    placeholder="composer.newAgentChat"
+                    className="w-full px-2 py-1.5 text-sm rounded"
+                    style={{
+                      background: 'var(--vscode-input-background)',
+                      color: 'var(--vscode-input-foreground)',
+                      border: '1px solid var(--vscode-input-border)',
+                    }}
+                  />
+                  <textarea
+                    value={verifyArgsJson}
+                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setVerifyArgsJson(e.target.value)}
+                    placeholder='{"initialPrompt": "hello"}'
+                    rows={3}
+                    className="w-full px-2 py-1.5 text-sm rounded font-mono"
+                    style={{
+                      background: 'var(--vscode-input-background)',
+                      color: 'var(--vscode-input-foreground)',
+                      border: '1px solid var(--vscode-input-border)',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleRunCommand}
+                    className="px-3 py-1.5 text-xs rounded cursor-pointer w-fit"
+                    style={{
+                      background: 'var(--vscode-button-secondaryBackground)',
+                      color: 'var(--vscode-button-secondaryForeground)',
+                    }}
+                  >
+                    {t('task.execute')}
+                  </button>
+                  {runCommandResult !== null && (
+                    <div
+                      className="text-xs px-2 py-1 rounded"
+                      style={{
+                        background: runCommandResult.success
+                          ? 'var(--vscode-editor-inactiveSelectionBackground)'
+                          : 'var(--vscode-inputValidation-errorBackground)',
+                        color: runCommandResult.success
+                          ? 'var(--vscode-foreground)'
+                          : 'var(--vscode-errorForeground)',
+                      }}
+                    >
+                      {runCommandResult.success ? t('verify.executed') : runCommandResult.message ?? 'Failed'}
+                    </div>
+                  )}
+                </div>
+              </>
             )}
           </div>
         ) : activeTab === 'tasks' && content !== null && !loading && !error ? (
           <>
             {agentAdapters.available.length > 0 && (
               <div className="flex items-center gap-2 mb-3 text-sm">
-                <span style={{ color: 'var(--vscode-descriptionForeground)' }}>执行者：</span>
+                <span style={{ color: 'var(--vscode-descriptionForeground)' }}>{t('task.executor')}</span>
                 <select
                   value={agentAdapters.currentId ?? ''}
                   onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -453,7 +523,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
             )}
             {isArchived && (
               <p className="text-xs mb-2" style={{ color: 'var(--vscode-descriptionForeground)' }}>
-                此 change 已归档，仅可查看
+                {t('archive.readOnlyLabel')}
               </p>
             )}
             <TaskList
@@ -480,6 +550,14 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
             onOpenInEditor={handleOpenInEditor}
             onCreateWithAi={isArchived ? undefined : () =>
               postMessage(sendMessage.requestCreateArtifact(changeName, activeTab))
+            }
+            onContinue={isArchived ? undefined : () =>
+              handleFillChat(`/opsx:continue ${changeName}`)
+            }
+            onExplore={
+              !isArchived && activeTab === 'proposal' && !(existingArtifactIds?.includes('proposal'))
+                ? () => handleFillChat(`/opsx:explore ${changeName}`)
+                : undefined
             }
             createDisabledReason={getCreateDisabledReason(activeTab, existingArtifactIds)}
           />

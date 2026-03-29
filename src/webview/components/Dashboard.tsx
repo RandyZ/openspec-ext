@@ -2,10 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { useVscode } from '../hooks/useVscode';
 import { useAppState } from '../context/AppContext';
 import { sendMessage } from '../types/messages';
-import type { ArchivedChangeInfo } from '../types/messages';
+import type { ArchivedChangeInfo, SpecInfo } from '../types/messages';
 import { Header } from './Header';
 import { ChangesSection } from './ChangesSection';
 import { SpecsSection } from './SpecsSection';
+import { t } from '../../i18n';
 
 export const Dashboard: React.FC = () => {
   const { postMessage, onMessage } = useVscode();
@@ -13,6 +14,7 @@ export const Dashboard: React.FC = () => {
   const [archivedExpanded, setArchivedExpanded] = useState(false);
   const [archivedItems, setArchivedItems] = useState<ArchivedChangeInfo[]>([]);
   const [archivedLoading, setArchivedLoading] = useState(false);
+  const [specRequirements, setSpecRequirements] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
     // Listen for messages from extension
@@ -24,8 +26,18 @@ export const Dashboard: React.FC = () => {
         if (message.debug !== undefined) {
           dispatch({ type: 'SET_DEBUG', payload: message.debug });
         }
+        if (message.data?.specs) {
+          for (const spec of message.data.specs) {
+            postMessage(sendMessage.getSpecRequirements(spec.id));
+          }
+        }
       } else if (message.type === 'error') {
         dispatch({ type: 'SET_ERROR', payload: message.message });
+      } else if (message.type === 'specRequirements') {
+        setSpecRequirements((prev) => ({
+          ...prev,
+          [message.specId]: message.requirements ?? [],
+        }));
       } else if (message.type === 'archivedChanges') {
         setArchivedItems(message.items ?? []);
         setArchivedLoading(false);
@@ -66,21 +78,30 @@ export const Dashboard: React.FC = () => {
   };
 
   const handleCopyFf = (changeName: string) => {
-    postMessage(sendMessage.copyToClipboard(`/opsx-ff ${changeName}`));
+    postMessage(sendMessage.copyToClipboard(`/opsx:ff ${changeName}`));
   };
 
   const handleCopyApply = (changeName: string) => {
-    postMessage(sendMessage.copyToClipboard(`/opsx-apply ${changeName}`));
+    postMessage(sendMessage.copyToClipboard(`/opsx:apply ${changeName}`));
   };
 
   const handleArchive = (changeName: string) => {
     postMessage(sendMessage.archiveChange(changeName));
   };
 
-  const handleOpenSpec = (spec: { id: string; path?: string }) => {
-    if (spec.path) {
-      postMessage(sendMessage.openSpec(spec.path));
+  const handleFillChat = (command: string) => {
+    postMessage(sendMessage.fillChat(command));
+  };
+
+  const handleOpenSpec = (spec: SpecInfo) => {
+    postMessage(sendMessage.openSpecInEditor(spec.id));
+    if (!specRequirements[spec.id]) {
+      postMessage(sendMessage.getSpecRequirements(spec.id));
     }
+  };
+
+  const handleRequirementClick = (spec: SpecInfo, requirementIndex: number) => {
+    postMessage(sendMessage.openSpecInEditor(spec.id, requirementIndex));
   };
 
   const { data, loading, error } = state;
@@ -118,25 +139,31 @@ export const Dashboard: React.FC = () => {
               onCopyFf={handleCopyFf}
               onCopyApply={handleCopyApply}
               onArchive={handleArchive}
+              onFillChat={handleFillChat}
               archivedExpanded={archivedExpanded}
               onArchivedToggle={handleArchivedToggle}
               archivedItems={archivedItems}
               archivedLoading={archivedLoading}
               onOpenArchivedChange={handleOpenArchivedChange}
             />
-            <SpecsSection specs={data.specs} onOpenSpec={handleOpenSpec} />
+            <SpecsSection
+              specs={data.specs}
+              specRequirements={specRequirements}
+              onOpenSpec={handleOpenSpec}
+              onRequirementClick={handleRequirementClick}
+            />
           </>
         ) : loading ? (
           <div className="text-xs py-4" style={{ 
             color: 'var(--vscode-descriptionForeground)' 
           }}>
-            Loading OpenSpec data...
+            {t('dashboard.loading')}
           </div>
         ) : (
           <div className="text-xs py-4" style={{ 
             color: 'var(--vscode-errorForeground)' 
           }}>
-            Failed to load data. Try refreshing.
+            {t('dashboard.loadFailed')}
           </div>
         )}
       </div>

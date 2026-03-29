@@ -3,6 +3,7 @@ import { logger } from '../utils/logger';
 import { DataManager } from '../services/dataManager';
 import { DashboardViewProvider } from '../providers/dashboardViewProvider';
 import { getAvailableAdapters, getCurrentAdapter } from '../adapters';
+import { t } from '../../i18n';
 
 export class CommandManager {
   constructor(
@@ -54,7 +55,7 @@ export class CommandManager {
       }
     } catch (error) {
       logger.error('Failed to open dashboard', error as Error);
-      vscode.window.showErrorMessage('Failed to open OpenSpec dashboard');
+      vscode.window.showErrorMessage(t('command.dashboardFailed'));
     }
   }
 
@@ -68,7 +69,7 @@ export class CommandManager {
       await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: 'Refreshing OpenSpec data...',
+          title: t('command.refreshing'),
           cancellable: false,
         },
         async () => {
@@ -76,10 +77,10 @@ export class CommandManager {
         }
       );
 
-      vscode.window.showInformationMessage('OpenSpec data refreshed');
+      vscode.window.showInformationMessage(t('command.refreshed'));
     } catch (error) {
       logger.error('Failed to refresh data', error as Error);
-      vscode.window.showErrorMessage('Failed to refresh OpenSpec data');
+      vscode.window.showErrorMessage(t('command.refreshFailed'));
     }
   }
 
@@ -89,14 +90,14 @@ export class CommandManager {
   private async handleNewChange(): Promise<void> {
     try {
       const name = await vscode.window.showInputBox({
-        prompt: 'Enter change name',
-        placeHolder: 'e.g., add-authentication',
+        prompt: t('command.enterName'),
+        placeHolder: t('command.namePlaceholder'),
         validateInput: (value) => {
           if (!value) {
-            return 'Change name is required';
+            return t('command.nameRequired');
           }
           if (!/^[a-z0-9-]+$/.test(value)) {
-            return 'Use lowercase letters, numbers, and hyphens only';
+            return t('command.nameFormat');
           }
           return null;
         },
@@ -111,7 +112,7 @@ export class CommandManager {
       await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: `Creating change: ${name}...`,
+          title: t('command.creating', { name }),
           cancellable: false,
         },
         async () => {
@@ -119,10 +120,10 @@ export class CommandManager {
         }
       );
 
-      vscode.window.showInformationMessage(`Change "${name}" created`);
+      vscode.window.showInformationMessage(t('command.created', { name }));
     } catch (error) {
       logger.error('Failed to create change', error as Error);
-      vscode.window.showErrorMessage('Failed to create change');
+      vscode.window.showErrorMessage(t('command.createFailed'));
     }
   }
 
@@ -140,12 +141,12 @@ export class CommandManager {
         }));
 
         if (items.length === 0) {
-          vscode.window.showInformationMessage('No changes to archive');
+          vscode.window.showInformationMessage(t('command.noChanges'));
           return;
         }
 
         const selected = await vscode.window.showQuickPick(items, {
-          placeHolder: 'Select change to archive',
+          placeHolder: t('command.selectArchive'),
         });
 
         if (!selected) {
@@ -157,12 +158,12 @@ export class CommandManager {
 
       // Confirm archive
       const confirm = await vscode.window.showWarningMessage(
-        `Archive change "${changeName}"?`,
+        t('command.archiveConfirm', { name: changeName }),
         { modal: true },
-        'Archive'
+        t('command.archive')
       );
 
-      if (confirm !== 'Archive') {
+      if (confirm !== t('command.archive')) {
         return;
       }
 
@@ -171,7 +172,7 @@ export class CommandManager {
       await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
-          title: `Archiving change: ${changeName}...`,
+          title: t('command.archiving', { name: changeName }),
           cancellable: false,
         },
         async () => {
@@ -179,10 +180,10 @@ export class CommandManager {
         }
       );
 
-      vscode.window.showInformationMessage(`Change "${changeName}" archived`);
+      vscode.window.showInformationMessage(t('command.archived', { name: changeName }));
     } catch (error) {
       logger.error('Failed to archive change', error as Error);
-      vscode.window.showErrorMessage('Failed to archive change');
+      vscode.window.showErrorMessage(t('command.archiveFailed'));
     }
   }
 
@@ -197,26 +198,13 @@ export class CommandManager {
     const artifactLabel = this.getArtifactLabel(artifactType);
     vscode.window.showInformationMessage(
       name
-        ? `已复制命令，请在 AI 对话中粘贴以生成 ${artifactLabel}`
-        : '已复制 /opsx:continue，请在 AI 对话中粘贴以生成对应 artifact'
+        ? t('command.copiedContinue', { artifact: artifactLabel })
+        : t('command.copiedContinueGeneric')
     );
   }
 
-  private buildContinuePrompt(changeName: string | undefined, artifactType: string | undefined): string {
-    const base = changeName ? `/opsx:continue ${changeName}` : '/opsx:continue';
-    if (!changeName || !artifactType) return base;
-    switch (artifactType) {
-      case 'proposal':
-        return `${base}\n请创建 Proposal artifact（change 的需求提案文档）`;
-      case 'specs':
-        return `${base}\n请创建 Specs artifacts（基于 Proposal 的功能规格文档）`;
-      case 'design':
-        return `${base}\n请创建 Design artifact（基于 Proposal 的技术设计文档）`;
-      case 'tasks':
-        return `${base}\n请创建 Tasks artifact（基于 Specs 和 Design 的实施任务清单）`;
-      default:
-        return base;
-    }
+  private buildContinuePrompt(changeName: string | undefined, _artifactType: string | undefined): string {
+    return changeName ? `/opsx:continue ${changeName}` : '/opsx:continue';
   }
 
   private getArtifactLabel(artifactType: string | undefined): string {
@@ -236,26 +224,26 @@ export class CommandManager {
     try {
       const available = await getAvailableAdapters();
       if (available.length === 0) {
-        vscode.window.showInformationMessage('当前没有可用的执行者。');
+        vscode.window.showInformationMessage(t('adapter.noAvailable'));
         return;
       }
       const current = await getCurrentAdapter();
       const items = available.map((a) => ({
         label: a.displayName,
-        description: a.id === current?.id ? '当前' : undefined,
+        description: a.id === current?.id ? t('adapter.current') : undefined,
         id: a.id,
       }));
       const selected = await vscode.window.showQuickPick(items, {
-        placeHolder: '选择任务执行者',
+        placeHolder: t('adapter.selectPlaceholder'),
         matchOnDescription: true,
       });
       if (!selected) return;
       const config = vscode.workspace.getConfiguration('openspec');
       await config.update('preferredAgentAdapter', selected.id, vscode.ConfigurationTarget.Global);
-      vscode.window.showInformationMessage(`已切换执行者: ${selected.label}`);
+      vscode.window.showInformationMessage(t('adapter.switched', { name: selected.label }));
     } catch (error) {
       logger.error('Failed to select agent adapter', error as Error);
-      vscode.window.showErrorMessage('选择执行者失败');
+      vscode.window.showErrorMessage(t('adapter.selectFailed'));
     }
   }
 }

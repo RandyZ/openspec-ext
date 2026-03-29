@@ -1,6 +1,7 @@
 import { spawn } from 'child_process';
 import * as vscode from 'vscode';
 import { logger } from '../utils/logger';
+import { t } from '../../i18n';
 import {
   ChangeInfo,
   ArtifactStatus,
@@ -405,11 +406,12 @@ export class OpenSpecCliService {
    * Show user-friendly error notification
    */
   showCliNotFoundError(): void {
-    const message = 'OpenSpec CLI not found. Please install it first.';
+    const message = t('cli.notFound');
+    const installBtn = t('cli.installInstructions');
     vscode.window
-      .showErrorMessage(message, 'Install Instructions')
+      .showErrorMessage(message, installBtn)
       .then((selection) => {
-        if (selection === 'Install Instructions') {
+        if (selection === installBtn) {
           vscode.env.openExternal(
             vscode.Uri.parse('https://github.com/Fission-AI/OpenSpec#quick-start')
           );
@@ -421,14 +423,16 @@ export class OpenSpecCliService {
    * Show workspace not initialized error
    */
   showWorkspaceNotInitializedError(): void {
-    const message = 'OpenSpec not initialized in this workspace.';
+    const message = t('cli.notInitialized');
+    const initBtn = t('cli.initializeNow');
+    const learnMoreBtn = t('cli.learnMore');
     vscode.window
-      .showErrorMessage(message, 'Initialize Now', 'Learn More')
+      .showErrorMessage(message, initBtn, learnMoreBtn)
       .then((selection) => {
-        if (selection === 'Initialize Now') {
+        if (selection === initBtn) {
           // TODO: Run openspec init
-          vscode.window.showInformationMessage('Run: openspec init');
-        } else if (selection === 'Learn More') {
+          vscode.window.showInformationMessage(t('cli.runInit'));
+        } else if (selection === learnMoreBtn) {
           vscode.env.openExternal(
             vscode.Uri.parse('https://github.com/Fission-AI/OpenSpec/blob/main/docs/getting-started.md')
           );

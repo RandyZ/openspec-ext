@@ -3,6 +3,8 @@ import { AppProvider, useAppState } from './context/AppContext';
 import { useVscode } from './hooks/useVscode';
 import { Dashboard } from './components/Dashboard';
 import { ChangeDetail } from './components/ChangeDetail';
+import { SpecViewer } from './components/SpecViewer';
+import { setLocale } from '../i18n';
 
 function idsEqual(a: string[] | undefined, b: string[] | undefined): boolean {
   if (a === b) return true;
@@ -13,17 +15,27 @@ function idsEqual(a: string[] | undefined, b: string[] | undefined): boolean {
   return sa.every((id, i) => id === sb[i]);
 }
 
+function initWebviewLocale() {
+  const lang = document.documentElement.lang || navigator.language || 'en';
+  setLocale(lang);
+}
+
 function AppContent() {
   const { state, dispatch } = useAppState();
   const { onMessage } = useVscode();
   const [panelChangeName, setPanelChangeName] = useState<string | null>(null);
   const [existingArtifactIds, setExistingArtifactIds] = useState<string[] | undefined>(undefined);
+  const [panelSpecId, setPanelSpecId] = useState<string | null>(null);
+  const [panelSpecContent, setPanelSpecContent] = useState<string | null>(null);
+
+  useEffect(() => { initWebviewLocale(); }, []);
 
   useEffect(() => {
     const cleanup = onMessage((event: MessageEvent) => {
       const msg = event.data;
       if (msg.type === 'setContext' && msg.view === 'changeDetail' && msg.changeName) {
         setPanelChangeName(msg.changeName);
+        setPanelSpecId(null);
         setExistingArtifactIds((prev) => {
           const next = msg.existingArtifactIds as string[] | undefined;
           if (idsEqual(prev, next)) return prev;
@@ -33,10 +45,13 @@ function AppContent() {
         if (msg.debug !== undefined) {
           dispatch({ type: 'SET_DEBUG', payload: msg.debug });
         }
+      } else if (msg.type === 'specContent' && msg.specId && !panelChangeName) {
+        setPanelSpecId(msg.specId);
+        setPanelSpecContent(msg.content ?? '');
       }
     });
     return cleanup;
-  }, [onMessage, dispatch]);
+  }, [onMessage, dispatch, panelChangeName]);
 
   if (panelChangeName) {
     return (
@@ -46,6 +61,9 @@ function AppContent() {
         debug={state.debug}
       />
     );
+  }
+  if (panelSpecId) {
+    return <SpecViewer specId={panelSpecId} initialContent={panelSpecContent ?? undefined} />;
   }
   if (state.selectedChange) {
     return <ChangeDetail changeName={state.selectedChange} debug={state.debug} />;

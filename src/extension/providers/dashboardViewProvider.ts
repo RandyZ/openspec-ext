@@ -8,6 +8,7 @@ import { handleWebviewMessage, getWebviewContent } from './webviewMessageHandler
 export class DashboardViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'openspec.dashboardView';
   private _view?: vscode.WebviewView;
+  private specPanels = new Map<string, vscode.WebviewPanel>();
 
   constructor(
     private dataManager: DataManager,
@@ -79,6 +80,47 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       this.panelManager.open(message.changeName);
       return;
     }
+    if (message.type === 'openSpecInEditor' && message.specId) {
+      this.openSpecPanel(message.specId, message.requirementIndex);
+      return;
+    }
     await handleWebviewMessage(message, webview, this.dataManager);
+  }
+
+  private async openSpecPanel(specId: string, _requirementIndex?: number): Promise<void> {
+    const existing = this.specPanels.get(specId);
+    if (existing) {
+      existing.reveal(vscode.ViewColumn.One);
+      const content = await this.dataManager.readSpec(specId);
+      existing.webview.postMessage({ type: 'specContent', specId, content });
+      return;
+    }
+
+    try {
+      const content = await this.dataManager.readSpec(specId);
+      const panel = vscode.window.createWebviewPanel(
+        'openspecSpecPreview',
+        `Spec: ${specId}`,
+        vscode.ViewColumn.One,
+        {
+          enableScripts: true,
+          retainContextWhenHidden: true,
+          localResourceRoots: [vscode.Uri.file(path.join(this.extensionPath, 'dist'))],
+        }
+      );
+      this.specPanels.set(specId, panel);
+      panel.webview.html = getWebviewContent(panel.webview, this.extensionPath);
+      setTimeout(() => {
+        panel.webview.postMessage({ type: 'specContent', specId, content });
+      }, 200);
+      panel.webview.onDidReceiveMessage(async (msg) => {
+        await handleWebviewMessage(msg, panel.webview, this.dataManager);
+      });
+      panel.onDidDispose(() => {
+        this.specPanels.delete(specId);
+      });
+    } catch (err) {
+      vscode.window.showErrorMessage(`Failed to open spec: ${specId}`);
+    }
   }
 }

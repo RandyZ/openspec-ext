@@ -1,4 +1,5 @@
 import React from 'react';
+import { t } from '../../i18n';
 
 interface HeaderProps {
   onRefresh: () => void;
@@ -28,7 +29,7 @@ export const Header: React.FC<HeaderProps> = ({ onRefresh, onNewChange, loading 
             cursor: loading ? 'not-allowed' : 'pointer',
           }}
         >
-          {loading ? '⟳ Loading...' : '⟳ Refresh'}
+          {loading ? `⟳ ${t('header.loading')}` : `⟳ ${t('header.refresh')}`}
         </button>
         {onNewChange && (
           <button
@@ -40,7 +41,7 @@ export const Header: React.FC<HeaderProps> = ({ onRefresh, onNewChange, loading 
               cursor: 'pointer',
             }}
           >
-            + New Change
+            {t('header.newChange')}
           </button>
         )}
       </div>

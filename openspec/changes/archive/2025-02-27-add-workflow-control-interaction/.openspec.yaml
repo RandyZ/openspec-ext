@@ -1,0 +1,10 @@
+schema: spec-driven
+created: 2026-02-25
+extension:
+  taskExecution:
+    "0":
+      success: true
+      timestamp: 1772246285624
+    "30":
+      success: true
+      timestamp: 1772593451761

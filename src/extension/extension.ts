@@ -5,18 +5,21 @@ import { DataManager } from './services/dataManager';
 import { CommandManager } from './commands/commandManager';
 import { DashboardViewProvider } from './providers/dashboardViewProvider';
 import { ChangeDetailPanelManager } from './providers/changeDetailPanelManager';
+import { setLocale, t } from '../i18n';
 
 let dataManager: DataManager | null = null;
 
 export async function activate(context: vscode.ExtensionContext) {
   initLogger();
-  logger.info('OpenSpec extension is activating...');
+  const detectedLocale = vscode.env.language;
+  setLocale(detectedLocale);
+  logger.info(`OpenSpec extension is activating... (locale: ${detectedLocale})`);
 
   try {
     const workspaceRoot = await getOpenSpecWorkspaceRoot();
     if (!workspaceRoot) {
       logger.error('No workspace folder found');
-      vscode.window.showErrorMessage('OpenSpec: No workspace folder found');
+      vscode.window.showErrorMessage(t('extension.noWorkspace'));
       return;
     }
     logger.info(`[archived] activate: using workspaceRoot=${workspaceRoot}`);

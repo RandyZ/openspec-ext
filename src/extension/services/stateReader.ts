@@ -88,11 +88,24 @@ export class StateReader {
     return this.contentAccess.artifactExists(changeName, artifactType);
   }
 
-  /** Spec 列表：CLI list --specs，空时 fallback 到 Content Access 从 changes 列出 */
+  /** Spec 列表：合并主 specs + 活跃 change 的 delta specs */
   async listSpecs(): Promise<SpecInfo[]> {
-    const cliSpecs = await this.gateway.listSpecs();
-    if (cliSpecs.length > 0) return cliSpecs;
-    return this.contentAccess.listSpecsFromChanges();
+    const [mainSpecs, deltaSpecs] = await Promise.all([
+      this.contentAccess.listMainSpecs(),
+      this.contentAccess.listSpecsFromChanges(),
+    ]);
+    const seen = new Set<string>();
+    const result: SpecInfo[] = [];
+    for (const s of mainSpecs) {
+      seen.add(s.id);
+      result.push(s);
+    }
+    for (const s of deltaSpecs) {
+      if (!seen.has(s.id)) {
+        result.push(s);
+      }
+    }
+    return result;
   }
 
   /** 归档列表：CLI 暂无，经 Content Access */

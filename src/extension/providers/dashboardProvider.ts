@@ -118,8 +118,9 @@ export class DashboardProvider {
   private getWebviewContent(webview: vscode.Webview): string {
     // For now, return a simple placeholder
     // Will be replaced with actual React app later
+    const lang = vscode.env.language || 'en';
     return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${lang}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">

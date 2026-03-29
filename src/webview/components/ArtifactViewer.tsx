@@ -1,5 +1,6 @@
 import React from 'react';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { t } from '../../i18n';
 
 export interface ArtifactViewerProps {
   content: string | null;
@@ -8,6 +9,8 @@ export interface ArtifactViewerProps {
   errorCode?: string;
   onOpenInEditor?: () => void;
   onCreateWithAi?: () => void;
+  onContinue?: () => void;
+  onExplore?: () => void;
   /** When set, "用 AI 创建" renders as disabled with this tooltip reason */
   createDisabledReason?: string;
 }
@@ -19,6 +22,8 @@ export const ArtifactViewer: React.FC<ArtifactViewerProps> = ({
   errorCode,
   onOpenInEditor,
   onCreateWithAi,
+  onContinue,
+  onExplore,
   createDisabledReason,
 }) => {
   if (loading) {
@@ -27,7 +32,7 @@ export const ArtifactViewer: React.FC<ArtifactViewerProps> = ({
         className="py-6 text-sm"
         style={{ color: 'var(--vscode-descriptionForeground)' }}
       >
-        Loading...
+        {t('loading')}
       </div>
     );
   }
@@ -48,10 +53,10 @@ export const ArtifactViewer: React.FC<ArtifactViewerProps> = ({
       >
         <p className="mb-2">
           {isMissing
-            ? '该内容尚未创建或文件已丢失。可使用 /opsx:continue 生成对应 artifact，或在编辑器中打开 change 目录查看。'
+            ? t('artifact.missing')
             : error}
         </p>
-        {isMissing && onCreateWithAi !== undefined && (
+        {isMissing && (onCreateWithAi !== undefined || onContinue !== undefined) && (
           <div className="flex flex-wrap gap-2 items-center">
             {createDisabledReason ? (
               <div className="flex items-center gap-1.5">
@@ -66,42 +71,57 @@ export const ArtifactViewer: React.FC<ArtifactViewerProps> = ({
                     cursor: 'not-allowed',
                   }}
                 >
-                  用 AI 创建
+                  Continue
                 </button>
                 <span className="text-xs" style={{ color: 'var(--vscode-descriptionForeground)' }}>
                   {createDisabledReason}
                 </span>
               </div>
             ) : (
-              <button
-                type="button"
-                className="px-3 py-1.5 rounded text-xs font-medium cursor-pointer border-none"
-                style={{
-                  background: 'var(--vscode-button-background)',
-                  color: 'var(--vscode-button-foreground)',
-                }}
-                onClick={onCreateWithAi}
-              >
-                用 AI 创建
-              </button>
-            )}
-            {/* 仅在文件实际存在时才显示"在编辑器中打开"——ARTIFACT_MISSING 时文件不存在，无需显示 */}
-            {!isMissing && onOpenInEditor && (
-              <button
-                type="button"
-                className="px-3 py-1.5 rounded text-xs font-medium cursor-pointer border-none"
-                style={{
-                  background: 'var(--vscode-button-secondaryBackground)',
-                  color: 'var(--vscode-button-secondaryForeground)',
-                }}
-                onClick={onOpenInEditor}
-              >
-                在编辑器中打开
-              </button>
+              <>
+                {onContinue && (
+                  <button
+                    type="button"
+                    className="px-3 py-1.5 rounded text-xs font-medium cursor-pointer border-none"
+                    style={{
+                      background: 'var(--vscode-button-background)',
+                      color: 'var(--vscode-button-foreground)',
+                    }}
+                    onClick={onContinue}
+                  >
+                    Continue
+                  </button>
+                )}
+                {!onContinue && onCreateWithAi && (
+                  <button
+                    type="button"
+                    className="px-3 py-1.5 rounded text-xs font-medium cursor-pointer border-none"
+                    style={{
+                      background: 'var(--vscode-button-background)',
+                      color: 'var(--vscode-button-foreground)',
+                    }}
+                    onClick={onCreateWithAi}
+                  >
+                    用 AI 创建
+                  </button>
+                )}
+                {onExplore && (
+                  <button
+                    type="button"
+                    className="px-3 py-1.5 rounded text-xs font-medium cursor-pointer border-none"
+                    style={{
+                      background: 'var(--vscode-button-secondaryBackground)',
+                      color: 'var(--vscode-button-secondaryForeground)',
+                    }}
+                    onClick={onExplore}
+                  >
+                    Explore
+                  </button>
+                )}
+              </>
             )}
           </div>
         )}
-        {/* Non-missing errors: show open in editor for manual inspection */}
         {!isMissing && onOpenInEditor && (
           <div className="flex flex-wrap gap-2 mt-2">
             <button
@@ -113,7 +133,7 @@ export const ArtifactViewer: React.FC<ArtifactViewerProps> = ({
               }}
               onClick={onOpenInEditor}
             >
-              在编辑器中打开
+              {t('action.openInEditor')}
             </button>
           </div>
         )}
@@ -127,7 +147,7 @@ export const ArtifactViewer: React.FC<ArtifactViewerProps> = ({
         className="py-6 text-sm"
         style={{ color: 'var(--vscode-descriptionForeground)' }}
       >
-        No content
+        {t('noContent')}
       </div>
     );
   }

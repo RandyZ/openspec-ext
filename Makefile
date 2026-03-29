@@ -3,9 +3,9 @@
 
 .PHONY: publish-ovsx readme-marketplace icon-png
 
-# Load .env if present, then package and publish to Open VSX (single shell so exports apply)
+# Load .env if present (set -a exports vars to child processes), then package and publish to Open VSX
 publish-ovsx:
-	@[ -f .env ] && . ./.env; pnpm run package && pnpm run publish:openvsx
+	@set -a && [ -f .env ] && . ./.env && set +a && pnpm run package && pnpm run publish:openvsx
 
 # Only extract "usage" part of README to build/README.md (for testing; does not run full package)
 readme-marketplace:

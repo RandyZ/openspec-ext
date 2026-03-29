@@ -22,6 +22,10 @@ export type WebviewMessage =
   | { type: 'setPreferredAgentAdapter'; adapterId: string }
   | { type: 'requestCreateArtifact'; changeName: string; artifactType: string }
   | { type: 'runCommand'; commandId: string; argsJson?: string; changeName?: string }
+  | { type: 'fillChat'; prompt: string }
+  | { type: 'getSpecContent'; specId: string }
+  | { type: 'getSpecRequirements'; specId: string }
+  | { type: 'openSpecInEditor'; specId: string; requirementIndex?: number }
   | { type: 'getTaskExecutionState'; changeName: string };
 
 // Message types from extension to webview
@@ -39,6 +43,9 @@ export type ExtensionMessage =
   | { type: 'taskExecutionFinished'; changeName: string; taskIndex: number; success: boolean; executionState?: Record<number, { success: boolean; timestamp: number }> }
   | { type: 'taskExecutionState'; changeName: string; executionState: Record<number, { success: boolean; timestamp: number }> }
   | { type: 'runCommandResult'; success: boolean; message?: string }
+  | { type: 'specContent'; specId: string; content: string }
+  | { type: 'specContentError'; specId: string; message: string }
+  | { type: 'specRequirements'; specId: string; requirements: string[] }
   | { type: 'artifactInvalidated'; changeName: string; artifactTypes: string[] };
 
 // Data types
@@ -189,6 +196,27 @@ export const sendMessage = {
     commandId,
     ...(argsJson !== undefined && argsJson !== '' ? { argsJson } : {}),
     ...(changeName !== undefined ? { changeName } : {}),
+  }),
+
+  fillChat: (prompt: string): WebviewMessage => ({
+    type: 'fillChat',
+    prompt,
+  }),
+
+  getSpecContent: (specId: string): WebviewMessage => ({
+    type: 'getSpecContent',
+    specId,
+  }),
+
+  getSpecRequirements: (specId: string): WebviewMessage => ({
+    type: 'getSpecRequirements',
+    specId,
+  }),
+
+  openSpecInEditor: (specId: string, requirementIndex?: number): WebviewMessage => ({
+    type: 'openSpecInEditor',
+    specId,
+    ...(requirementIndex !== undefined ? { requirementIndex } : {}),
   }),
 
   getTaskExecutionState: (changeName: string): WebviewMessage => ({

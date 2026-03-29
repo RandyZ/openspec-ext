@@ -1,5 +1,6 @@
 import React from 'react';
 import { ChangeInfo } from '../types/messages';
+import { t } from '../../i18n';
 
 const ArtifactBadge: React.FC<{ id: string; status: 'done' | 'ready' | 'blocked' }> = ({ id, status }) => {
   const colors = {
@@ -24,10 +25,10 @@ function formatLastModified(iso: string): string {
     const now = new Date();
     const diffMs = now.getTime() - d.getTime();
     const diffDays = Math.floor(diffMs / (24 * 60 * 60 * 1000));
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays}d ago`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
+    if (diffDays === 0) return t('time.today');
+    if (diffDays === 1) return t('time.yesterday');
+    if (diffDays < 7) return t('time.daysAgo', { days: diffDays });
+    if (diffDays < 30) return t('time.weeksAgo', { weeks: Math.floor(diffDays / 7) });
     return d.toLocaleDateString();
   } catch {
     return '';
@@ -40,6 +41,27 @@ export interface ChangeCardProps {
   onCopyFf?: (changeName: string) => void;
   onCopyApply?: (changeName: string) => void;
   onArchive?: (changeName: string) => void;
+  onFillChat?: (command: string) => void;
+}
+
+function getSmartActions(change: ChangeInfo): { label: string; command: string }[] {
+  const hasAllArtifacts = change.artifacts?.every((a) => a.status === 'done') ?? false;
+  const allTasksDone = change.totalTasks > 0 && change.completedTasks === change.totalTasks;
+
+  if (!hasAllArtifacts) {
+    return [
+      { label: 'Continue', command: `/opsx:continue ${change.name}` },
+      { label: 'FF', command: `/opsx:ff ${change.name}` },
+    ];
+  }
+  if (allTasksDone) {
+    return [
+      { label: 'Verify', command: `/opsx:verify ${change.name}` },
+    ];
+  }
+  return [
+    { label: 'Apply', command: `/opsx:apply ${change.name}` },
+  ];
 }
 
 export const ChangeCard: React.FC<ChangeCardProps> = ({
@@ -48,6 +70,7 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
   onCopyFf,
   onCopyApply,
   onArchive,
+  onFillChat,
 }) => {
   const [hover, setHover] = React.useState(false);
 
@@ -121,47 +144,31 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
         </div>
       )}
 
-      {hover && (onCopyFf || onCopyApply || onArchive) && (
+      {hover && (onFillChat || onCopyFf || onCopyApply || onArchive) && (
         <div
           className="flex flex-wrap gap-1 mt-2 pt-2 border-t"
           style={{ borderColor: 'var(--vscode-panel-border)' }}
           data-action
         >
-          {onCopyFf && (
+          {onFillChat && getSmartActions(change).map((action) => (
             <button
+              key={action.label}
               type="button"
               data-action
               className="px-2 py-0.5 text-xs rounded cursor-pointer border-none"
               style={{
-                background: 'var(--vscode-button-secondaryBackground)',
-                color: 'var(--vscode-button-secondaryForeground)',
+                background: 'var(--vscode-button-background)',
+                color: 'var(--vscode-button-foreground)',
               }}
               onClick={(e) => {
                 e.stopPropagation();
-                onCopyFf(change.name);
+                onFillChat(action.command);
               }}
             >
-              Copy /opsx:ff
+              {action.label}
             </button>
-          )}
-          {onCopyApply && (
-            <button
-              type="button"
-              data-action
-              className="px-2 py-0.5 text-xs rounded cursor-pointer border-none"
-              style={{
-                background: 'var(--vscode-button-secondaryBackground)',
-                color: 'var(--vscode-button-secondaryForeground)',
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onCopyApply(change.name);
-              }}
-            >
-              Copy /opsx:apply
-            </button>
-          )}
-          {onArchive && (
+          ))}
+          {onArchive && change.totalTasks > 0 && change.completedTasks === change.totalTasks && (
             <button
               type="button"
               data-action

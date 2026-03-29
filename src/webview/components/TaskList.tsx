@@ -1,6 +1,7 @@
 import React, { useMemo, useCallback } from 'react';
 import { TaskCheckbox } from './TaskCheckbox';
 import { parseTasksMarkdown, ParsedTask } from '../utils/parseTasks';
+import { t } from '../../i18n';
 
 export interface TaskExecutionStateItem {
   success: boolean;
@@ -50,7 +51,7 @@ export const TaskList: React.FC<TaskListProps> = ({
         className="py-6 text-sm"
         style={{ color: 'var(--vscode-descriptionForeground)' }}
       >
-        暂无任务项，或 tasks.md 中尚无 <code>- [ ]</code> / <code>- [x]</code> 格式的任务行。
+        {t('task.empty')}
       </div>
     );
   }
@@ -88,7 +89,7 @@ export const TaskList: React.FC<TaskListProps> = ({
           <div style={{ flexShrink: 0, marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
             {executionState[task.taskIndex] && (
               <span
-                title={executionState[task.taskIndex].success ? '上次执行成功' : '上次执行失败'}
+                title={executionState[task.taskIndex].success ? t('task.lastSuccess') : t('task.lastFailed')}
                 style={{
                   fontSize: '11px',
                   color: executionState[task.taskIndex].success
@@ -122,7 +123,7 @@ export const TaskList: React.FC<TaskListProps> = ({
                   opacity: executingTaskIndex === task.taskIndex ? 0.8 : 1,
                 }}
               >
-                {executingTaskIndex === task.taskIndex ? '执行中...' : '执行'}
+                {executingTaskIndex === task.taskIndex ? t('task.executing') : t('task.execute')}
               </button>
             )}
           </div>
