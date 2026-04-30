@@ -136,8 +136,9 @@
 
   "extension.noWorkspace": "OpenSpec: No workspace folder found",
 
-  "cli.notFound": "OpenSpec CLI not found. Please install it first.",
+  "cli.notFound": "OpenSpec CLI not found. Install it or configure openspec.cliPath.",
   "cli.installInstructions": "Install Instructions",
+  "cli.openSettings": "Open Settings",
   "cli.notInitialized": "OpenSpec not initialized in this workspace.",
   "cli.initializeNow": "Initialize Now",
   "cli.learnMore": "Learn More",

@@ -41,6 +41,11 @@
           "default": false,
           "description": "When running Open Dashboard command, focus the sidebar on the OpenSpec view."
         },
+        "openspec.cliPath": {
+          "type": "string",
+          "default": "",
+          "description": "OpenSpec CLI executable path. Leave empty to auto-detect from PATH and login shell."
+        },
         "openspec.taskExecutionMode": {
           "type": "string",
           "enum": [

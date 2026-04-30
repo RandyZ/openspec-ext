@@ -3,6 +3,11 @@ import { spawn } from 'child_process';
 import { OpenSpecCliService } from '@extension/services/openspecCli';
 
 vi.mock('vscode', () => ({
+  workspace: {
+    getConfiguration: vi.fn(() => ({
+      get: vi.fn(() => ''),
+    })),
+  },
   window: {
     createOutputChannel: () => ({
       appendLine: vi.fn(),
@@ -70,6 +75,37 @@ describe('OpenSpecCliService', () => {
         kill: vi.fn(),
       };
       return proc as any;
+    });
+  }
+
+  function mockVersionThenExit(code: number, stderrOut = '') {
+    vi.mocked(spawn).mockImplementation((_cmd, args: readonly string[]) => {
+      if (args[0] === '--version') {
+        return {
+          stdout: {
+            on: (_e: string, fn: (d: Buffer) => void) => {
+              setImmediate(() => fn(Buffer.from('1.3.1')));
+            },
+          },
+          stderr: { on: vi.fn() },
+          on: (_e: string, fn: (...args: any[]) => void) => {
+            if (_e === 'close') setImmediate(() => fn(0));
+          },
+          kill: vi.fn(),
+        } as any;
+      }
+      return {
+        stdout: { on: vi.fn() },
+        stderr: {
+          on: (_e: string, fn: (d: Buffer) => void) => {
+            if (stderrOut) setImmediate(() => fn(Buffer.from(stderrOut)));
+          },
+        },
+        on: (_e: string, fn: (...args: any[]) => void) => {
+          if (_e === 'close') setImmediate(() => fn(code));
+        },
+        kill: vi.fn(),
+      } as any;
     });
   }
 
@@ -219,7 +255,7 @@ describe('OpenSpecCliService', () => {
     });
 
     it('returns minimal ChangeDetails when CLI exits with code 1', async () => {
-      mockSpawnExit(1, 'Change not found or invalid');
+      mockVersionThenExit(1, 'Change not found or invalid');
       const service = new OpenSpecCliService(workspaceRoot);
       const result = await service.showChange('add-foo');
       expect(result.name).toBe('add-foo');
@@ -264,6 +300,54 @@ describe('OpenSpecCliService', () => {
       await expect(service.createChange('my-change')).resolves.toBeUndefined();
       expect(spawn).toHaveBeenCalledWith('openspec', ['new', 'change', 'my-change'], expect.any(Object));
     });
+
+    it('uses the resolved absolute command for subsequent CLI commands', async () => {
+      let call = 0;
+      vi.mocked(spawn).mockImplementation((command: string, args: readonly string[]) => {
+        call += 1;
+        if (call === 1 && command === 'openspec') {
+          return {
+            stdout: { on: vi.fn() },
+            stderr: { on: vi.fn() },
+            on: (event: string, fn: (err: Error) => void) => {
+              if (event === 'error') setImmediate(() => fn(new Error('spawn openspec ENOENT')));
+            },
+            kill: vi.fn(),
+          } as any;
+        }
+        if (call === 2 && args.join(' ').includes('command -v openspec')) {
+          return {
+            stdout: {
+              on: (_e: string, fn: (d: Buffer) => void) => {
+                setImmediate(() => fn(Buffer.from('/opt/homebrew/bin/openspec\n')));
+              },
+            },
+            stderr: { on: vi.fn() },
+            on: (event: string, fn: (...args: unknown[]) => void) => {
+              if (event === 'close') setImmediate(() => fn(0));
+            },
+            kill: vi.fn(),
+          } as any;
+        }
+        return {
+          stdout: {
+            on: (_e: string, fn: (d: Buffer) => void) => {
+              setImmediate(() => fn(Buffer.from(command === '/opt/homebrew/bin/openspec' && args[0] === '--version' ? '1.3.1' : '')));
+            },
+          },
+          stderr: { on: vi.fn() },
+          on: (event: string, fn: (...args: unknown[]) => void) => {
+            if (event === 'close') setImmediate(() => fn(0));
+          },
+          kill: vi.fn(),
+        } as any;
+      });
+
+      const service = new OpenSpecCliService(workspaceRoot);
+      await expect(service.createChange('my-change')).resolves.toBeUndefined();
+
+      expect(spawn).toHaveBeenCalledWith('/opt/homebrew/bin/openspec', ['new', 'change', 'my-change'], expect.any(Object));
+    });
   });
 
   describe('archiveChange', () => {
@@ -294,8 +378,9 @@ describe('OpenSpecCliService', () => {
     const service = new OpenSpecCliService(workspaceRoot);
     await expect(service.getVersion()).rejects.toThrow();
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-      'OpenSpec CLI not found. Please install it first.',
-      'Install Instructions'
+      'OpenSpec CLI not found. Install it or configure openspec.cliPath.',
+      'Install Instructions',
+      'Open Settings'
     );
   });
 
@@ -307,16 +392,31 @@ describe('OpenSpecCliService', () => {
 
   it('rejects with timeout error when CLI does not complete within 30s', async () => {
     vi.useFakeTimers();
-    // Process that never emits 'close' so the 30s timeout will fire (service retries 3 times)
-    vi.mocked(spawn).mockImplementation(() => ({
-      stdout: { on: vi.fn() },
-      stderr: { on: vi.fn() },
-      on: vi.fn(),
-      kill: vi.fn(),
-    }) as any);
+    vi.mocked(spawn).mockImplementation((_cmd, args: readonly string[]) => {
+      if (args[0] === '--version') {
+        return {
+          stdout: {
+            on: (_e: string, fn: (d: Buffer) => void) => {
+              setImmediate(() => fn(Buffer.from('1.3.1')));
+            },
+          },
+          stderr: { on: vi.fn() },
+          on: (_e: string, fn: (...args: any[]) => void) => {
+            if (_e === 'close') setImmediate(() => fn(0));
+          },
+          kill: vi.fn(),
+        } as any;
+      }
+      return {
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn(),
+        kill: vi.fn(),
+      } as any;
+    });
 
     const service = new OpenSpecCliService(workspaceRoot);
-    const promise = service.getVersion();
+    const promise = service.listSpecs();
     const expectation = expect(promise).rejects.toThrow('Command timed out after 30 seconds');
 
     // Advance past all 3 retry timeouts (30s each) plus backoff (1s + 2s)
