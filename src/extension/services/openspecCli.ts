@@ -424,14 +424,17 @@ export class OpenSpecCliService {
     }
     const message = t('cli.notFound');
     const installBtn = t('cli.installInstructions');
+    const retryBtn = t('cli.retry');
     const settingsBtn = t('cli.openSettings');
     vscode.window
-      .showErrorMessage(message, installBtn, settingsBtn)
+      .showErrorMessage(message, installBtn, retryBtn, settingsBtn)
       .then((selection) => {
         if (selection === installBtn) {
           vscode.env.openExternal(
             vscode.Uri.parse('https://github.com/Fission-AI/OpenSpec#quick-start')
           );
+        } else if (selection === retryBtn) {
+          vscode.commands.executeCommand('workbench.action.reloadWindow');
         } else if (selection === settingsBtn) {
           vscode.commands.executeCommand('workbench.action.openSettings', 'openspec.cliPath');
         }

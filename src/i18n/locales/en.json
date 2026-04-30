@@ -138,7 +138,8 @@
 
   "cli.notFound": "OpenSpec CLI not found. Install it or configure openspec.cliPath.",
   "cli.installInstructions": "Install Instructions",
-  "cli.openSettings": "Open Settings",
+  "cli.retry": "Retry",
+  "cli.openSettings": "Open CLI Path Settings",
   "cli.notInitialized": "OpenSpec not initialized in this workspace.",
   "cli.initializeNow": "Initialize Now",
   "cli.learnMore": "Learn More",

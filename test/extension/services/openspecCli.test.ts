@@ -20,6 +20,9 @@ vi.mock('vscode', () => ({
   env: {
     openExternal: vi.fn(() => Promise.resolve()),
   },
+  commands: {
+    executeCommand: vi.fn(() => Promise.resolve()),
+  },
 }));
 
 vi.mock('@extension/utils/logger', () => ({
@@ -380,8 +383,33 @@ describe('OpenSpecCliService', () => {
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
       'OpenSpec CLI not found. Install it or configure openspec.cliPath.',
       'Install Instructions',
-      'Open Settings'
+      'Retry',
+      'Open CLI Path Settings'
     );
+  });
+
+  it('reloads the window when retry is selected from CLI not found message', async () => {
+    const vscode = await import('vscode');
+    vi.mocked(vscode.window.showErrorMessage).mockResolvedValueOnce('Retry' as any);
+    mockSpawnExit(127, 'command not found');
+    const service = new OpenSpecCliService(workspaceRoot);
+
+    await expect(service.getVersion()).rejects.toThrow();
+
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('workbench.action.reloadWindow');
+  });
+
+  it('opens cliPath settings when settings action is selected from CLI not found message', async () => {
+    const vscode = await import('vscode');
+    vi.mocked(vscode.window.showErrorMessage).mockResolvedValueOnce('Open CLI Path Settings' as any);
+    mockSpawnExit(127, 'command not found');
+    const service = new OpenSpecCliService(workspaceRoot);
+
+    await expect(service.getVersion()).rejects.toThrow();
+
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('workbench.action.openSettings', 'openspec.cliPath');
   });
 
   it('command execution error rejects with error', async () => {
