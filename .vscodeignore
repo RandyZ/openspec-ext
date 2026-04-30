@@ -7,6 +7,7 @@ build/
 .gitignore
 *.md
 !README.md
+!README.zh-CN.md
 README.md.bak
 docs/
 !docs/images/

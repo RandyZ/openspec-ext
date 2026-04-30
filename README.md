@@ -2,6 +2,8 @@
 
 > Visual interface for managing OpenSpec workflows in VSCode, Cursor.
 
+English | [简体中文](README.zh-CN.md)
+
 ## Overview
 
 A VSCode/Cursor extension that provides a visual dashboard for [OpenSpec](https://github.com/Fission-AI/OpenSpec), making it easier to manage changes, view specs, and track tasks without leaving your editor.
