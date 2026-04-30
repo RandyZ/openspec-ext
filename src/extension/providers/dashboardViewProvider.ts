@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { logger } from '../utils/logger';
-import { DataManager } from '../services/dataManager';
+import { DataManager, type DashboardData } from '../services/dataManager';
 import { ChangeDetailPanelManager } from './changeDetailPanelManager';
 import { handleWebviewMessage, getWebviewContent } from './webviewMessageHandler';
 
@@ -9,12 +9,17 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'openspec.dashboardView';
   private _view?: vscode.WebviewView;
   private specPanels = new Map<string, vscode.WebviewPanel>();
+  private refreshSubscription?: vscode.Disposable;
 
   constructor(
     private dataManager: DataManager,
     private extensionPath: string,
     private panelManager?: ChangeDetailPanelManager
-  ) {}
+  ) {
+    this.refreshSubscription = this.dataManager.onRefresh((data) => {
+      this.postDashboardData(data);
+    });
+  }
 
   /**
    * Called when the view is first opened or becomes visible
@@ -42,6 +47,17 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     });
 
     logger.info('Dashboard view resolved');
+  }
+
+  dispose(): void {
+    this.refreshSubscription?.dispose();
+    this.refreshSubscription = undefined;
+  }
+
+  private postDashboardData(data: DashboardData): void {
+    if (!this._view) return;
+    const debug = vscode.workspace.getConfiguration('openspec').get<boolean>('debug') ?? false;
+    this._view.webview.postMessage({ type: 'dashboardData', data, debug });
   }
 
   /**

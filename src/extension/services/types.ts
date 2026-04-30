@@ -5,6 +5,9 @@ export interface ChangeInfo {
   lastModified: string;
   status: 'draft' | 'in-progress' | 'complete';
   artifacts?: ArtifactStatus[];
+  proposalWhySummary?: string;
+  proposalWhyFullText?: string;
+  searchText?: string;
 }
 
 export interface ArtifactStatus {
