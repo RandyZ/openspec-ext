@@ -9,6 +9,8 @@ build/
 !README.md
 README.md.bak
 docs/
+!docs/images/
+!docs/images/**
 openspec/
 .vscode/**
 !.vscode/launch.json

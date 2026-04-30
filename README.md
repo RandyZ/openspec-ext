@@ -8,19 +8,43 @@ A VSCode/Cursor extension that provides a visual dashboard for [OpenSpec](https:
 
 ### Features
 
-- **Visual Dashboard**: Changes and specs list, progress bars, empty states
-- **Change Detail**: Tabs for Proposal, Specs, Design, Tasks; markdown viewer; task checkboxes with write-back
-- **CLI Integration**: OpenSpec CLI (list, status, new, archive) with retry and timeout
-- **Quick Actions**: Copy /opsx:ff, /opsx:apply; Archive; Open in Editor; Refresh
+- **Visual Dashboard**: Changes grouped by status, progress bars, Proposal Why summaries, and search
+- **Change Detail**: Tabs for Proposal, Specs, Design, Tasks, and Verify; markdown viewer; task execution controls
+- **CLI Integration**: OpenSpec CLI (list, status, new, archive) with retry, timeout, and `openspec.cliPath` fallback
+- **Quick Actions**: Continue, FF, Apply, Verify, Archive, Open in Editor, Refresh
 - **Commands**: Open Dashboard, Refresh Data, Create New Change, Archive Change
 - **Logging**: Output panel "OpenSpec" channel
+
+## Screenshots
+
+### Dashboard sidebar
+
+![OpenSpec dashboard sidebar](docs/images/openspec-dashboard.png)
+
+The sidebar shows active changes grouped by status, searchable change cards, task progress, artifact badges, and Proposal Why summaries.
+
+### Change details and task confirmation
+
+![OpenSpec change detail and task confirmation](docs/images/openspec-change-detail.png)
+
+The change detail view provides workflow actions, artifact tabs, task execution, and a webview confirmation dialog before changing task completion state.
 
 ## Installation
 
 - **From marketplace**: Install **OpenSpec** from the [VS Code Marketplace](https://marketplace.visualstudio.com/) or [Open VSX](https://open-vsx.org/) (e.g. in Cursor).
-- **Requirements**: [OpenSpec CLI](https://github.com/Fission-AI/OpenSpec#quick-start) on your PATH; a workspace that contains (or will contain) `openspec/config.yaml`. The extension activates when it finds an OpenSpec workspace.
+- **Requirements**: [OpenSpec CLI](https://github.com/Fission-AI/OpenSpec#quick-start); a workspace that contains (or will contain) `openspec/config.yaml`. The extension activates when it finds an OpenSpec workspace.
+
+If Cursor or VS Code cannot see the CLI that works in your terminal, set `openspec.cliPath` to the absolute executable path, for example `/opt/homebrew/bin/openspec` or `/usr/local/bin/openspec`.
 
 ## Usage
+
+### Quick start
+
+1. Open a workspace that contains `openspec/config.yaml`.
+2. Open Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`).
+3. Run **OpenSpec: Open Dashboard**.
+4. Select a change to inspect Proposal, Specs, Design, Tasks, and Verify tabs.
+5. Use the action bar or change-card actions to copy/fill `/opsx:continue`, `/opsx:ff`, `/opsx:apply`, and `/opsx:verify` commands.
 
 ### Commands
 
@@ -44,6 +68,7 @@ Open Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`):
 |--------|---------|-------------|
 | `openspec.focusSidebarViewWhenOpeningChangeDetail` | `false` | Focus OpenSpec sidebar when opening change detail |
 | `openspec.focusSidebarViewWhenOpeningDashboard` | `false` | Focus OpenSpec sidebar when opening dashboard |
+| `openspec.cliPath` | `""` | Optional absolute path to OpenSpec CLI; empty = auto-detect from PATH and login shell |
 | `openspec.taskExecutionMode` | `fillChat` | When clicking task execute: `auto` = run via adapter; `fillChat` = fill chat or copy to clipboard |
 | `openspec.preferredAgentAdapter` | `""` | Preferred agent executor adapter id (e.g. `cursor`, `clipboard`). Empty = use first available |
 | `openspec.taskDependencyPolicy` | `block` | When preceding tasks are incomplete: `block` = prevent execution; `warn` = show warning and allow proceed |
@@ -58,9 +83,11 @@ Open Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`):
 
 ### Dashboard
 
-- Changes list with progress and status; quick actions (Copy /opsx:ff, /opsx:apply, Archive)
-- Specs list; empty states with "Create New Change"
-- Change detail: Proposal / Specs / Design / Tasks tabs; markdown rendering; task toggles; action bar
+- Search changes by name, status, artifact, or Proposal Why text.
+- Review progress, status, artifact badges, and Proposal Why summaries in the sidebar.
+- Open change details with Proposal / Specs / Design / Tasks / Verify tabs.
+- Execute tasks through the selected adapter, or fill/copy workflow commands into chat.
+- Toggle task completion only after confirming in the webview dialog.
 
 ### Viewing Logs
 
