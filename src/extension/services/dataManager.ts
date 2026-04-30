@@ -11,6 +11,7 @@ import { StateReader } from './stateReader';
 import type { IOpenSpecContentAccess } from './contentAccess';
 import { getAvailableAdapters, getCurrentAdapter } from '../adapters';
 import { ChangeInfo, ChangeDetails, SpecInfo, ArchivedChangeInfo } from './types';
+import { extractProposalWhy } from './proposalWhy';
 
 export interface DashboardData {
   changes: ChangeInfo[];
@@ -44,7 +45,7 @@ export class DataManager {
   private fileWatcher: FileWatcherService;
   private taskExecutorService: TaskExecutorService;
   private cachedData: DashboardData | null = null;
-  private refreshCallbacks: Set<() => void> = new Set();
+  private refreshCallbacks: Set<(data: DashboardData) => void> = new Set();
   private artifactChangedCallbacks: Set<(event: ArtifactChangedEvent) => void> = new Set();
 
   constructor(private workspaceRoot: string) {
@@ -183,10 +184,11 @@ export class DataManager {
     try {
       logger.info('Refreshing dashboard data...');
 
-      const [changes, specs] = await Promise.all([
+      const [rawChanges, specs] = await Promise.all([
         this.stateReader.listChanges(),
         this.stateReader.listSpecs(),
       ]);
+      const changes = await this.enrichChangesWithProposalWhy(rawChanges);
 
       const data: DashboardData = {
         changes,
@@ -196,7 +198,7 @@ export class DataManager {
       this.cachedData = data;
 
       logger.info(`Refreshed: ${changes.length} changes, ${specs.length} specs`);
-      this.notifyRefresh();
+      this.notifyRefresh(data);
       return this.cachedData;
     } catch (error) {
       logger.error('Failed to refresh dashboard data', error as Error);
@@ -212,6 +214,39 @@ export class DataManager {
       return await this.refresh();
     }
     return this.cachedData;
+  }
+
+  private async enrichChangesWithProposalWhy(changes: ChangeInfo[]): Promise<ChangeInfo[]> {
+    return await Promise.all(
+      changes.map(async (change) => {
+        try {
+          const proposal = await this.contentAccess.readArtifact(change.name, 'proposal');
+          const why = extractProposalWhy(proposal);
+          const artifactSearchText = (change.artifacts ?? [])
+            .map((a) => `${a.id} ${a.status}`)
+            .join(' ');
+          const searchText = [
+            change.name,
+            change.status,
+            artifactSearchText,
+            why.summary,
+            why.fullText,
+          ]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase();
+
+          return {
+            ...change,
+            proposalWhySummary: why.summary,
+            proposalWhyFullText: why.fullText,
+            searchText,
+          };
+        } catch {
+          return change;
+        }
+      })
+    );
   }
 
   /**
@@ -413,7 +448,7 @@ export class DataManager {
   /**
    * Register refresh callback
    */
-  onRefresh(callback: () => void): vscode.Disposable {
+  onRefresh(callback: (data: DashboardData) => void): vscode.Disposable {
     this.refreshCallbacks.add(callback);
     return new vscode.Disposable(() => {
       this.refreshCallbacks.delete(callback);
@@ -423,10 +458,10 @@ export class DataManager {
   /**
    * Notify all refresh callbacks
    */
-  private notifyRefresh(): void {
+  private notifyRefresh(data: DashboardData): void {
     this.refreshCallbacks.forEach((callback) => {
       try {
-        callback();
+        callback(data);
       } catch (error) {
         logger.error('Error in refresh callback', error as Error);
       }

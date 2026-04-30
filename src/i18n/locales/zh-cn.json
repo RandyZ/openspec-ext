@@ -28,6 +28,8 @@
   "confirm.markDone": "确定将此任务标记为已完成？（跳过）",
   "confirm.markDoneBtn": "确定跳过",
   "confirm.markUndone": "确定要取消完成该任务？",
+  "confirm.taskToggleTitle": "确认修改任务状态",
+  "confirm.taskToggleMessage": "确认要修改任务「{task}」的完成状态吗？",
   "confirm.ok": "确定",
   "confirm.cancel": "取消",
 
@@ -109,6 +111,11 @@
   "dashboard.statusInProgress": "进行中",
   "dashboard.statusDraft": "草稿",
   "dashboard.statusComplete": "已完成",
+  "dashboard.searchPlaceholder": "搜索 change、状态、artifact 或 Proposal Why",
+  "dashboard.searchLabel": "搜索 changes",
+  "dashboard.searchEmpty": "没有匹配的 change。",
+  "dashboard.searchNoResults": "没有匹配的 change。",
+  "dashboard.proposalWhy": "Proposal Why",
 
   "header.refresh": "刷新",
   "header.loading": "加载中...",

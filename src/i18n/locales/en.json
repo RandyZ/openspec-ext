@@ -109,6 +109,13 @@
   "dashboard.statusInProgress": "In progress",
   "dashboard.statusDraft": "Draft",
   "dashboard.statusComplete": "Complete",
+  "dashboard.searchPlaceholder": "Search changes...",
+  "dashboard.searchLabel": "Search changes",
+  "dashboard.searchEmpty": "No matching changes.",
+  "dashboard.searchNoResults": "No matching changes.",
+  "dashboard.proposalWhy": "Proposal Why",
+  "confirm.taskToggleTitle": "Confirm task change",
+  "confirm.taskToggleMessage": "Update task \"{task}\"?",
 
   "header.refresh": "Refresh",
   "header.loading": "Loading...",

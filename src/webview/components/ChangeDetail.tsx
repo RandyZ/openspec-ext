@@ -4,6 +4,7 @@ import { sendMessage } from '../types/messages';
 import { ActionBar } from './ActionBar';
 import { ArtifactViewer } from './ArtifactViewer';
 import { TaskList } from './TaskList';
+import { ConfirmDialog } from './ui/ConfirmDialog';
 import { WorkflowStepIndicator } from './WorkflowStepIndicator';
 import { deriveWorkflowState, type WorkflowStep } from '../utils/workflowState';
 import { t } from '../../i18n';
@@ -104,6 +105,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
   const [verifyArgsJson, setVerifyArgsJson] = useState('');
   const [runCommandResult, setRunCommandResult] = useState<{ success: boolean; message?: string } | null>(null);
   const [taskExecutionState, setTaskExecutionState] = useState<Record<number, { success: boolean; timestamp: number }>>({});
+  const [pendingTaskToggle, setPendingTaskToggle] = useState<{ taskIndex: number; taskText: string; done: boolean } | null>(null);
 
   const requestArtifact = (artifactType: string) => {
     setLoading(true);
@@ -328,6 +330,12 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
     }
   };
 
+  const handleConfirmTaskToggle = () => {
+    if (!pendingTaskToggle) return;
+    postMessage(sendMessage.toggleTask(changeName, pendingTaskToggle.taskIndex));
+    setPendingTaskToggle(null);
+  };
+
   return (
     <div
       className="min-h-screen flex flex-col"
@@ -532,8 +540,8 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
               isArchived={isArchived}
               executingTaskIndex={executingTaskIndex}
               executionState={taskExecutionState}
-              onToggleTask={(name, taskIndex) =>
-                postMessage(sendMessage.toggleTask(name, taskIndex))
+              onToggleTask={(_name, taskIndex, taskText, done) =>
+                setPendingTaskToggle({ taskIndex, taskText, done })
               }
               onExecuteTask={isArchived ? undefined : (name, taskIndex, taskText) => {
                 setExecutingTaskIndex(taskIndex);
@@ -563,6 +571,15 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
           />
         )}
       </div>
+      <ConfirmDialog
+        open={pendingTaskToggle !== null}
+        title={pendingTaskToggle?.done ? t('confirm.markUndone') : t('confirm.markDone')}
+        message={pendingTaskToggle?.taskText ?? ''}
+        confirmLabel={pendingTaskToggle?.done ? t('confirm.ok') : t('confirm.markDoneBtn')}
+        cancelLabel={t('confirm.cancel')}
+        onConfirm={handleConfirmTaskToggle}
+        onCancel={() => setPendingTaskToggle(null)}
+      />
     </div>
   );
 };
