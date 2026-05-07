@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useMemo } from 'react';
+import { renderTaskLabelMarkdown } from '../utils/taskLabelMarkdown';
 
 export interface TaskCheckboxProps {
   checked: boolean;
@@ -19,6 +20,8 @@ export const TaskCheckbox: React.FC<TaskCheckboxProps> = ({
   disabled = false,
   animate = true,
 }) => {
+  const labelHtml = useMemo(() => renderTaskLabelMarkdown(label), [label]);
+
   return (
     <label
       className="task-checkbox"
@@ -46,6 +49,7 @@ export const TaskCheckbox: React.FC<TaskCheckboxProps> = ({
         }}
       />
       <span
+        className="markdown-body task-inline-md"
         style={{
           flex: 1,
           color: 'var(--vscode-foreground)',
@@ -55,9 +59,8 @@ export const TaskCheckbox: React.FC<TaskCheckboxProps> = ({
           opacity: checked ? 0.75 : 1,
           transition: animate ? 'opacity 0.15s ease, text-decoration 0.15s ease' : undefined,
         }}
-      >
-        {label}
-      </span>
+        dangerouslySetInnerHTML={{ __html: labelHtml }}
+      />
     </label>
   );
 };
