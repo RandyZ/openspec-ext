@@ -73,6 +73,18 @@
           "type": "boolean",
           "default": false,
           "description": "Enable debug: show Verify tab in change detail (to test IDE commands), and print the full prompt sent to Cursor Agent in the output channel when executing tasks."
+        },
+        "openspec.cliTimeoutMs": {
+          "type": "number",
+          "default": 120000,
+          "minimum": 5000,
+          "maximum": 600000,
+          "description": "Maximum time (ms) to wait for a single OpenSpec CLI invocation (archive with spec merge can exceed 30s)."
+        },
+        "openspec.archiveSkipSpecs": {
+          "type": "boolean",
+          "default": false,
+          "description": "When archiving, pass --skip-specs to openspec archive (use if main specs were promoted manually and merge would fail)."
         }
       }
     },
