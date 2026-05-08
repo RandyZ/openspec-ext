@@ -241,7 +241,13 @@ export class OpenSpecCliService {
    */
   async archiveChange(name: string): Promise<void> {
     try {
-      await this.execOpenSpec(['archive', name]);
+      // `-y`: non-interactive; `openspec archive` otherwise waits for stdin and the extension hits its CLI timeout.
+      const args = ['archive', name, '-y'];
+      const skipSpecs = vscode.workspace.getConfiguration('openspec').get<boolean>('archiveSkipSpecs', false);
+      if (skipSpecs) {
+        args.push('--skip-specs');
+      }
+      await this.execOpenSpec(args);
       logger.info(`Archived change: ${name}`);
     } catch (error) {
       logger.error(`Failed to archive change: ${name}`, error as Error);
@@ -340,11 +346,11 @@ export class OpenSpecCliService {
         reject(new Error(`Failed to spawn openspec: ${error.message}`));
       });
 
-      // Timeout after 30 seconds
+      const timeoutMs = vscode.workspace.getConfiguration('openspec').get<number>('cliTimeoutMs', 120000);
       const timeout = setTimeout(() => {
         proc.kill();
-        reject(new Error('Command timed out after 30 seconds'));
-      }, 30000);
+        reject(new Error(`Command timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
 
       proc.on('close', () => {
         clearTimeout(timeout);

@@ -12,6 +12,11 @@ vi.mock('vscode', () => ({
     showErrorMessage: vi.fn(() => Promise.resolve()),
     showInformationMessage: vi.fn(() => Promise.resolve()),
   },
+  workspace: {
+    getConfiguration: () => ({
+      get: (_key: string, defaultValue?: unknown) => defaultValue,
+    }),
+  },
   env: {
     openExternal: vi.fn(() => Promise.resolve()),
   },
@@ -271,7 +276,7 @@ describe('OpenSpecCliService', () => {
       mockSpawnSuccess('');
       const service = new OpenSpecCliService(workspaceRoot);
       await expect(service.archiveChange('my-change')).resolves.toBeUndefined();
-      expect(spawn).toHaveBeenCalledWith('openspec', ['archive', 'my-change'], expect.any(Object));
+      expect(spawn).toHaveBeenCalledWith('openspec', ['archive', 'my-change', '-y'], expect.any(Object));
     });
   });
 
@@ -305,9 +310,9 @@ describe('OpenSpecCliService', () => {
     await expect(service.getVersion()).rejects.toThrow();
   });
 
-  it('rejects with timeout error when CLI does not complete within 30s', async () => {
+  it('rejects with timeout error when CLI does not complete within cliTimeoutMs', async () => {
     vi.useFakeTimers();
-    // Process that never emits 'close' so the 30s timeout will fire (service retries 3 times)
+    // Process that never emits 'close' so the CLI timeout will fire (service retries 3 times)
     vi.mocked(spawn).mockImplementation(() => ({
       stdout: { on: vi.fn() },
       stderr: { on: vi.fn() },
@@ -317,10 +322,10 @@ describe('OpenSpecCliService', () => {
 
     const service = new OpenSpecCliService(workspaceRoot);
     const promise = service.getVersion();
-    const expectation = expect(promise).rejects.toThrow('Command timed out after 30 seconds');
+    const expectation = expect(promise).rejects.toThrow('Command timed out after 120000ms');
 
-    // Advance past all 3 retry timeouts (30s each) plus backoff (1s + 2s)
-    await vi.advanceTimersByTimeAsync(100000);
+    // Advance past all 3 retry timeouts (120s default each) plus backoff (1s + 2s)
+    await vi.advanceTimersByTimeAsync(400000);
 
     await expectation;
     vi.useRealTimers();
