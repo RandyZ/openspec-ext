@@ -21,13 +21,13 @@ A VSCode/Cursor extension that provides a visual dashboard for [OpenSpec](https:
 
 ### Dashboard sidebar
 
-![OpenSpec dashboard sidebar](docs/images/openspec-dashboard.png)
+<img src="docs/images/openspec-dashboard.png" alt="OpenSpec dashboard sidebar" />
 
 The sidebar shows active changes grouped by status, searchable change cards, task progress, artifact badges, and Proposal Why summaries.
 
 ### Change details and task confirmation
 
-![OpenSpec change detail and task confirmation](docs/images/openspec-change-detail.png)
+<img src="docs/images/openspec-change-detail.png" alt="OpenSpec change detail and task confirmation" />
 
 The change detail view provides workflow actions, artifact tabs, task execution, and a webview confirmation dialog before changing task completion state.
 
