@@ -304,9 +304,9 @@ describe('OpenSpecCliService', () => {
       expect(spawn).toHaveBeenCalledWith('openspec', ['new', 'change', 'my-change'], expect.any(Object));
     });
 
-    it('uses the resolved absolute command for subsequent CLI commands', async () => {
+    it('uses the resolved absolute command and env for subsequent CLI commands', async () => {
       let call = 0;
-      vi.mocked(spawn).mockImplementation((command: string, args: readonly string[]) => {
+      vi.mocked(spawn).mockImplementation((command: string, args: readonly string[], options: any) => {
         call += 1;
         if (call === 1 && command === 'openspec') {
           return {
@@ -331,6 +331,9 @@ describe('OpenSpecCliService', () => {
             },
             kill: vi.fn(),
           } as any;
+        }
+        if (command === '/opt/homebrew/bin/openspec') {
+          expect(options.env.PATH.split(':')).toContain('/opt/homebrew/bin');
         }
         return {
           stdout: {

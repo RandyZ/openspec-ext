@@ -315,10 +315,10 @@ export class OpenSpecCliService {
    */
   private async execOpenSpecOnce(args: string[]): Promise<string> {
     return new Promise((resolve, reject) => {
-      this.resolver.resolve().then(({ command }) => {
+      this.resolver.resolve().then(({ command, env }) => {
       const proc = spawn(command, args, {
         cwd: this.workspaceRoot,
-        env: process.env,
+        env,
       });
 
       let stdout = '';

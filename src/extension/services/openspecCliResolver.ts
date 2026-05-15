@@ -5,6 +5,7 @@ import { logger } from '../utils/logger';
 
 export interface ResolvedOpenSpecCli {
   command: string;
+  env: NodeJS.ProcessEnv;
   version: string;
   diagnostics: string[];
 }
@@ -98,9 +99,10 @@ export class OpenSpecCliResolver {
     label: string
   ): Promise<ResolvedOpenSpecCli | null> {
     try {
-      const version = (await this.spawnAndCollect(command, ['--version'], this.options.timeoutMs)).trim();
+      const env = this.buildCommandEnv(command);
+      const version = (await this.spawnAndCollect(command, ['--version'], this.options.timeoutMs, env)).trim();
       diagnostics.push(`${label}: ok (${command}) -> ${version}`);
-      return { command, version, diagnostics: [...diagnostics] };
+      return { command, env, version, diagnostics: [...diagnostics] };
     } catch (err) {
       diagnostics.push(`${label}: failed (${command}) ${(err as Error).message}`);
       return null;
@@ -134,11 +136,16 @@ export class OpenSpecCliResolver {
     }
   }
 
-  private spawnAndCollect(command: string, args: string[], timeoutMs = DEFAULT_TIMEOUT_MS): Promise<string> {
+  private spawnAndCollect(
+    command: string,
+    args: string[],
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    env = this.buildCommandEnv(command)
+  ): Promise<string> {
     return new Promise((resolve, reject) => {
       const proc = spawn(command, args, {
         cwd: this.cwd,
-        env: this.buildCommandEnv(command),
+        env,
       });
       let stdout = '';
       let stderr = '';
