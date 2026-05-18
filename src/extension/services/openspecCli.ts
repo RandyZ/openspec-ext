@@ -12,12 +12,15 @@ import {
   ValidationResult,
   OpenSpecCliError,
 } from './types';
+import { OpenSpecCliResolver, OpenSpecCliResolutionError } from './openspecCliResolver';
 
 export class OpenSpecCliService {
   private workspaceRoot: string;
+  private resolver: OpenSpecCliResolver;
 
   constructor(workspaceRoot: string) {
     this.workspaceRoot = workspaceRoot;
+    this.resolver = new OpenSpecCliResolver(workspaceRoot);
   }
 
   /**
@@ -282,6 +285,11 @@ export class OpenSpecCliService {
           throw error;
         }
 
+        if (error instanceof OpenSpecCliResolutionError) {
+          this.showCliNotFoundError(error);
+          throw error;
+        }
+
         if (attempt < retries - 1) {
           const delay = Math.pow(2, attempt) * 1000; // Exponential backoff
           logger.warn(`Command failed, retrying in ${delay}ms (attempt ${attempt + 1}/${retries})`);
@@ -291,7 +299,7 @@ export class OpenSpecCliService {
     }
 
     if (lastError && this.isCliNotFoundError(lastError)) {
-      this.showCliNotFoundError();
+      this.showCliNotFoundError(lastError);
     }
     throw lastError;
   }
@@ -307,9 +315,10 @@ export class OpenSpecCliService {
    */
   private async execOpenSpecOnce(args: string[]): Promise<string> {
     return new Promise((resolve, reject) => {
-      const proc = spawn('openspec', args, {
+      this.resolver.resolve().then(({ command, env }) => {
+      const proc = spawn(command, args, {
         cwd: this.workspaceRoot,
-        env: process.env,
+        env,
         // Windows: npm global installs `openspec.cmd`; `spawn` without shell often fails with
         // ENOENT in Electron/Cursor when PATH is resolved differently than in a terminal.
         shell: process.platform === 'win32',
@@ -341,6 +350,9 @@ export class OpenSpecCliService {
       });
 
       proc.on('error', (error) => {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          this.resolver.clearCache();
+        }
         reject(new Error(`Failed to spawn openspec: ${error.message}`));
       });
 
@@ -353,6 +365,7 @@ export class OpenSpecCliService {
       proc.on('close', () => {
         clearTimeout(timeout);
       });
+      }).catch(reject);
     });
   }
 
@@ -409,16 +422,25 @@ export class OpenSpecCliService {
   /**
    * Show user-friendly error notification
    */
-  showCliNotFoundError(): void {
+  showCliNotFoundError(error?: Error): void {
+    if (error instanceof OpenSpecCliResolutionError) {
+      logger.error(`OpenSpec CLI resolution failed. ${error.diagnostics.join(' | ')}`);
+    }
     const message = t('cli.notFound');
     const installBtn = t('cli.installInstructions');
+    const retryBtn = t('cli.retry');
+    const settingsBtn = t('cli.openSettings');
     vscode.window
-      .showErrorMessage(message, installBtn)
+      .showErrorMessage(message, installBtn, retryBtn, settingsBtn)
       .then((selection) => {
         if (selection === installBtn) {
           vscode.env.openExternal(
             vscode.Uri.parse('https://github.com/Fission-AI/OpenSpec#quick-start')
           );
+        } else if (selection === retryBtn) {
+          vscode.commands.executeCommand('workbench.action.reloadWindow');
+        } else if (selection === settingsBtn) {
+          vscode.commands.executeCommand('workbench.action.openSettings', 'openspec.cliPath');
         }
       });
   }

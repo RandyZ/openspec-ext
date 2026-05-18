@@ -35,6 +35,12 @@ body {
 .markdown-body .mermaid { margin: 1em 0; text-align: center; overflow-x: auto; }
 .markdown-body .mermaid svg { max-width: 100%; height: auto; }
 
+/* Task row: inline markdown (no block margins from stray p) */
+.task-inline-md p { margin: 0; display: inline; }
+.task-inline-md p + p::before { content: " "; }
+.task-inline-md strong { font-weight: 600; }
+.task-inline-md a { color: var(--vscode-textLink-foreground); }
+
 @keyframes ui-spin {
   to { transform: rotate(360deg); }
 }

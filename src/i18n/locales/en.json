@@ -109,6 +109,13 @@
   "dashboard.statusInProgress": "In progress",
   "dashboard.statusDraft": "Draft",
   "dashboard.statusComplete": "Complete",
+  "dashboard.searchPlaceholder": "Search changes...",
+  "dashboard.searchLabel": "Search changes",
+  "dashboard.searchEmpty": "No matching changes.",
+  "dashboard.searchNoResults": "No matching changes.",
+  "dashboard.proposalWhy": "Proposal Why",
+  "confirm.taskToggleTitle": "Confirm task change",
+  "confirm.taskToggleMessage": "Update task \"{task}\"?",
 
   "header.refresh": "Refresh",
   "header.loading": "Loading...",
@@ -129,8 +136,10 @@
 
   "extension.noWorkspace": "OpenSpec: No workspace folder found",
 
-  "cli.notFound": "OpenSpec CLI not found. Please install it first.",
+  "cli.notFound": "OpenSpec CLI not found. Install it or configure openspec.cliPath.",
   "cli.installInstructions": "Install Instructions",
+  "cli.retry": "Retry",
+  "cli.openSettings": "Open CLI Path Settings",
   "cli.notInitialized": "OpenSpec not initialized in this workspace.",
   "cli.initializeNow": "Initialize Now",
   "cli.learnMore": "Learn More",

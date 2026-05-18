@@ -136,14 +136,16 @@ export class FileManagerService implements IOpenSpecContentAccess {
     let lineIndex = 0;
 
     for (const line of lines) {
-      const match = line.match(/^(\s*)- \[([ xX])\] (.+)$/);
+      // CRLF: after split('\n') lines may end with \r; . does not match \r in JS, so (.+)$ fails.
+      const lineForMatch = line.replace(/\r$/, '');
+      const match = lineForMatch.match(/^(\s*)- \[([ xX])\] (.+)$/);
       if (match) {
         tasks.push({
           lineIndex,
           indent: match[1].length,
           done: match[2].toLowerCase() === 'x',
           text: match[3],
-          originalLine: line,
+          originalLine: lineForMatch,
         });
       }
       lineIndex++;
