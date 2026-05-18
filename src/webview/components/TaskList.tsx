@@ -14,7 +14,7 @@ export interface TaskListProps {
   isArchived?: boolean;
   executingTaskIndex?: number | null;
   executionState?: Record<number, TaskExecutionStateItem>;
-  onToggleTask: (changeName: string, taskIndex: number) => void;
+  onToggleTask: (changeName: string, taskIndex: number, taskText: string, done: boolean) => void;
   onExecuteTask?: (changeName: string, taskIndex: number, taskText: string) => void;
 }
 
@@ -40,7 +40,7 @@ export const TaskList: React.FC<TaskListProps> = ({
 
   const handleToggle = useCallback(
     (task: ParsedTask) => {
-      onToggleTask(changeName, task.taskIndex);
+      onToggleTask(changeName, task.taskIndex, task.text, task.done);
     },
     [changeName, onToggleTask]
   );

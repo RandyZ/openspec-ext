@@ -2,7 +2,7 @@
   "name": "openspec-workflow",
   "displayName": "OpenSpec",
   "description": "Visual dashboard and interactive UI for OpenSpec workflows",
-  "version": "0.1.2",
+  "version": "0.1.4",
   "publisher": "randysss",
   "license": "MIT",
   "engines": {
@@ -40,6 +40,11 @@
           "type": "boolean",
           "default": false,
           "description": "When running Open Dashboard command, focus the sidebar on the OpenSpec view."
+        },
+        "openspec.cliPath": {
+          "type": "string",
+          "default": "",
+          "description": "OpenSpec CLI executable path. Leave empty to auto-detect from PATH and login shell."
         },
         "openspec.taskExecutionMode": {
           "type": "string",
