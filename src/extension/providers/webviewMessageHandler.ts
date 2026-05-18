@@ -72,26 +72,6 @@ export async function handleWebviewMessage(
         break;
       }
       const taskIndex = message.taskIndex;
-      const tasks = await dataManager.readTasks(changeName);
-      const task = tasks[taskIndex];
-      const isMarkingDone = task && !task.done;
-      if (isMarkingDone) {
-        const confirm = await vscode.window.showWarningMessage(
-          t('confirm.markDone'),
-          { modal: true },
-          t('confirm.markDoneBtn'),
-          t('confirm.cancel')
-        );
-        if (confirm !== t('confirm.markDoneBtn')) break;
-      } else if (task?.done) {
-        const confirm = await vscode.window.showWarningMessage(
-          t('confirm.markUndone'),
-          { modal: true },
-          t('confirm.ok'),
-          t('confirm.cancel')
-        );
-        if (confirm !== t('confirm.ok')) break;
-      }
       await dataManager.toggleTask(changeName, taskIndex);
       const [data, tasksContent] = await Promise.all([
         dataManager.getDashboardData(),

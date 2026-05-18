@@ -63,6 +63,27 @@ describe('StateReader', () => {
     expect(mockGateway.listChanges).toHaveBeenCalledTimes(1);
   });
 
+  it('listChanges preserves optional dashboard summary fields', async () => {
+    const changes: ChangeInfo[] = [
+      {
+        name: 'foo',
+        completedTasks: 0,
+        totalTasks: 1,
+        lastModified: '',
+        status: 'draft',
+        proposalWhySummary: 'short why',
+        proposalWhyFullText: 'short why full',
+        searchText: 'foo short why full',
+      },
+    ];
+    vi.mocked(mockGateway.listChanges).mockResolvedValue(changes);
+    const reader = new StateReader(mockGateway, mockContentAccess);
+    const result = await reader.listChanges();
+    expect(result[0].proposalWhySummary).toBe('short why');
+    expect(result[0].proposalWhyFullText).toBe('short why full');
+    expect(result[0].searchText).toBe('foo short why full');
+  });
+
   it('getChangeDetails delegates to gateway', async () => {
     const details: ChangeDetails = {
       name: 'my-change',

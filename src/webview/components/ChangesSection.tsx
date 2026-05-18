@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { ChangeInfo, ArchivedChangeInfo } from '../types/messages';
 import { ChangeCard } from './ChangeCard';
 import { EmptyState } from './EmptyState';
+import { filterChanges } from '../utils/filterChanges';
 import { t } from '../../i18n';
 
 interface ChangesSectionProps {
@@ -54,7 +55,10 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
   archivedLoading = false,
   onOpenArchivedChange,
 }) => {
-  const grouped = groupByStatus(changes);
+  const [query, setQuery] = useState('');
+  const filteredChanges = useMemo(() => filterChanges(changes, query), [changes, query]);
+  const grouped = groupByStatus(filteredChanges);
+  const hasSearch = query.trim().length > 0;
 
   return (
     <div className="mb-6">
@@ -62,8 +66,25 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
         className="text-base font-semibold mb-2"
         style={{ color: 'var(--vscode-foreground)' }}
       >
-        {t('dashboard.changes', { count: changes.length })}
+        {t('dashboard.changes', { count: filteredChanges.length })}
       </h2>
+
+      {changes.length > 0 && (
+        <input
+          type="search"
+          value={query}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setQuery(e.target.value)}
+          placeholder={t('dashboard.searchPlaceholder')}
+          aria-label={t('dashboard.searchLabel')}
+          className="w-full mb-3 px-2 py-1.5 text-xs rounded"
+          style={{
+            background: 'var(--vscode-input-background)',
+            color: 'var(--vscode-input-foreground)',
+            border: '1px solid var(--vscode-input-border)',
+            outlineColor: 'var(--vscode-focusBorder)',
+          }}
+        />
+      )}
 
       {changes.length === 0 ? (
         <EmptyState
@@ -71,6 +92,8 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
           actionLabel={t('dashboard.createNew')}
           onAction={onRequestNewChange}
         />
+      ) : hasSearch && filteredChanges.length === 0 ? (
+        <EmptyState message={t('dashboard.searchEmpty')} />
       ) : (
         <div className="space-y-4">
           {STATUS_ORDER.map((status) => {

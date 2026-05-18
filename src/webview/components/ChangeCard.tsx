@@ -84,6 +84,7 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
       role="button"
       tabIndex={0}
       className="p-3 rounded cursor-pointer transition-opacity focus:outline-none focus:ring-1 relative"
+      title={change.proposalWhyFullText || change.proposalWhySummary}
       style={{
         background: 'var(--vscode-input-background)',
         outlineColor: 'var(--vscode-focusBorder)',
@@ -99,6 +100,16 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
       }}
     >
       <div className="font-medium text-sm mb-2">{change.name}</div>
+
+      {change.proposalWhySummary && (
+        <div
+          className="text-xs mb-2 leading-relaxed"
+          style={{ color: 'var(--vscode-descriptionForeground)' }}
+          title={change.proposalWhyFullText || change.proposalWhySummary}
+        >
+          {change.proposalWhySummary}
+        </div>
+      )}
 
       {change.artifacts && change.artifacts.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
