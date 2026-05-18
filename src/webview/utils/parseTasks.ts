@@ -20,7 +20,9 @@ export function parseTasksMarkdown(content: string): ParsedTask[] {
 
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
     const line = lines[lineIndex];
-    const match = line.match(TASK_LINE_REGEX);
+    // CRLF: line may end with \r; keep in sync with FileManagerService.parseTasksMarkdown
+    const lineForMatch = line.replace(/\r$/, '');
+    const match = lineForMatch.match(TASK_LINE_REGEX);
     if (match) {
       tasks.push({
         taskIndex,
@@ -28,7 +30,7 @@ export function parseTasksMarkdown(content: string): ParsedTask[] {
         indent: match[1].length,
         done: match[2].toLowerCase() === 'x',
         text: match[3],
-        originalLine: line,
+        originalLine: lineForMatch,
       });
       taskIndex++;
     }

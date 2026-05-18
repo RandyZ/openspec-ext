@@ -107,6 +107,29 @@ describe('FileManagerService', () => {
     });
   });
 
+  describe('parseTasksMarkdown', () => {
+    it('parses task lines with LF', () => {
+      const fm = new FileManagerService(openspecDir);
+      const lf = '- [ ] First\n- [x] Second\n';
+      const tasks = fm.parseTasksMarkdown(lf);
+      expect(tasks).toHaveLength(2);
+      expect(tasks[0].text).toBe('First');
+      expect(tasks[0].done).toBe(false);
+      expect(tasks[1].text).toBe('Second');
+      expect(tasks[1].done).toBe(true);
+    });
+
+    it('parses task lines with CRLF (Windows)', () => {
+      const fm = new FileManagerService(openspecDir);
+      const crlf = '- [ ] First task\r\n- [x] Done\r\n';
+      const tasks = fm.parseTasksMarkdown(crlf);
+      expect(tasks).toHaveLength(2);
+      expect(tasks[0].text).toBe('First task');
+      expect(tasks[0].done).toBe(false);
+      expect(tasks[1].done).toBe(true);
+    });
+  });
+
   describe('Content Access interface (listDeltaSpecIds, listArchivedChanges, listSpecsFromChanges)', () => {
     it('listDeltaSpecIds returns empty when no specs dir', async () => {
       const changeDir = path.join(openspecDir, 'changes', 'my-change');

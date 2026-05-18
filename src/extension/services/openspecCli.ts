@@ -319,6 +319,10 @@ export class OpenSpecCliService {
       const proc = spawn(command, args, {
         cwd: this.workspaceRoot,
         env,
+        // Windows: npm global installs `openspec.cmd`; `spawn` without shell often fails with
+        // ENOENT in Electron/Cursor when PATH is resolved differently than in a terminal.
+        shell: process.platform === 'win32',
+        windowsHide: process.platform === 'win32',
       });
 
       let stdout = '';
