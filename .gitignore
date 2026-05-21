@@ -10,3 +10,4 @@ pnpm-lock.yaml
 build/
 .opencode/config.jsonc
 pnpm-workspace.yaml
+.omc/
