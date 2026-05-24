@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 实现两个 OpenSpec changes：`improve-cursor-native-interaction` 先提供稳定的 workflow command routing 和 Cursor 原生插件/Chat 集成，`add-ai-guided-archive-flow` 再基于该 routing 将 Archive 默认入口改成 AI 审查归档。
+**Goal:** 实现两个 OpenSpec changes：`improve-cursor-native-interaction` 先提供稳定的 workflow command routing、配置分层、Cursor deeplink/Chat/clipboard fallback 集成，`add-ai-guided-archive-flow` 再基于该 routing 将 Archive 默认入口改成 AI 审查归档。
 
-**Architecture:** 新增 `workflowCommand` 作为唯一命令生成边界，extension host 负责 Cursor plugin registration 和 adapter routing，webview 只表达 action intent 或消费统一生成的 command。Archive 改为 split button：主动作路由 `/opsx-archive <change>` 给 Agent，下拉 `Archive Now` 保留直接 CLI archive。
+**Architecture:** 新增 `workflowCommand`/launch payload 作为唯一命令生成边界，extension host 负责配置解析、adapter routing 和 Cursor deeplink/clipboard 行为，webview 只表达 action intent。Archive 改为 split button：主动作路由 `/opsx-archive <change>` 给 Agent，下拉 `Archive Now` 保留直接 CLI archive。
 
 **Tech Stack:** TypeScript, React 19, VS Code Extension API, Cursor Extension API, Vitest, pnpm, Vite, esbuild.
 
@@ -18,6 +18,8 @@
 
 实现顺序必须先完成 `improve-cursor-native-interaction`，再完成 `add-ai-guided-archive-flow`。第二个 change 的最终验收依赖第一个 change 提供的 command builder。
 
+任务分界：Task 1-4 和 Task 8 中与配置/命令/launch 验证相关的部分属于 `improve-cursor-native-interaction`；Task 5-7 和 Task 8 中与 Archive split button 验证相关的部分属于 `add-ai-guided-archive-flow`。实现第一个 change 时不得提前实现 Archive split button，只需保证 archive workflow command 能被第二个 change 消费。
+
 测试运行必须按项目规则交给测试子代理执行；计划中的命令用于子代理执行和人工复核。测试子代理执行任何命令时必须使用 `zsh -c "source ~/.zshrc && <command>"` 包装以加载用户环境。不要自动提交 git commit，用户会自行提交。
 
 ## File Structure
@@ -25,49 +27,43 @@
 ### New Files
 
 - `src/shared/workflowCommand.ts`
-  - 纯函数模块，定义 workflow action、target、命令格式矩阵和 `buildWorkflowCommand()`。
+  - 纯函数模块，定义 workflow action、target、launch mode、命令格式矩阵和 `buildWorkflowCommand()`/launch payload。
   - 放在 `src/shared`，extension host 和 webview 都可引用，避免 webview 直接依赖 extension 目录。
 
-- `src/extension/services/cursorPluginRegistration.ts`
-  - Cursor 插件注册服务。检测 `vscode.cursor.plugins.registerPath/unregisterPath`，无 API 时静默跳过。
+- `src/extension/services/workflowLaunchConfig.ts`
+  - 读取和规范化 `workflowLaunchMode`、`preferredAgentAdapter`、`cursorLaunchMode`、`cursorAgentModel`，提供安全默认值。
 
-- `src/types/cursor.d.ts`
-  - 扩展 Cursor API 类型声明，避免在 TypeScript 中使用 `any` 扩散。
-
-- `cursor-plugins/openspec/commands/*.md`
-  - 打包到扩展里的 Cursor commands。来源应与 `.cursor/commands/opsx-*.md` 保持一致。
-
-- `cursor-plugins/openspec/skills/openspec-*/SKILL.md`
-  - 打包到扩展里的 OpenSpec skills。来源应与 `.cursor/skills/openspec-*` 保持一致。
+- `src/extension/services/cursorDeeplink.ts`
+  - 生成 `cursor://anysphere.cursor-deeplink/prompt?text=...`，并封装 URL 编码和长度检查。
 
 - `src/webview/components/ui/SplitButton.tsx`
   - 可复用主按钮 + 下拉按钮组件，用于 Archive。
 
 - `test/shared/workflowCommand.test.ts`
-  - 覆盖 action/target 命令矩阵。
+  - 覆盖 action/target/launch mode 命令矩阵。
 
-- `test/extension/services/cursorPluginRegistration.test.ts`
-  - 覆盖 Cursor API 有无时的 register/unregister 行为。
+- `test/extension/services/workflowLaunchConfig.test.ts`
+  - 覆盖配置默认值、enum 解析、旧 `agentModel` 兼容读取。
+
+- `test/extension/services/cursorDeeplink.test.ts`
+  - 覆盖 deeplink URL 编码、长度限制和 command 文本保真。
 
 - `test/extension/adapters/cursorAdapter.test.ts`
-  - 覆盖 Chat query 预填成功和 fallback 复制。
+  - 覆盖 deeplink、chatCommand、clipboard、agentCli launch mode 和 fallback toast。
 
 - `test/webview/components/splitButton.test.ts`
   - 使用 React element 级别测试验证主动作、下拉 disabled reason 和回调 wiring。
 
 ### Modified Files
 
-- `src/extension/extension.ts`
-  - activate 阶段注册 Cursor plugin path，并把 unregister disposable 加入 `context.subscriptions`。
-
 - `src/extension/adapters/cursor-adapter.ts`
-  - `fillChat` 优先调用 `workbench.action.chat.open` query 预填，失败时复制。
+  - `fillChat` 先复制命令并显示 toast，再按 `cursorLaunchMode` 选择 deeplink、chatCommand 或 clipboard；`executeTask` 仍仅用于显式自动执行。
 
 - `src/extension/adapters/opencode-adapter.ts`
   - 删除私有 `toHyphenFormat()` 或改为调用 `buildWorkflowCommand()`，避免重复命令格式逻辑。
 
 - `src/extension/services/taskExecutorService.ts`
-  - task execution prompt 使用 `buildWorkflowCommand({ action: 'apply', target })`。
+  - task execution prompt 使用配置解析和 `buildWorkflowCommand({ action: 'apply', target })`。
 
 - `src/webview/utils/workflowState.ts`
   - secondary actions 不再用空 command 表示 Archive；显式建模 `archiveReview` 与 `archiveNow`。
@@ -87,11 +83,8 @@
 - `src/webview/types/messages.ts`
   - 新增 workflow action intent message，让 extension host 根据当前 adapter 生成目标命令；避免 webview 预先用 Clipboard target 固化命令格式。
 
-- `.vscodeignore`
-  - 显式包含 `cursor-plugins/openspec/**`。
-
 - `README.md` / `README.zh-CN.md`
-  - 更新 Cursor routing、`Review & Archive` 与 `Archive Now` 的说明。
+  - 更新配置矩阵、Cursor deeplink、默认 clipboard、`Review & Archive` 与 `Archive Now` 的说明。
 
 ---
 
@@ -282,211 +275,274 @@ Expected: PASS.
 
 ---
 
-## Task 2: Cursor Plugin Registration
+## Task 2: Configuration Model And Cursor Deeplink
 
 **Files:**
-- Create: `src/types/cursor.d.ts`
-- Create: `src/extension/services/cursorPluginRegistration.ts`
-- Create: `test/extension/services/cursorPluginRegistration.test.ts`
-- Modify: `src/extension/extension.ts`
-- Modify: `.vscodeignore`
-- Create/Copy: `cursor-plugins/openspec/commands/*.md`
-- Create/Copy: `cursor-plugins/openspec/skills/openspec-*/SKILL.md`
+- Create: `src/extension/services/workflowLaunchConfig.ts`
+- Create: `src/extension/services/cursorDeeplink.ts`
+- Create: `test/extension/services/workflowLaunchConfig.test.ts`
+- Create: `test/extension/services/cursorDeeplink.test.ts`
+- Modify: `package.json`
+- Modify: `src/i18n/locales/en.json`
+- Modify: `src/i18n/locales/zh-cn.json`
 
-- [ ] **Step 1: Write failing tests for plugin registration**
+- [ ] **Step 1: Write failing configuration tests**
 
-Create `test/extension/services/cursorPluginRegistration.test.ts`:
+Create `test/extension/services/workflowLaunchConfig.test.ts`:
 
 ```ts
-import { describe, expect, it, vi } from 'vitest';
-import { registerCursorOpenSpecPlugin } from '../../../src/extension/services/cursorPluginRegistration';
+import { describe, expect, it } from 'vitest';
+import {
+  normalizeWorkflowLaunchConfig,
+  type RawWorkflowLaunchConfig,
+} from '../../../src/extension/services/workflowLaunchConfig';
 
-describe('registerCursorOpenSpecPlugin', () => {
-  it('registers and unregisters the bundled plugin path when Cursor API exists', () => {
-    const registerPath = vi.fn();
-    const unregisterPath = vi.fn();
-    const context = {
-      extensionPath: '/extension/root',
-      subscriptions: [],
-    };
-    const vscodeLike = {
-      cursor: {
-        plugins: {
-          registerPath,
-          unregisterPath,
-        },
-      },
-      Disposable: class {
-        constructor(private readonly cb: () => void) {}
-        dispose(): void {
-          this.cb();
-        }
-      },
-    };
-
-    const disposable = registerCursorOpenSpecPlugin(context as any, vscodeLike as any);
-
-    expect(registerPath).toHaveBeenCalledWith('/extension/root/cursor-plugins/openspec');
-    expect(context.subscriptions).toContain(disposable);
-
-    disposable.dispose();
-    expect(unregisterPath).toHaveBeenCalledWith('/extension/root/cursor-plugins/openspec');
+describe('normalizeWorkflowLaunchConfig', () => {
+  it('uses safe clipboard defaults', () => {
+    expect(normalizeWorkflowLaunchConfig({})).toEqual({
+      workflowLaunchMode: 'clipboard',
+      preferredAgentAdapter: 'clipboard',
+      cursorLaunchMode: 'deeplink',
+      cursorAgentModel: 'auto',
+      taskExecutionMode: 'fillChat',
+    });
   });
 
-  it('does nothing when Cursor API is missing', () => {
-    const context = {
-      extensionPath: '/extension/root',
-      subscriptions: [],
+  it('normalizes invalid values back to defaults', () => {
+    const raw: RawWorkflowLaunchConfig = {
+      workflowLaunchMode: 'bad',
+      preferredAgentAdapter: 'missing',
+      cursorLaunchMode: 'bad',
+      cursorAgentModel: '',
+      taskExecutionMode: 'bad',
     };
 
-    const disposable = registerCursorOpenSpecPlugin(context as any, { Disposable: class {} } as any);
+    expect(normalizeWorkflowLaunchConfig(raw)).toEqual({
+      workflowLaunchMode: 'clipboard',
+      preferredAgentAdapter: 'clipboard',
+      cursorLaunchMode: 'deeplink',
+      cursorAgentModel: 'auto',
+      taskExecutionMode: 'fillChat',
+    });
+  });
 
-    expect(disposable).toBeUndefined();
-    expect(context.subscriptions).toHaveLength(0);
+  it('keeps valid adapter and launch choices', () => {
+    expect(normalizeWorkflowLaunchConfig({
+      workflowLaunchMode: 'adapter',
+      preferredAgentAdapter: 'cursor',
+      cursorLaunchMode: 'agentCli',
+      cursorAgentModel: 'gpt-5.5',
+      taskExecutionMode: 'auto',
+    })).toEqual({
+      workflowLaunchMode: 'adapter',
+      preferredAgentAdapter: 'cursor',
+      cursorLaunchMode: 'agentCli',
+      cursorAgentModel: 'gpt-5.5',
+      taskExecutionMode: 'auto',
+    });
   });
 });
 ```
 
-- [ ] **Step 2: Run the RED test**
+- [ ] **Step 2: Write failing Cursor deeplink tests**
 
-Run:
-
-```bash
-pnpm vitest run test/extension/services/cursorPluginRegistration.test.ts
-```
-
-Expected: FAIL because `cursorPluginRegistration.ts` does not exist.
-
-- [ ] **Step 3: Add Cursor API type declaration**
-
-Create `src/types/cursor.d.ts`:
+Create `test/extension/services/cursorDeeplink.test.ts`:
 
 ```ts
-declare module 'vscode' {
-  export namespace cursor {
-    export namespace plugins {
-      export const registerPath: (path: string) => void;
-      export const unregisterPath: (path: string) => void;
-    }
-  }
-}
-```
+import { describe, expect, it } from 'vitest';
+import { buildCursorPromptDeeplink } from '../../../src/extension/services/cursorDeeplink';
 
-- [ ] **Step 4: Implement plugin registration service**
+describe('buildCursorPromptDeeplink', () => {
+  it('builds a cursor prompt deeplink with encoded text', () => {
+    const uri = buildCursorPromptDeeplink('/opsx-apply improve-cursor-native-interaction');
 
-Create `src/extension/services/cursorPluginRegistration.ts`:
-
-```ts
-import * as path from 'path';
-import * as vscode from 'vscode';
-import { logger } from '../utils/logger';
-
-interface CursorPluginApi {
-  cursor?: {
-    plugins?: {
-      registerPath?: (pluginPath: string) => void;
-      unregisterPath?: (pluginPath: string) => void;
-    };
-  };
-  Disposable: typeof vscode.Disposable;
-}
-
-interface ExtensionContextLike {
-  extensionPath: string;
-  subscriptions: { dispose(): unknown }[];
-}
-
-export function getBundledOpenSpecPluginPath(extensionPath: string): string {
-  return path.join(extensionPath, 'cursor-plugins', 'openspec');
-}
-
-export function registerCursorOpenSpecPlugin(
-  context: ExtensionContextLike,
-  vscodeApi: CursorPluginApi = vscode as CursorPluginApi
-): vscode.Disposable | undefined {
-  const plugins = vscodeApi.cursor?.plugins;
-  if (!plugins?.registerPath || !plugins.unregisterPath) {
-    logger.debug('Cursor plugin API unavailable; skipping OpenSpec plugin registration');
-    return undefined;
-  }
-
-  const pluginPath = getBundledOpenSpecPluginPath(context.extensionPath);
-  plugins.registerPath(pluginPath);
-  logger.info(`Registered bundled OpenSpec Cursor plugin: ${pluginPath}`);
-
-  const disposable = new vscodeApi.Disposable(() => {
-    plugins.unregisterPath?.(pluginPath);
-    logger.info(`Unregistered bundled OpenSpec Cursor plugin: ${pluginPath}`);
+    expect(uri.toString()).toBe(
+      'cursor://anysphere.cursor-deeplink/prompt?text=%2Fopsx-apply+improve-cursor-native-interaction'
+    );
   });
-  context.subscriptions.push(disposable);
-  return disposable;
-}
+
+  it('rejects empty prompt text', () => {
+    expect(() => buildCursorPromptDeeplink('   ')).toThrow('Cursor prompt deeplink text is required');
+  });
+
+  it('rejects URLs over Cursor deeplink limit', () => {
+    expect(() => buildCursorPromptDeeplink('x'.repeat(9000))).toThrow('Cursor prompt deeplink is too long');
+  });
+});
 ```
 
-- [ ] **Step 5: Wire registration into activation**
-
-Modify `src/extension/extension.ts`:
-
-```ts
-import { registerCursorOpenSpecPlugin } from './services/cursorPluginRegistration';
-```
-
-Inside `activate`, after locale/logger setup and before OpenSpec CLI initialization, add:
-
-```ts
-    registerCursorOpenSpecPlugin(context);
-```
-
-The resulting block should be:
-
-```ts
-  try {
-    registerCursorOpenSpecPlugin(context);
-
-    const workspaceRoot = await getOpenSpecWorkspaceRoot();
-    if (!workspaceRoot) {
-      logger.error('No workspace folder found');
-      vscode.window.showErrorMessage(t('extension.noWorkspace'));
-      return;
-    }
-```
-
-- [ ] **Step 6: Create bundled plugin directory**
-
-Copy the existing commands and OpenSpec skills:
-
-```bash
-mkdir -p cursor-plugins/openspec/commands cursor-plugins/openspec/skills
-cp .cursor/commands/opsx-*.md cursor-plugins/openspec/commands/
-cp -R .cursor/skills/openspec-* cursor-plugins/openspec/skills/
-```
-
-Expected: `cursor-plugins/openspec/commands/opsx-apply.md` and `cursor-plugins/openspec/skills/openspec-apply-change/SKILL.md` exist.
-
-- [ ] **Step 7: Ensure VSIX includes bundled plugins**
-
-Modify `.vscodeignore` by adding these allow rules after `docs/superpowers/**`:
-
-```gitignore
-!cursor-plugins/
-!cursor-plugins/**
-```
-
-Keep existing ignores for `src/` and `*.md`; the explicit allow rules must appear after broader ignore rules that would otherwise exclude markdown.
-
-- [ ] **Step 8: Run plugin registration tests**
+- [ ] **Step 3: Run RED tests**
 
 Run:
 
 ```bash
-pnpm vitest run test/extension/services/cursorPluginRegistration.test.ts
+pnpm vitest run test/extension/services/workflowLaunchConfig.test.ts test/extension/services/cursorDeeplink.test.ts
+```
+
+Expected: FAIL because both implementation files do not exist.
+
+- [ ] **Step 4: Implement workflow launch configuration normalization**
+
+Create `src/extension/services/workflowLaunchConfig.ts`:
+
+```ts
+export type WorkflowLaunchMode = 'clipboard' | 'adapter';
+export type PreferredAgentAdapter =
+  | 'clipboard'
+  | 'cursor'
+  | 'vscode-copilot'
+  | 'claude-code'
+  | 'opencode';
+export type CursorLaunchMode = 'deeplink' | 'chatCommand' | 'clipboard' | 'agentCli';
+export type TaskExecutionMode = 'fillChat' | 'auto';
+
+export interface WorkflowLaunchConfig {
+  workflowLaunchMode: WorkflowLaunchMode;
+  preferredAgentAdapter: PreferredAgentAdapter;
+  cursorLaunchMode: CursorLaunchMode;
+  cursorAgentModel: string;
+  taskExecutionMode: TaskExecutionMode;
+}
+
+export interface RawWorkflowLaunchConfig {
+  workflowLaunchMode?: string;
+  preferredAgentAdapter?: string;
+  cursorLaunchMode?: string;
+  cursorAgentModel?: string;
+  agentModel?: string;
+  taskExecutionMode?: string;
+}
+
+const ADAPTERS = new Set<PreferredAgentAdapter>([
+  'clipboard',
+  'cursor',
+  'vscode-copilot',
+  'claude-code',
+  'opencode',
+]);
+
+const CURSOR_LAUNCH_MODES = new Set<CursorLaunchMode>([
+  'deeplink',
+  'chatCommand',
+  'clipboard',
+  'agentCli',
+]);
+
+export function normalizeWorkflowLaunchConfig(raw: RawWorkflowLaunchConfig): WorkflowLaunchConfig {
+  return {
+    workflowLaunchMode: raw.workflowLaunchMode === 'adapter' ? 'adapter' : 'clipboard',
+    preferredAgentAdapter: ADAPTERS.has(raw.preferredAgentAdapter as PreferredAgentAdapter)
+      ? raw.preferredAgentAdapter as PreferredAgentAdapter
+      : 'clipboard',
+    cursorLaunchMode: CURSOR_LAUNCH_MODES.has(raw.cursorLaunchMode as CursorLaunchMode)
+      ? raw.cursorLaunchMode as CursorLaunchMode
+      : 'deeplink',
+    cursorAgentModel: normalizeCursorModel(raw.cursorAgentModel ?? raw.agentModel),
+    taskExecutionMode: raw.taskExecutionMode === 'auto' ? 'auto' : 'fillChat',
+  };
+}
+
+function normalizeCursorModel(value: string | undefined): string {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : 'auto';
+}
+```
+
+- [ ] **Step 5: Implement Cursor deeplink builder**
+
+Create `src/extension/services/cursorDeeplink.ts`:
+
+```ts
+import * as vscode from 'vscode';
+
+const CURSOR_PROMPT_DEEPLINK_LIMIT = 8000;
+
+export function buildCursorPromptDeeplink(promptText: string): vscode.Uri {
+  const text = promptText.trim();
+  if (!text) {
+    throw new Error('Cursor prompt deeplink text is required');
+  }
+  const params = new URLSearchParams({ text });
+  const uriText = `cursor://anysphere.cursor-deeplink/prompt?${params.toString()}`;
+  if (uriText.length > CURSOR_PROMPT_DEEPLINK_LIMIT) {
+    throw new Error('Cursor prompt deeplink is too long');
+  }
+  return vscode.Uri.parse(uriText);
+}
+```
+
+- [ ] **Step 6: Update package configuration schema**
+
+Modify `package.json` configuration properties:
+
+```json
+"openspec.workflowLaunchMode": {
+  "type": "string",
+  "enum": ["clipboard", "adapter"],
+  "enumItemLabels": ["Clipboard", "Selected Adapter"],
+  "default": "clipboard",
+  "description": "Default behavior for workflow buttons. clipboard = copy command and show a toast; adapter = use the selected Agent adapter."
+},
+"openspec.preferredAgentAdapter": {
+  "type": "string",
+  "enum": ["clipboard", "cursor", "vscode-copilot", "claude-code", "opencode"],
+  "enumItemLabels": ["Clipboard", "Cursor", "VS Code Copilot Chat", "Claude Code", "OpenCode"],
+  "default": "clipboard",
+  "description": "Preferred Agent adapter used when openspec.workflowLaunchMode is 'adapter'."
+},
+"openspec.cursorLaunchMode": {
+  "type": "string",
+  "enum": ["deeplink", "chatCommand", "clipboard", "agentCli"],
+  "enumItemLabels": ["Cursor Deeplink", "VS Code Chat Command", "Clipboard", "Cursor Agent CLI"],
+  "default": "deeplink",
+  "description": "How the Cursor adapter opens workflow commands in fillChat mode."
+},
+"openspec.cursorAgentModel": {
+  "type": "string",
+  "default": "auto",
+  "description": "Cursor Agent CLI model for automatic execution. 'auto' lets Cursor choose."
+}
+```
+
+Keep `openspec.agentModel` temporarily for compatibility if needed, but mark README docs to prefer `openspec.cursorAgentModel`.
+
+- [ ] **Step 7: Add toast i18n keys**
+
+Add to `src/i18n/locales/en.json`:
+
+```json
+"workflow.copied": "Copied OpenSpec command to clipboard. Paste into Agent to run.",
+"workflow.cursorDeeplinkOpened": "Opened Cursor Agent with command. Also copied to clipboard.",
+"workflow.cursorDeeplinkFailed": "Could not open Cursor Agent. Copied command to clipboard instead.",
+"workflow.chatCommandOpened": "Opened Chat with command. Also copied to clipboard.",
+"workflow.chatCommandFailed": "Could not open Chat. Copied command to clipboard instead.",
+"workflow.agentCliRunning": "Running Cursor Agent CLI. See OpenSpec (Agent) output."
+```
+
+Add to `src/i18n/locales/zh-cn.json`:
+
+```json
+"workflow.copied": "已复制 OpenSpec 命令到剪贴板，可粘贴到 Agent 执行。",
+"workflow.cursorDeeplinkOpened": "已打开 Cursor Agent 并填入命令，同时已复制到剪贴板。",
+"workflow.cursorDeeplinkFailed": "无法打开 Cursor Agent，已改为复制命令到剪贴板。",
+"workflow.chatCommandOpened": "已打开 Chat 并填入命令，同时已复制到剪贴板。",
+"workflow.chatCommandFailed": "无法打开 Chat，已改为复制命令到剪贴板。",
+"workflow.agentCliRunning": "正在运行 Cursor Agent CLI，请查看 OpenSpec (Agent) 输出。"
+```
+
+- [ ] **Step 8: Run GREEN tests**
+
+Run:
+
+```bash
+pnpm vitest run test/extension/services/workflowLaunchConfig.test.ts test/extension/services/cursorDeeplink.test.ts test/i18n/i18n.test.ts
 ```
 
 Expected: PASS.
 
 ---
 
-## Task 3: Adapter Prompt Routing
+## Task 3: Cursor Adapter Launch Modes
 
 **Files:**
 - Modify: `src/extension/adapters/cursor-adapter.ts`
@@ -495,7 +551,7 @@ Expected: PASS.
 - Create: `test/extension/adapters/cursorAdapter.test.ts`
 - Modify or Create: `test/extension/services/taskExecutorService.test.ts`
 
-- [ ] **Step 1: Write failing Cursor adapter tests**
+- [ ] **Step 1: Write failing Cursor adapter launch mode tests**
 
 Create `test/extension/adapters/cursorAdapter.test.ts`:
 
@@ -503,12 +559,15 @@ Create `test/extension/adapters/cursorAdapter.test.ts`:
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const executeCommand = vi.fn();
+const openExternal = vi.fn();
 const writeText = vi.fn();
 const showInformationMessage = vi.fn();
+let cursorLaunchMode = 'deeplink';
 
 vi.mock('vscode', () => ({
   commands: { executeCommand },
-  env: { clipboard: { writeText } },
+  Uri: { parse: (value: string) => ({ toString: () => value, value }) },
+  env: { clipboard: { writeText }, openExternal },
   window: {
     createOutputChannel: () => ({
       clear: vi.fn(),
@@ -520,7 +579,13 @@ vi.mock('vscode', () => ({
   },
   workspace: {
     getConfiguration: () => ({
-      get: () => 'auto',
+      get: (key: string) => {
+        if (key === 'cursorLaunchMode') return cursorLaunchMode;
+        if (key === 'cursorAgentModel') return 'auto';
+        if (key === 'agentModel') return 'auto';
+        if (key === 'debug') return false;
+        return undefined;
+      },
     }),
   },
 }));
@@ -537,33 +602,15 @@ describe('cursorAdapter.fillChat', async () => {
   const { cursorAdapter } = await import('../../../src/extension/adapters/cursor-adapter');
 
   beforeEach(() => {
+    cursorLaunchMode = 'deeplink';
     executeCommand.mockReset();
+    openExternal.mockReset();
     writeText.mockReset();
     showInformationMessage.mockReset();
   });
 
-  it('opens chat with query before using clipboard', async () => {
-    executeCommand.mockResolvedValue(undefined);
-
-    const result = await cursorAdapter.fillChat({
-      changeName: 'demo-change',
-      taskIndex: -1,
-      taskText: '',
-      contextFiles: [],
-      workspaceRoot: '/workspace',
-      promptOverride: '/opsx-apply demo-change',
-    });
-
-    expect(result.success).toBe(true);
-    expect(executeCommand).toHaveBeenCalledWith('workbench.action.chat.open', {
-      query: '/opsx-apply demo-change',
-      isPartialQuery: true,
-    });
-    expect(writeText).not.toHaveBeenCalled();
-  });
-
-  it('copies to clipboard when chat query prefill fails', async () => {
-    executeCommand.mockRejectedValue(new Error('unsupported'));
+  it('copies command and opens Cursor deeplink in deeplink mode', async () => {
+    openExternal.mockResolvedValue(true);
 
     const result = await cursorAdapter.fillChat({
       changeName: 'demo-change',
@@ -576,11 +623,51 @@ describe('cursorAdapter.fillChat', async () => {
 
     expect(result.success).toBe(true);
     expect(writeText).toHaveBeenCalledWith('/opsx-apply demo-change');
+    expect(openExternal.mock.calls[0][0].toString()).toContain('cursor://anysphere.cursor-deeplink/prompt');
+    expect(showInformationMessage).toHaveBeenCalled();
+  });
+
+  it('copies command only in clipboard mode', async () => {
+    cursorLaunchMode = 'clipboard';
+
+    const result = await cursorAdapter.fillChat({
+      changeName: 'demo-change',
+      taskIndex: -1,
+      taskText: '',
+      contextFiles: [],
+      workspaceRoot: '/workspace',
+      promptOverride: '/opsx-apply demo-change',
+    });
+
+    expect(result.success).toBe(true);
+    expect(writeText).toHaveBeenCalledWith('/opsx-apply demo-change');
+    expect(openExternal).not.toHaveBeenCalled();
+    expect(executeCommand).not.toHaveBeenCalled();
+  });
+
+  it('copies command and tries chat query in chatCommand mode', async () => {
+    cursorLaunchMode = 'chatCommand';
+    executeCommand.mockResolvedValue(undefined);
+
+    await cursorAdapter.fillChat({
+      changeName: 'demo-change',
+      taskIndex: -1,
+      taskText: '',
+      contextFiles: [],
+      workspaceRoot: '/workspace',
+      promptOverride: '/opsx-apply demo-change',
+    });
+
+    expect(writeText).toHaveBeenCalledWith('/opsx-apply demo-change');
+    expect(executeCommand).toHaveBeenCalledWith('workbench.action.chat.open', {
+      query: '/opsx-apply demo-change',
+      isPartialQuery: true,
+    });
   });
 });
 ```
 
-- [ ] **Step 2: Run the RED test**
+- [ ] **Step 2: Run RED Cursor adapter tests**
 
 Run:
 
@@ -588,30 +675,88 @@ Run:
 pnpm vitest run test/extension/adapters/cursorAdapter.test.ts
 ```
 
-Expected: FAIL because current `cursorAdapter.fillChat` calls `workbench.action.chat.open` without query and writes clipboard first.
+Expected: FAIL because Cursor launch modes and deeplink are not implemented.
 
-- [ ] **Step 3: Update Cursor adapter fillChat**
+- [ ] **Step 3: Implement Cursor adapter fillChat launch modes**
 
-Modify `src/extension/adapters/cursor-adapter.ts` `fillChat`:
+Modify `src/extension/adapters/cursor-adapter.ts`:
+
+```ts
+import { buildCursorPromptDeeplink } from '../services/cursorDeeplink';
+import { normalizeWorkflowLaunchConfig } from '../services/workflowLaunchConfig';
+```
+
+Add helper:
+
+```ts
+function getWorkflowLaunchConfig() {
+  const config = vscode.workspace.getConfiguration('openspec');
+  return normalizeWorkflowLaunchConfig({
+    cursorLaunchMode: config.get<string>('cursorLaunchMode'),
+    cursorAgentModel: config.get<string>('cursorAgentModel'),
+    agentModel: config.get<string>('agentModel'),
+    taskExecutionMode: config.get<string>('taskExecutionMode'),
+  });
+}
+```
+
+Replace `fillChat`:
 
 ```ts
   async fillChat(request: TaskExecuteRequest): Promise<TaskExecuteResult> {
     const text = request.promptOverride ?? buildPromptText(request);
+    const launchConfig = getWorkflowLaunchConfig();
+    await vscode.env.clipboard.writeText(text);
+
+    if (launchConfig.cursorLaunchMode === 'clipboard') {
+      vscode.window.showInformationMessage(t('workflow.copied'));
+      return { success: true, adapterId: ADAPTER_ID, message: 'Copied to clipboard' };
+    }
+
+    if (launchConfig.cursorLaunchMode === 'chatCommand') {
+      try {
+        await vscode.commands.executeCommand('workbench.action.chat.open', {
+          query: text,
+          isPartialQuery: true,
+        });
+        vscode.window.showInformationMessage(t('workflow.chatCommandOpened'));
+        return { success: true, adapterId: ADAPTER_ID, message: 'Chat opened with prompt' };
+      } catch {
+        vscode.window.showInformationMessage(t('workflow.chatCommandFailed'));
+        return { success: true, adapterId: ADAPTER_ID, message: 'Copied to clipboard' };
+      }
+    }
+
+    if (launchConfig.cursorLaunchMode === 'agentCli') {
+      vscode.window.showInformationMessage(t('workflow.agentCliRunning'));
+      return this.executeTask(request);
+    }
+
     try {
-      await vscode.commands.executeCommand('workbench.action.chat.open', {
-        query: text,
-        isPartialQuery: true,
-      });
-      return { success: true, adapterId: ADAPTER_ID, message: 'Chat opened with prompt' };
+      await vscode.env.openExternal(buildCursorPromptDeeplink(text));
+      vscode.window.showInformationMessage(t('workflow.cursorDeeplinkOpened'));
+      return { success: true, adapterId: ADAPTER_ID, message: 'Cursor deeplink opened' };
     } catch {
-      await vscode.env.clipboard.writeText(text);
-      vscode.window.showInformationMessage(t('clipboard.copiedCursorChat'));
+      vscode.window.showInformationMessage(t('workflow.cursorDeeplinkFailed'));
       return { success: true, adapterId: ADAPTER_ID, message: 'Copied to clipboard' };
     }
   },
 ```
 
-- [ ] **Step 4: Replace OpenCode private command conversion**
+- [ ] **Step 4: Use Cursor-specific model setting for Agent CLI**
+
+Modify `getAgentModelOption()`:
+
+```ts
+function getAgentModelOption(): string {
+  const config = vscode.workspace.getConfiguration('openspec');
+  const raw = config.get<string>('cursorAgentModel') ?? config.get<string>('agentModel');
+  const v = (raw ?? 'auto').trim().toLowerCase();
+  return v === '' || v === 'auto' ? 'auto' : (raw ?? '').trim();
+}
+```
+
+- [ ] **Step 5: Replace OpenCode private command conversion**
 
 Modify `src/extension/adapters/opencode-adapter.ts`:
 
@@ -629,7 +774,7 @@ const prompt = request.promptOverride ?? buildWorkflowCommand({
 });
 ```
 
-- [ ] **Step 5: Use command builder in task executor**
+- [ ] **Step 6: Use command builder in task executor**
 
 Modify `src/extension/services/taskExecutorService.ts` imports:
 
@@ -651,7 +796,7 @@ Replace request construction after adapter lookup:
     };
 ```
 
-- [ ] **Step 6: Run adapter and command tests**
+- [ ] **Step 7: Run adapter and command tests**
 
 Run:
 
@@ -662,7 +807,6 @@ pnpm vitest run test/shared/workflowCommand.test.ts test/extension/adapters/comm
 Expected: PASS.
 
 ---
-
 ## Task 4: Webview Command Migration
 
 **Files:**
@@ -1309,17 +1453,17 @@ Modify `README.zh-CN.md` with equivalent Chinese:
 
 ---
 
-## Task 8: Package Verification And Manual Cursor Check
+## Task 8: Verification And Manual Cursor Check
 
 **Files:**
-- Modify only if checks fail: `.vscodeignore`, `README.md`, `README.zh-CN.md`
+- Modify only if checks fail: `README.md`, `README.zh-CN.md`, `package.json`
 
 - [ ] **Step 1: Run unit tests through test subagent**
 
 Command for the test subagent:
 
 ```bash
-pnpm vitest run test/shared/workflowCommand.test.ts test/extension/services/cursorPluginRegistration.test.ts test/extension/adapters/cursorAdapter.test.ts test/extension/providers/webviewMessageHandler.test.ts test/webview/utils/workflowState.test.ts test/webview/components/splitButton.test.ts test/i18n/i18n.test.ts
+pnpm vitest run test/shared/workflowCommand.test.ts test/extension/services/workflowLaunchConfig.test.ts test/extension/services/cursorDeeplink.test.ts test/extension/adapters/cursorAdapter.test.ts test/extension/providers/webviewMessageHandler.test.ts test/webview/utils/workflowState.test.ts test/webview/components/splitButton.test.ts test/i18n/i18n.test.ts
 ```
 
 Expected: all tests PASS.
@@ -1344,21 +1488,15 @@ pnpm run build
 
 Expected: extension and webview build complete without TypeScript or bundling errors.
 
-- [ ] **Step 4: Verify VSIX packaged files**
+- [ ] **Step 4: Verify configuration metadata**
 
 Command:
 
 ```bash
-pnpm run package
+pnpm vitest run test/extension/services/workflowLaunchConfig.test.ts
 ```
 
-Then inspect package contents with:
-
-```bash
-rtk unzip -l *.vsix | rtk rg "cursor-plugins/openspec/(commands|skills)"
-```
-
-Expected: output includes `cursor-plugins/openspec/commands/opsx-apply.md` and at least one `cursor-plugins/openspec/skills/openspec-*/SKILL.md`.
+Expected: defaults are safe (`workflowLaunchMode=clipboard`, `preferredAgentAdapter=clipboard`) and invalid values normalize back to safe defaults.
 
 - [ ] **Step 5: Manual Cursor Extension Development Host verification**
 
@@ -1366,11 +1504,15 @@ Launch Extension Development Host using the project’s VS Code/Cursor launch co
 
 - Open OpenSpec dashboard.
 - Open a change with incomplete tasks.
+- Keep default settings.
 - Click Apply.
-- Expected: Cursor Chat opens with `/opsx-apply <change>` or command is copied if prefill is unsupported.
+- Expected: command is copied to clipboard, toast appears, and no Agent/Chat window opens.
+- Set `openspec.workflowLaunchMode=adapter`, `openspec.preferredAgentAdapter=cursor`, and `openspec.cursorLaunchMode=deeplink`.
+- Click Apply again.
+- Expected: Cursor deeplink opens a prompt confirmation with `/opsx-apply <change>` prefilled, and the command is also available in clipboard.
 - Open a completed change.
 - Click `Review & Archive`.
-- Expected: Cursor Chat opens with `/opsx-archive <change>` or command is copied if prefill is unsupported.
+- Expected: Cursor deeplink opens a prompt confirmation with `/opsx-archive <change>` prefilled, and the command is also available in clipboard.
 - Open archive dropdown.
 - Expected: `Archive Now` is enabled only when tasks and artifacts are complete.
 
@@ -1380,7 +1522,7 @@ Dispatch code review subagent with this scope:
 
 ```text
 Review implementation for improve-cursor-native-interaction and add-ai-guided-archive-flow.
-Focus on command routing correctness, Cursor API fallback safety, no direct file mutation from Chat routing, Archive Now gating, VS Code compatibility, packaging rules, and test coverage.
+Focus on configuration defaults, Cursor deeplink fallback safety, command routing correctness, no direct file mutation from launch routing, Archive Now gating, VS Code compatibility, and test coverage.
 P0/P1 must be fixed before marking OpenSpec tasks complete.
 ```
 
@@ -1408,8 +1550,12 @@ The plan consistently uses:
 
 - `WorkflowAction`
 - `WorkflowCommandTarget`
+- `WorkflowLaunchMode`
+- `CursorLaunchMode`
 - `buildWorkflowCommand()`
 - `getWorkflowCommandTargetForAdapter()`
+- `normalizeWorkflowLaunchConfig()`
+- `buildCursorPromptDeeplink()`
 - `WorkflowAction.kind`
 - `SplitButton`
 - `archiveReview`

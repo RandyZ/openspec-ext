@@ -27,14 +27,22 @@ The system SHALL provide quick actions for common operations, and workflow-orien
 - AND the generated command MUST be copied to clipboard
 - AND a notification SHOULD confirm the copy action
 
-#### Scenario: Open workflow command from quick action
+#### Scenario: Open workflow command from quick action through launch settings
 - GIVEN a change in the dashboard
 - WHEN the user clicks a workflow quick action such as Continue, FF, Apply, Verify, or Sync
-- THEN the action MUST route through the shared workflow command builder
-- AND the selected adapter MUST open Chat with the generated command or use its documented fallback
+- THEN the action MUST route through the shared workflow launch settings
+- AND `openspec.workflowLaunchMode=clipboard` MUST copy the generated command and show a non-modal notification
+- AND `openspec.workflowLaunchMode=adapter` MUST route through the selected adapter's configured launch behavior
 - AND the dashboard quick action MUST NOT directly modify OpenSpec change files
 
-#### Scenario: Cursor quick action uses hyphen command
-- GIVEN the current route target is Cursor
+#### Scenario: Cursor quick action uses hyphen command when adapter launch is selected
+- GIVEN `openspec.workflowLaunchMode` is `adapter`
+- AND the selected adapter target is Cursor
 - WHEN the user clicks a workflow quick action in the dashboard
-- THEN the command sent to Chat or copied as fallback MUST use `/opsx-<action> <change>` format
+- THEN the command opened, copied, or executed through Cursor MUST use `/opsx-<action> <change>` format
+
+#### Scenario: Default dashboard quick action is clipboard safe
+- GIVEN the extension uses default settings
+- WHEN the user clicks a workflow quick action in the dashboard
+- THEN the generated command MUST be copied to the clipboard
+- AND no Agent window, deeplink, or CLI process MUST start automatically
