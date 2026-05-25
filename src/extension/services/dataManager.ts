@@ -45,7 +45,8 @@ export class DataManager {
   private fileWatcher: FileWatcherService;
   private taskExecutorService: TaskExecutorService;
   private cachedData: DashboardData | null = null;
-  private cliAvailable = false;
+  private refreshInFlight: Promise<DashboardData> | null = null;
+  private queuedRefresh: Promise<DashboardData> | null = null;
   private refreshCallbacks: Set<(data: DashboardData) => void> = new Set();
   private artifactChangedCallbacks: Set<(event: ArtifactChangedEvent) => void> = new Set();
 
@@ -120,8 +121,12 @@ export class DataManager {
       }
 
       logger.info(`File changes detected (${events.length} events), refreshing...`);
-      this.refresh();
+      void this.refresh().catch((error) => {
+        logger.warn('Failed to refresh after file changes', error as Error);
+      });
     });
+
+    this.warmDashboardData();
   }
 
   /**
@@ -180,6 +185,57 @@ export class DataManager {
    * Refresh dashboard data from State Reader (CLI list + status, specs with fallback)
    */
   async refresh(): Promise<DashboardData> {
+    if (!this.refreshInFlight) {
+      return this.startRefresh();
+    }
+
+    if (!this.queuedRefresh) {
+      const queuedRefresh = this.refreshInFlight
+        .catch(() => undefined)
+        .then(() => {
+          if (this.queuedRefresh === queuedRefresh) {
+            this.queuedRefresh = null;
+          }
+          return this.startRefresh();
+        })
+        .finally(() => {
+          if (this.queuedRefresh === queuedRefresh) {
+            this.queuedRefresh = null;
+          }
+        });
+      this.queuedRefresh = queuedRefresh;
+    }
+
+    return this.queuedRefresh;
+  }
+
+  /**
+   * Get cached dashboard data or refresh
+   */
+  async getDashboardData(): Promise<DashboardData> {
+    if (!this.cachedData) {
+      return await (this.queuedRefresh ?? this.refreshInFlight ?? this.startRefresh());
+    }
+    return this.cachedData;
+  }
+
+  private warmDashboardData(): void {
+    void this.getDashboardData().catch((error) => {
+      logger.warn('Failed to warm dashboard data', error as Error);
+    });
+  }
+
+  private startRefresh(): Promise<DashboardData> {
+    const refresh = this.runRefresh().finally(() => {
+      if (this.refreshInFlight === refresh) {
+        this.refreshInFlight = null;
+      }
+    });
+    this.refreshInFlight = refresh;
+    return refresh;
+  }
+
+  private async runRefresh(): Promise<DashboardData> {
     try {
       logger.info('Refreshing dashboard data...');
 
