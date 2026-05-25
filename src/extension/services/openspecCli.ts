@@ -26,9 +26,9 @@ export class OpenSpecCliService {
   /**
    * Check if OpenSpec CLI is available
    */
-  async checkAvailability(): Promise<boolean> {
+  async checkAvailability(notifyCliNotFound = true): Promise<boolean> {
     try {
-      await this.execOpenSpec(['--version']);
+      await this.execOpenSpec(['--version'], 1, { notifyCliNotFound });
       return true;
     } catch (error) {
       logger.error('OpenSpec CLI not available', error as Error);
@@ -271,8 +271,13 @@ export class OpenSpecCliService {
    * Execute OpenSpec CLI command with retry logic.
    * On "command not found" (exit 127 or spawn ENOENT), calls showCliNotFoundError() and rethrows; no file fallback.
    */
-  private async execOpenSpec(args: string[], retries: number = 3): Promise<string> {
+  private async execOpenSpec(
+    args: string[],
+    retries: number = 3,
+    options: { notifyCliNotFound?: boolean } = {}
+  ): Promise<string> {
     let lastError: Error | undefined;
+    const notifyCliNotFound = options.notifyCliNotFound ?? true;
 
     for (let attempt = 0; attempt < retries; attempt++) {
       try {
@@ -281,12 +286,12 @@ export class OpenSpecCliService {
         lastError = error as Error;
 
         if (error instanceof OpenSpecCliError && error.exitCode === 127) {
-          this.showCliNotFoundError();
+          if (notifyCliNotFound) this.showCliNotFoundError();
           throw error;
         }
 
         if (error instanceof OpenSpecCliResolutionError) {
-          this.showCliNotFoundError(error);
+          if (notifyCliNotFound) this.showCliNotFoundError(error);
           throw error;
         }
 
@@ -298,7 +303,7 @@ export class OpenSpecCliService {
       }
     }
 
-    if (lastError && this.isCliNotFoundError(lastError)) {
+    if (notifyCliNotFound && lastError && this.isCliNotFoundError(lastError)) {
       this.showCliNotFoundError(lastError);
     }
     throw lastError;

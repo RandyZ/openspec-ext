@@ -3,11 +3,17 @@ import * as path from 'path';
 import { logger } from '../utils/logger';
 import { DataManager, type DashboardData } from '../services/dataManager';
 import { ChangeDetailPanelManager } from './changeDetailPanelManager';
-import { handleWebviewMessage, getWebviewContent } from './webviewMessageHandler';
+import {
+  handleWebviewMessage,
+  getWebviewContent,
+  getWorkflowLaunchConfigMessage,
+} from './webviewMessageHandler';
 
 export class DashboardViewProvider implements vscode.WebviewViewProvider {
-  public static readonly viewType = 'openspec.dashboardView';
+  public static readonly viewType = 'openspec.dashboard';
+  private static readonly initialDataPostDelayMs = 100;
   private _view?: vscode.WebviewView;
+  private dashboardPanel?: vscode.WebviewPanel;
   private specPanels = new Map<string, vscode.WebviewPanel>();
   private refreshSubscription?: vscode.Disposable;
 
@@ -39,7 +45,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     webviewView.webview.html = getWebviewContent(webviewView.webview, this.extensionPath);
 
     // Setup message handler
-    this.setupMessageHandler(webviewView);
+    this.setupMessageHandler(webviewView.webview);
 
     // Handle view disposal
     webviewView.onDidDispose(() => {
@@ -47,6 +53,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     });
 
     logger.info('Dashboard view resolved');
+    this.postInitialDashboardData(webviewView.webview);
   }
 
   dispose(): void {
@@ -58,6 +65,59 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     if (!this._view) return;
     const debug = vscode.workspace.getConfiguration('openspec').get<boolean>('debug') ?? false;
     this._view.webview.postMessage({ type: 'dashboardData', data, debug });
+    this.postWorkflowLaunchConfig();
+  }
+
+  public postWorkflowLaunchConfig(): void {
+    if (!this._view) return;
+    this._view.webview.postMessage(getWorkflowLaunchConfigMessage());
+  }
+
+  public openInEditor(): void {
+    if (this.dashboardPanel) {
+      this.dashboardPanel.reveal(vscode.ViewColumn.One);
+      this.postInitialDashboardData(this.dashboardPanel.webview);
+      return;
+    }
+
+    const panel = vscode.window.createWebviewPanel(
+      'openspecDashboard',
+      'OpenSpec Dashboard',
+      vscode.ViewColumn.One,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+        localResourceRoots: [vscode.Uri.file(path.join(this.extensionPath, 'dist'))],
+      }
+    );
+    this.dashboardPanel = panel;
+    panel.webview.html = getWebviewContent(panel.webview, this.extensionPath);
+    this.setupMessageHandler(panel.webview);
+    panel.onDidDispose(() => {
+      this.dashboardPanel = undefined;
+    });
+    logger.info('Dashboard editor panel opened');
+    this.postInitialDashboardData(panel.webview);
+  }
+
+  private postInitialDashboardData(targetWebview?: vscode.Webview): void {
+    setTimeout(() => {
+      if (!targetWebview) return;
+      this.dataManager.getDashboardData()
+        .then((data) => {
+          logger.info('Posting initial dashboard data to webview');
+          const debug = vscode.workspace.getConfiguration('openspec').get<boolean>('debug') ?? false;
+          targetWebview.postMessage({ type: 'dashboardData', data, debug });
+          targetWebview.postMessage(getWorkflowLaunchConfigMessage());
+        })
+        .catch((err) => {
+          logger.error('Failed to post initial dashboard data', err as Error);
+          targetWebview.postMessage({
+            type: 'error',
+            message: (err as Error).message || 'Failed to load dashboard data',
+          });
+        });
+    }, DashboardViewProvider.initialDataPostDelayMs);
   }
 
   /**
@@ -74,11 +134,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   /**
    * Setup message handler for webview communication
    */
-  private setupMessageHandler(webviewView: vscode.WebviewView): void {
-    webviewView.webview.onDidReceiveMessage(
+  private setupMessageHandler(webview: vscode.Webview): void {
+    webview.onDidReceiveMessage(
       async (message) => {
         try {
-          await this.handleMessage(message, webviewView.webview);
+          await this.handleMessage(message, webview);
         } catch (error) {
           logger.error('Error handling webview message', error as Error);
         }

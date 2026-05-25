@@ -34,6 +34,9 @@
   "clipboard.copiedChat": "Copied to clipboard. Paste into Chat input.",
   "clipboard.copiedGeneral": "Copied to clipboard. Paste into Chat or terminal.",
   "clipboard.copiedCursorChat": "Copied to clipboard. Chat opened — paste and send.",
+  "workflow.copiedCommand": "Copied command: {command}",
+  "workflow.noAdapterCopied": "No executor available. Copied command: {command}",
+  "workflow.launchHelp": "Workflow buttons copy commands by default. Set openspec.workflowLaunchMode to adapter to use the selected executor, or explicitly set openspec.cursorLaunchMode to deeplink, chatCommand, or agentCli to route actions through Cursor.",
 
   "fillChat.failed": "fillChat failed: {error}",
 
@@ -90,11 +93,20 @@
   "cursor.model": "Model: {model}",
   "cursor.debugPromptStart": "--- Prompt sent to Agent (debug) ---",
   "cursor.debugPromptEnd": "--- End of prompt ---",
+  "cursor.agentStarted": "Cursor Agent CLI started (pid: {pid}).",
+  "cursor.waitingForOutput": "Waiting for Cursor Agent output...",
+  "cursor.noOutputYet": "No output yet. Cursor Agent CLI is still running; first runs may silently update the CLI or initialize workspace state.",
+  "cursor.stillRunningNoOutput": "Still running after {seconds}s with no output. Keep waiting, or run `agent update` / `agent status` in a terminal before retrying.",
   "cursor.spawnFailed": "Failed to start agent: {error}",
   "cursor.done": "Execution complete.",
   "cursor.signal": "Process received signal {signal}",
   "cursor.exitCode": "Exit code {code}",
   "cursor.finished": "Execution finished: {msg}",
+  "cursor.copiedRunningAgent": "Copied command and running Cursor Agent CLI: {command}",
+  "cursor.chatOpenedCopied": "Opened Cursor Chat and copied command: {command}",
+  "cursor.chatOpenFailedCopied": "Cursor Chat could not be opened. Copied command: {command}",
+  "cursor.promptOpenedCopied": "Opened Cursor prompt and copied command: {command}",
+  "cursor.openFailedCopied": "Cursor could not be opened. Copied command: {command}",
 
   "dashboard.loading": "Loading OpenSpec data...",
   "dashboard.loadFailed": "Failed to load data. Try refreshing.",
@@ -135,6 +147,8 @@
   "spec.requirements": "{count} requirements",
 
   "extension.noWorkspace": "OpenSpec: No workspace folder found",
+  "extension.reloadRecommended": "OpenSpec was installed or updated. Reload the window to refresh the sidebar contribution.",
+  "extension.reloadWindow": "Reload Window",
 
   "cli.notFound": "OpenSpec CLI not found. Install it or configure openspec.cliPath.",
   "cli.installInstructions": "Install Instructions",

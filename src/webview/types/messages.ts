@@ -1,3 +1,6 @@
+import type { WorkflowAction } from '../../shared/workflowCommand';
+import type { WorkflowLaunchConfigView } from '../../shared/workflowLaunchConfig';
+
 // Message types from webview to extension
 export type WebviewMessage =
   | { type: 'getDashboardData' }
@@ -19,10 +22,12 @@ export type WebviewMessage =
   | { type: 'revealSidebar' }
   | { type: 'executeTask'; changeName: string; taskIndex: number; taskText: string }
   | { type: 'getAgentAdapters' }
+  | { type: 'getWorkflowLaunchConfig' }
   | { type: 'setPreferredAgentAdapter'; adapterId: string }
   | { type: 'requestCreateArtifact'; changeName: string; artifactType: string }
   | { type: 'runCommand'; commandId: string; argsJson?: string; changeName?: string }
   | { type: 'fillChat'; prompt: string }
+  | { type: 'launchWorkflowAction'; action: WorkflowAction; changeName: string }
   | { type: 'getSpecContent'; specId: string }
   | { type: 'getSpecRequirements'; specId: string }
   | { type: 'openSpecInEditor'; specId: string; requirementIndex?: number }
@@ -40,6 +45,7 @@ export type ExtensionMessage =
   | { type: 'setContext'; view: 'changeDetail'; changeName: string; existingArtifactIds?: string[]; debug?: boolean }
   | { type: 'archivedChanges'; items: ArchivedChangeInfo[] }
   | { type: 'agentAdapters'; available: { id: string; displayName: string }[]; currentId: string | null }
+  | { type: 'workflowLaunchConfig'; config: WorkflowLaunchConfigView }
   | { type: 'taskExecutionFinished'; changeName: string; taskIndex: number; success: boolean; executionState?: Record<number, { success: boolean; timestamp: number }> }
   | { type: 'taskExecutionState'; changeName: string; executionState: Record<number, { success: boolean; timestamp: number }> }
   | { type: 'runCommandResult'; success: boolean; message?: string }
@@ -183,6 +189,10 @@ export const sendMessage = {
     type: 'getAgentAdapters',
   }),
 
+  getWorkflowLaunchConfig: (): WebviewMessage => ({
+    type: 'getWorkflowLaunchConfig',
+  }),
+
   setPreferredAgentAdapter: (adapterId: string): WebviewMessage => ({
     type: 'setPreferredAgentAdapter',
     adapterId,
@@ -204,6 +214,12 @@ export const sendMessage = {
   fillChat: (prompt: string): WebviewMessage => ({
     type: 'fillChat',
     prompt,
+  }),
+
+  launchWorkflowAction: (action: WorkflowAction, changeName: string): WebviewMessage => ({
+    type: 'launchWorkflowAction',
+    action,
+    changeName,
   }),
 
   getSpecContent: (specId: string): WebviewMessage => ({

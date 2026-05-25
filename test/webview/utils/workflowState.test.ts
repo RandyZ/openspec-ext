@@ -89,6 +89,16 @@ describe('deriveWorkflowState', () => {
     expect(state.secondaryActions.some((a) => a.label === 'Archive')).toBe(true);
   });
 
+  it('keeps archive as the existing direct archive action instead of a workflow split action', () => {
+    const state = deriveWorkflowState(name, ['proposal', 'specs', 'design', 'tasks'], 5, 5, false, false);
+    const archive = state.secondaryActions.find((a) => a.label === 'Archive');
+    expect(archive).toMatchObject({
+      action: 'archive-now',
+      command: '',
+      variant: 'secondary',
+    });
+  });
+
   it('hasDeltaSpecs adds Sync Specs secondary action', () => {
     const state = deriveWorkflowState(name, ['proposal', 'specs', 'design', 'tasks'], 3, 5, false, true);
     expect(state.secondaryActions.some((a) => a.label === 'Sync Specs')).toBe(true);

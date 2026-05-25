@@ -3,9 +3,16 @@ import * as path from 'path';
 import { logger } from '../utils/logger';
 import { DataManager } from '../services/dataManager';
 import { getChangesBasePath } from '../utils/workspaceRoot';
-import { getCurrentAdapter } from '../adapters';
+import { getAdapterById, getCurrentAdapter } from '../adapters';
 import type { WebviewMessage } from '../../webview/types/messages';
 import { t } from '../../i18n';
+import { buildWorkflowLaunchPayload } from '../../shared/workflowCommand';
+import { getWorkflowLaunchConfig } from '../services/workflowLaunchConfig';
+import {
+  getEffectiveWorkflowAdapterId,
+  shouldForceCursorWorkflowRoute,
+  toWorkflowLaunchConfigView,
+} from '../../shared/workflowLaunchConfig';
 
 /** Returns true if resolvedPath is under workspaceRoot (no .. escape). */
 function isPathUnderWorkspace(resolvedPath: string, workspaceRoot: string): boolean {
@@ -325,6 +332,11 @@ export async function handleWebviewMessage(
       break;
     }
 
+    case 'getWorkflowLaunchConfig': {
+      webview.postMessage(getWorkflowLaunchConfigMessage());
+      break;
+    }
+
     case 'setPreferredAgentAdapter': {
       const adapterId = message.adapterId;
       if (typeof adapterId !== 'string') break;
@@ -332,6 +344,7 @@ export async function handleWebviewMessage(
         const config = vscode.workspace.getConfiguration('openspec');
         await config.update('preferredAgentAdapter', adapterId, vscode.ConfigurationTarget.Global);
         vscode.window.showInformationMessage(t('adapter.switched', { name: adapterId }));
+        webview.postMessage(getWorkflowLaunchConfigMessage());
       } catch (err) {
         logger.error('setPreferredAgentAdapter failed', err as Error);
         vscode.window.showErrorMessage(t('adapter.saveFailed'));
@@ -406,6 +419,70 @@ export async function handleWebviewMessage(
       break;
     }
 
+    case 'launchWorkflowAction': {
+      const action = message.action;
+      const changeName = message.changeName;
+      if (typeof changeName !== 'string' || !changeName.trim()) break;
+
+      const launchConfig = getWorkflowLaunchConfig();
+      const effectiveAdapterId = getEffectiveWorkflowAdapterId(launchConfig);
+      logger.info(
+        `[workflow] launchWorkflowAction: action=${action}, changeName=${changeName}, ` +
+          `workflowLaunchMode=${launchConfig.workflowLaunchMode}, ` +
+          `preferredAgentAdapter=${launchConfig.preferredAgentAdapter}, ` +
+          `cursorLaunchMode=${launchConfig.cursorLaunchMode}, ` +
+          `cursorLaunchModeExplicit=${launchConfig.cursorLaunchModeExplicit}, ` +
+          `effectiveAdapterId=${effectiveAdapterId ?? 'none'}`
+      );
+
+      if (!effectiveAdapterId) {
+        const payload = buildWorkflowLaunchPayload({
+          action,
+          changeName,
+          workflowLaunchMode: 'clipboard',
+        });
+        logger.debug(`[workflow] copy-only route: command=${payload.command}`);
+        await vscode.env.clipboard.writeText(payload.command);
+        vscode.window.showInformationMessage(t('workflow.copiedCommand', { command: payload.command }));
+        break;
+      }
+
+      const adapter = shouldForceCursorWorkflowRoute(launchConfig)
+        ? await getAdapterById('cursor')
+        : await getCurrentAdapter();
+      if (!adapter) {
+        const payload = buildWorkflowLaunchPayload({
+          action,
+          changeName,
+          workflowLaunchMode: 'clipboard',
+        });
+        logger.warn(`[workflow] no available adapter for effectiveAdapterId=${effectiveAdapterId}; copied fallback command=${payload.command}`);
+        await vscode.env.clipboard.writeText(payload.command);
+        vscode.window.showInformationMessage(t('workflow.noAdapterCopied', { command: payload.command }));
+        break;
+      }
+
+      const payload = buildWorkflowLaunchPayload({
+        action,
+        changeName,
+        workflowLaunchMode: 'adapter',
+        adapterId: adapter.id,
+      });
+      logger.info(`[workflow] launching via adapter: id=${adapter.id}, displayName=${adapter.displayName}, command=${payload.command}`);
+      const result = await adapter.fillChat({
+        changeName,
+        taskIndex: -1,
+        taskText: '',
+        contextFiles: [],
+        workspaceRoot: dataManager.getWorkspaceRoot(),
+        promptOverride: payload.command,
+      });
+      logger.info(
+        `[workflow] adapter result: id=${result.adapterId}, success=${result.success}, message=${result.message ?? ''}`
+      );
+      break;
+    }
+
     /**
      * Verify tab: run an IDE command for debugging. Only commands in the allowlist
      * are executed. For development/debug use only.
@@ -457,6 +534,14 @@ export async function handleWebviewMessage(
     default:
       logger.warn(`Unknown message type: ${message.type}`);
   }
+}
+
+export function getWorkflowLaunchConfigMessage() {
+  const config = getWorkflowLaunchConfig();
+  return {
+    type: 'workflowLaunchConfig' as const,
+    config: toWorkflowLaunchConfigView(config),
+  };
 }
 
 /**

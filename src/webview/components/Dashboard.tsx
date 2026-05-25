@@ -7,6 +7,11 @@ import { Header } from './Header';
 import { ChangesSection } from './ChangesSection';
 import { SpecsSection } from './SpecsSection';
 import { t } from '../../i18n';
+import {
+  buildWorkflowCommand,
+  type WorkflowAction,
+} from '../../shared/workflowCommand';
+import type { WorkflowLaunchConfigView } from '../utils/workflowLaunchLabels';
 
 export const Dashboard: React.FC = () => {
   const { postMessage, onMessage } = useVscode();
@@ -15,6 +20,7 @@ export const Dashboard: React.FC = () => {
   const [archivedItems, setArchivedItems] = useState<ArchivedChangeInfo[]>([]);
   const [archivedLoading, setArchivedLoading] = useState(false);
   const [specRequirements, setSpecRequirements] = useState<Record<string, string[]>>({});
+  const [workflowLaunchConfig, setWorkflowLaunchConfig] = useState<WorkflowLaunchConfigView | null>(null);
 
   useEffect(() => {
     // Listen for messages from extension
@@ -41,12 +47,15 @@ export const Dashboard: React.FC = () => {
       } else if (message.type === 'archivedChanges') {
         setArchivedItems(message.items ?? []);
         setArchivedLoading(false);
+      } else if (message.type === 'workflowLaunchConfig') {
+        setWorkflowLaunchConfig(message.config ?? null);
       }
     });
 
     // Request initial data
     dispatch({ type: 'SET_LOADING', payload: true });
     postMessage(sendMessage.getDashboardData());
+    postMessage(sendMessage.getWorkflowLaunchConfig());
 
     return cleanup;
   }, [postMessage, onMessage, dispatch]);
@@ -67,6 +76,7 @@ export const Dashboard: React.FC = () => {
   const handleRefresh = () => {
     dispatch({ type: 'SET_LOADING', payload: true });
     postMessage(sendMessage.refresh());
+    postMessage(sendMessage.getWorkflowLaunchConfig());
   };
 
   const handleOpenChange = (changeName: string) => {
@@ -78,19 +88,19 @@ export const Dashboard: React.FC = () => {
   };
 
   const handleCopyFf = (changeName: string) => {
-    postMessage(sendMessage.copyToClipboard(`/opsx:ff ${changeName}`));
+    postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({ action: 'ff', changeName, target: 'clipboard' })));
   };
 
   const handleCopyApply = (changeName: string) => {
-    postMessage(sendMessage.copyToClipboard(`/opsx:apply ${changeName}`));
+    postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({ action: 'apply', changeName, target: 'clipboard' })));
   };
 
   const handleArchive = (changeName: string) => {
     postMessage(sendMessage.archiveChange(changeName));
   };
 
-  const handleFillChat = (command: string) => {
-    postMessage(sendMessage.fillChat(command));
+  const handleLaunchWorkflow = (action: WorkflowAction, changeName: string) => {
+    postMessage(sendMessage.launchWorkflowAction(action, changeName));
   };
 
   const handleOpenSpec = (spec: SpecInfo) => {
@@ -139,12 +149,13 @@ export const Dashboard: React.FC = () => {
               onCopyFf={handleCopyFf}
               onCopyApply={handleCopyApply}
               onArchive={handleArchive}
-              onFillChat={handleFillChat}
+              onLaunchWorkflow={handleLaunchWorkflow}
               archivedExpanded={archivedExpanded}
               onArchivedToggle={handleArchivedToggle}
               archivedItems={archivedItems}
               archivedLoading={archivedLoading}
               onOpenArchivedChange={handleOpenArchivedChange}
+              workflowLaunchConfig={workflowLaunchConfig}
             />
             <SpecsSection
               specs={data.specs}

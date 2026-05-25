@@ -52,6 +52,10 @@ export class CommandManager {
       if (focusSidebar) {
         logger.info('Revealing OpenSpec dashboard view...');
         this.dashboardViewProvider.reveal();
+        await vscode.commands.executeCommand(`${DashboardViewProvider.viewType}.focus`);
+      } else {
+        logger.info('Opening OpenSpec dashboard editor panel...');
+        this.dashboardViewProvider.openInEditor();
       }
     } catch (error) {
       logger.error('Failed to open dashboard', error as Error);

@@ -4,6 +4,11 @@ import type { TaskExecuteRequest } from './agentExecutor.types';
 import type { IOpenSpecContentAccess } from './contentAccess';
 import { getCurrentAdapter } from '../adapters';
 import { t } from '../../i18n';
+import {
+  buildWorkflowCommand,
+  getWorkflowCommandTargetForAdapter,
+} from '../../shared/workflowCommand';
+import { getWorkflowLaunchConfig } from './workflowLaunchConfig';
 
 export class TaskExecutorService {
   constructor(
@@ -81,6 +86,19 @@ export class TaskExecutorService {
       if (choice !== t('task.continue')) return { success: false };
     }
 
+    const launchConfig = getWorkflowLaunchConfig();
+    const clipboardPrompt = buildWorkflowCommand({
+      action: 'apply',
+      changeName,
+      target: 'clipboard',
+    });
+
+    if (mode === 'fillChat' && launchConfig.workflowLaunchMode === 'clipboard') {
+      await vscode.env.clipboard.writeText(clipboardPrompt);
+      vscode.window.showInformationMessage(t('clipboard.copiedChat'));
+      return { success: true };
+    }
+
     const adapter = await getCurrentAdapter();
     if (!adapter) {
       vscode.window.showErrorMessage(
@@ -89,13 +107,20 @@ export class TaskExecutorService {
       return { success: false };
     }
 
+    const target = getWorkflowCommandTargetForAdapter(adapter.id);
+    const promptOverride = buildWorkflowCommand({
+      action: 'apply',
+      changeName,
+      target,
+    });
+
     const request: TaskExecuteRequest = {
       changeName,
       taskIndex,
       taskText,
       contextFiles: [],
       workspaceRoot: this.workspaceRoot,
-      promptOverride: `/opsx:apply ${changeName}`,
+      promptOverride,
     };
 
     try {

@@ -23,7 +23,8 @@
     "url": "https://github.com/RandyZ/openspec-ext.git"
   },
   "activationEvents": [
-    "workspaceContains:openspec/config.yaml"
+    "workspaceContains:openspec/config.yaml",
+    "onView:openspec.dashboard"
   ],
   "main": "./dist/extension.js",
   "icon": "resources/icon.png",
@@ -55,10 +56,43 @@
           "default": "fillChat",
           "description": "When clicking task execute: auto = run via adapter; fillChat = fill chat or copy to clipboard."
         },
+        "openspec.workflowLaunchMode": {
+          "type": "string",
+          "enum": [
+            "clipboard",
+            "adapter"
+          ],
+          "default": "clipboard",
+          "description": "Workflow button behavior: clipboard = copy the generated command; adapter = route through the preferred agent adapter."
+        },
         "openspec.preferredAgentAdapter": {
           "type": "string",
-          "default": "",
-          "description": "Preferred Agent executor adapter id (e.g. cursor, claude-code, clipboard). Empty = use first available."
+          "enum": [
+            "clipboard",
+            "cursor",
+            "vscode-copilot",
+            "claude-code",
+            "opencode"
+          ],
+          "default": "clipboard",
+          "description": "Preferred Agent executor adapter used when workflowLaunchMode is adapter."
+        },
+        "openspec.cursorLaunchMode": {
+          "type": "string",
+          "enum": [
+            "clipboard",
+            "deeplink",
+            "chatCommand",
+            "agentCli"
+          ],
+          "default": "clipboard",
+          "enumDescriptions": [
+            "Only copy the generated command to the clipboard. Does not open Cursor or start Agent CLI.",
+            "Open Cursor through the prompt deeplink with the generated command prefilled. The command is also copied as fallback.",
+            "Open Cursor Chat through the VS Code/Cursor chat command query. The command is also copied as fallback.",
+            "Run the generated command through Cursor Agent CLI in headless mode. This can modify the workspace and requires Cursor CLI login/trust."
+          ],
+          "markdownDescription": "Cursor adapter launch behavior for workflow actions.\\n\\n- `clipboard`: safe default; only copy the generated `/opsx:*` command.\\n- `deeplink`: open Cursor prompt deeplink with `/opsx-*` prefilled, while keeping clipboard fallback.\\n- `chatCommand`: try Cursor Chat query prefill, while keeping clipboard fallback.\\n- `agentCli`: run Cursor Agent CLI directly in headless mode; may modify files."
         },
         "openspec.taskDependencyPolicy": {
           "type": "string",
@@ -69,10 +103,15 @@
           "default": "block",
           "description": "When preceding tasks are incomplete: block = prevent execution; warn = show warning and let user proceed."
         },
+        "openspec.cursorAgentModel": {
+          "type": "string",
+          "default": "auto",
+          "description": "Cursor Agent CLI model used only for explicit Cursor Agent CLI execution. 'auto' lets Cursor choose."
+        },
         "openspec.agentModel": {
           "type": "string",
           "default": "auto",
-          "description": "Cursor agent CLI model. Default is 'auto' (Cursor chooses; no --model passed). Set a specific name (e.g. composer-1.5, gpt-5.2) only when you want to override, e.g. to avoid a model's usage limit."
+          "description": "Legacy Cursor agent CLI model setting. Prefer openspec.cursorAgentModel."
         },
         "openspec.debug": {
           "type": "boolean",
@@ -93,9 +132,10 @@
     "views": {
       "openspec": [
         {
-          "id": "openspec.dashboardView",
+          "id": "openspec.dashboard",
           "name": "Dashboard",
-          "type": "webview"
+          "type": "webview",
+          "visibility": "visible"
         }
       ]
     },

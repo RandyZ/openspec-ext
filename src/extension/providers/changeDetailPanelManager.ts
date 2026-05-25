@@ -2,7 +2,11 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { logger } from '../utils/logger';
 import { DataManager } from '../services/dataManager';
-import { handleWebviewMessage, getWebviewContent } from './webviewMessageHandler';
+import {
+  handleWebviewMessage,
+  getWebviewContent,
+  getWorkflowLaunchConfigMessage,
+} from './webviewMessageHandler';
 
 /** Delay (ms) before sending initial setContext so the webview is ready to receive it. */
 const INITIAL_SET_CONTEXT_DELAY_MS = 150;
@@ -137,6 +141,13 @@ export class ChangeDetailPanelManager {
       logger.debug(`Sent artifactInvalidated to panel ${changeName}: ${artifactTypes.join(', ')}`);
     } catch (err) {
       logger.warn(`notifyArtifactChanged: panel ${changeName} may be disposed`, err as Error);
+    }
+  }
+
+  public postWorkflowLaunchConfig(): void {
+    const message = getWorkflowLaunchConfigMessage();
+    for (const panel of this.panels.values()) {
+      panel.webview.postMessage(message);
     }
   }
 }

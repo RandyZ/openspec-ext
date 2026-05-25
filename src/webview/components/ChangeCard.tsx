@@ -1,6 +1,12 @@
 import React from 'react';
 import { ChangeInfo } from '../types/messages';
 import { t } from '../../i18n';
+import type { WorkflowAction } from '../../shared/workflowCommand';
+import {
+  getWorkflowActionButtonLabel,
+  getWorkflowActionTitle,
+  type WorkflowLaunchConfigView,
+} from '../utils/workflowLaunchLabels';
 
 const ArtifactBadge: React.FC<{ id: string; status: 'done' | 'ready' | 'blocked' }> = ({ id, status }) => {
   const colors = {
@@ -41,26 +47,27 @@ export interface ChangeCardProps {
   onCopyFf?: (changeName: string) => void;
   onCopyApply?: (changeName: string) => void;
   onArchive?: (changeName: string) => void;
-  onFillChat?: (command: string) => void;
+  onLaunchWorkflow?: (action: WorkflowAction, changeName: string) => void;
+  workflowLaunchConfig?: WorkflowLaunchConfigView | null;
 }
 
-function getSmartActions(change: ChangeInfo): { label: string; command: string }[] {
+function getSmartActions(change: ChangeInfo): { label: string; action: WorkflowAction }[] {
   const hasAllArtifacts = change.artifacts?.every((a) => a.status === 'done') ?? false;
   const allTasksDone = change.totalTasks > 0 && change.completedTasks === change.totalTasks;
 
   if (!hasAllArtifacts) {
     return [
-      { label: 'Continue', command: `/opsx:continue ${change.name}` },
-      { label: 'FF', command: `/opsx:ff ${change.name}` },
+      { label: 'Continue', action: 'continue' },
+      { label: 'FF', action: 'ff' },
     ];
   }
   if (allTasksDone) {
     return [
-      { label: 'Verify', command: `/opsx:verify ${change.name}` },
+      { label: 'Verify', action: 'verify' },
     ];
   }
   return [
-    { label: 'Apply', command: `/opsx:apply ${change.name}` },
+    { label: 'Apply', action: 'apply' },
   ];
 }
 
@@ -70,7 +77,8 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
   onCopyFf,
   onCopyApply,
   onArchive,
-  onFillChat,
+  onLaunchWorkflow,
+  workflowLaunchConfig,
 }) => {
   const [hover, setHover] = React.useState(false);
 
@@ -155,28 +163,30 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
         </div>
       )}
 
-      {hover && (onFillChat || onCopyFf || onCopyApply || onArchive) && (
+      {hover && (onLaunchWorkflow || onCopyFf || onCopyApply || onArchive) && (
         <div
           className="flex flex-wrap gap-1 mt-2 pt-2 border-t"
           style={{ borderColor: 'var(--vscode-panel-border)' }}
           data-action
         >
-          {onFillChat && getSmartActions(change).map((action) => (
+          {onLaunchWorkflow && getSmartActions(change).map((action) => (
             <button
               key={action.label}
               type="button"
               data-action
               className="px-2 py-0.5 text-xs rounded cursor-pointer border-none"
+              title={getWorkflowActionTitle(action.label, workflowLaunchConfig)}
+              aria-label={getWorkflowActionTitle(action.label, workflowLaunchConfig)}
               style={{
                 background: 'var(--vscode-button-background)',
                 color: 'var(--vscode-button-foreground)',
               }}
               onClick={(e) => {
                 e.stopPropagation();
-                onFillChat(action.command);
+                onLaunchWorkflow(action.action, change.name);
               }}
             >
-              {action.label}
+              {getWorkflowActionButtonLabel(action.label, workflowLaunchConfig)}
             </button>
           ))}
           {onArchive && change.totalTasks > 0 && change.completedTasks === change.totalTasks && (

@@ -16,7 +16,7 @@ export interface OpenSpecCliResolverOptions {
   shell?: string;
 }
 
-const DEFAULT_TIMEOUT_MS = 5000;
+const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_KNOWN_PATHS = [
   '/opt/homebrew/bin/openspec',
   '/usr/local/bin/openspec',
@@ -193,4 +193,3 @@ export class OpenSpecCliResolver {
     };
   }
 }
-

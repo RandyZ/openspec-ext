@@ -51,7 +51,7 @@ flowchart TD
 | --- | --- | --- |
 | `openspec.workflowLaunchMode` | `clipboard` | workflow 按钮默认复制，还是交给 adapter 路由 |
 | `openspec.preferredAgentAdapter` | `clipboard` | adapter 模式下使用哪个目标工具，配置 UI 为 enum 下拉 |
-| `openspec.cursorLaunchMode` | `deeplink` | Cursor adapter 在 fillChat 路径中的打开方式 |
+| `openspec.cursorLaunchMode` | `clipboard` | Cursor adapter 在 fillChat 路径中的打开方式；用户选择 `deeplink`、`chatCommand` 或 `agentCli` 时才显式切到 Cursor 路由 |
 | `openspec.taskExecutionMode` | `fillChat` | 任务执行入口是填充/复制，还是自动执行 |
 | `openspec.cursorAgentModel` | `auto` | Cursor Agent CLI 自动执行时使用的模型 |
 
@@ -69,7 +69,7 @@ Cursor commands 文件当前以 `/opsx-apply` 等 hyphen 形式存在，OpenCode
 
 ### Decision: Cursor 打开方式优先 deeplink，再 fallback
 
-Cursor 官方 deeplink `cursor://anysphere.cursor-deeplink/prompt?text=...` 已验证可以打开 Cursor 并预填内容，但会弹出用户确认框。该行为符合安全预期，因此作为 `cursorLaunchMode=deeplink` 的推荐路径。Cursor adapter 的 fillChat 应先复制命令到剪贴板并显示 toast，再尝试 deeplink；如果失败，再尝试 `workbench.action.chat.open({ query })` 或保留剪贴板 fallback。
+Cursor 官方 deeplink `cursor://anysphere.cursor-deeplink/prompt?text=...` 已验证可以打开 Cursor 并预填内容，但会弹出用户确认框。该行为符合安全预期，因此作为用户显式选择 `cursorLaunchMode=deeplink` 后的推荐路径。Cursor adapter 的 fillChat 应先复制命令到剪贴板并显示 toast，再尝试 deeplink；如果失败，再尝试 `workbench.action.chat.open({ query })` 或保留剪贴板 fallback。
 
 `workbench.action.chat.open({ query })` 对 Copilot adapter 已可用，但对 Cursor Agent 是否稳定填入不确定，因此只作为兼容 fallback 或显式 `chatCommand` 模式，不作为默认。
 
@@ -92,7 +92,7 @@ Agent CLI 自动执行仍保留在 `executeTask` 或 `taskExecutionMode=auto` �
 ## Risks / Trade-offs
 
 - [Risk] Cursor deeplink 会弹出确认框，不能静默发送。→ Mitigation: 这是安全边界，UI 文案应说明“打开并预填，需用户确认发送”。
-- [Risk] `workbench.action.chat.open({ query })` 对 Cursor Agent 不稳定。→ Mitigation: 将其作为 fallback 或显式模式，不作为默认；默认使用 deeplink 或 clipboard。
+- [Risk] `workbench.action.chat.open({ query })` 对 Cursor Agent 不稳定。→ Mitigation: 将其作为 fallback 或显式模式，不作为默认；默认只使用 clipboard。
 - [Risk] 发布包未正确包含内置 plugin 目录会导致未来辅助 assets 无法发现。→ Mitigation: 当前不把 plugin registration 作为主路径；未来启用时再增加 package 验证。
 - [Risk] command builder target 推断错误会生成错误格式。→ Mitigation: 为每个 adapter target 增加单元测试，并让未知 target 默认 colon 格式保证兼容。
 - [Risk] UI 文案调整可能影响既有用户理解。→ Mitigation: 文案使用动作语义而非实现细节，例如 `Open in Chat` 和 `Copy Command`。

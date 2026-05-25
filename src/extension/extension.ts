@@ -52,6 +52,7 @@ export async function activate(context: vscode.ExtensionContext) {
       changeDetailPanelManager
     );
     dashboardViewProviderRef = dashboardViewProvider;
+    logger.info(`Registering dashboard webview provider: ${DashboardViewProvider.viewType}`);
     context.subscriptions.push(
       vscode.window.registerWebviewViewProvider(
         DashboardViewProvider.viewType,
@@ -66,17 +67,51 @@ export async function activate(context: vscode.ExtensionContext) {
       })
     );
 
+    context.subscriptions.push(
+      vscode.workspace.onDidChangeConfiguration((event) => {
+        const launchConfigChanged =
+          event.affectsConfiguration('openspec.workflowLaunchMode') ||
+          event.affectsConfiguration('openspec.preferredAgentAdapter') ||
+          event.affectsConfiguration('openspec.cursorLaunchMode') ||
+          event.affectsConfiguration('openspec.cursorAgentModel');
+        if (!launchConfigChanged) return;
+        logger.info('[workflow] launch configuration changed; updating webviews');
+        dashboardViewProvider.postWorkflowLaunchConfig();
+        changeDetailPanelManager.postWorkflowLaunchConfig();
+      })
+    );
+
     // Register commands
     const commandManager = new CommandManager(dataManager, context, dashboardViewProvider);
     commandManager.register();
 
     logger.info('OpenSpec extension activated successfully');
     console.log('OpenSpec extension is now active!');
+    await promptReloadAfterInstallOrUpdate(context);
   } catch (error) {
     logger.error('Failed to activate OpenSpec extension', error as Error);
     vscode.window.showErrorMessage(
       `OpenSpec extension failed to activate: ${(error as Error).message}`
     );
+  }
+}
+
+async function promptReloadAfterInstallOrUpdate(context: vscode.ExtensionContext): Promise<void> {
+  const packageVersion = String(context.extension.packageJSON?.version ?? 'unknown');
+  const marker = `${packageVersion}:${DashboardViewProvider.viewType}`;
+  const key = 'openspec.installationMarker';
+  const previous = context.globalState.get<string>(key);
+  if (previous === marker) return;
+
+  await context.globalState.update(key, marker);
+  logger.info(`OpenSpec installation marker changed: previous=${previous ?? 'none'}, current=${marker}`);
+  const reload = t('extension.reloadWindow');
+  const selected = await vscode.window.showInformationMessage(
+    t('extension.reloadRecommended'),
+    reload
+  );
+  if (selected === reload) {
+    await vscode.commands.executeCommand('workbench.action.reloadWindow');
   }
 }
 

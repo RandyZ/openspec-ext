@@ -4,6 +4,8 @@ import { ChangeCard } from './ChangeCard';
 import { EmptyState } from './EmptyState';
 import { filterChanges } from '../utils/filterChanges';
 import { t } from '../../i18n';
+import type { WorkflowAction } from '../../shared/workflowCommand';
+import type { WorkflowLaunchConfigView } from '../utils/workflowLaunchLabels';
 
 interface ChangesSectionProps {
   changes: ChangeInfo[];
@@ -12,12 +14,13 @@ interface ChangesSectionProps {
   onCopyFf?: (changeName: string) => void;
   onCopyApply?: (changeName: string) => void;
   onArchive?: (changeName: string) => void;
-  onFillChat?: (command: string) => void;
+  onLaunchWorkflow?: (action: WorkflowAction, changeName: string) => void;
   archivedExpanded?: boolean;
   onArchivedToggle?: () => void;
   archivedItems?: ArchivedChangeInfo[];
   archivedLoading?: boolean;
   onOpenArchivedChange?: (directoryName: string) => void;
+  workflowLaunchConfig?: WorkflowLaunchConfigView | null;
 }
 
 type StatusGroup = 'in-progress' | 'draft' | 'complete';
@@ -48,12 +51,13 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
   onCopyFf,
   onCopyApply,
   onArchive,
-  onFillChat,
+  onLaunchWorkflow,
   archivedExpanded = false,
   onArchivedToggle,
   archivedItems = [],
   archivedLoading = false,
   onOpenArchivedChange,
+  workflowLaunchConfig,
 }) => {
   const [query, setQuery] = useState('');
   const filteredChanges = useMemo(() => filterChanges(changes, query), [changes, query]);
@@ -116,7 +120,8 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
                       onCopyFf={onCopyFf}
                       onCopyApply={onCopyApply}
                       onArchive={onArchive}
-                      onFillChat={onFillChat}
+                      onLaunchWorkflow={onLaunchWorkflow}
+                      workflowLaunchConfig={workflowLaunchConfig}
                     />
                   ))}
                 </div>

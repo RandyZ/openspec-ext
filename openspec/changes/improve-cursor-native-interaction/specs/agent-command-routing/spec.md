@@ -21,6 +21,8 @@ The extension SHALL expose clear workflow launch settings that separate safe def
 - **WHEN** the preferred adapter is `cursor`
 - **THEN** the extension MUST read `openspec.cursorLaunchMode` to decide how to start Cursor
 - **AND** supported modes MUST include `deeplink`, `chatCommand`, `clipboard`, and `agentCli`
+- **AND** the default value MUST be `clipboard`
+- **AND** selecting `deeplink`, `chatCommand`, or `agentCli` explicitly MAY route workflow actions through the Cursor adapter even when the global workflow launch mode remains the safe clipboard default
 
 #### Scenario: Adapter launch mode uses preferred adapter
 - **WHEN** `openspec.workflowLaunchMode` is `adapter`

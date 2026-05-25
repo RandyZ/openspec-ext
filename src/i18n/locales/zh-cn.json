@@ -36,6 +36,9 @@
   "clipboard.copiedChat": "已复制到剪贴板，可粘贴到 Chat 输入框。",
   "clipboard.copiedGeneral": "已复制到剪贴板，可粘贴到 Chat 或终端执行。",
   "clipboard.copiedCursorChat": "已复制到剪贴板，Chat 已打开，请粘贴到输入框后发送。",
+  "workflow.copiedCommand": "已复制命令：{command}",
+  "workflow.noAdapterCopied": "当前没有可用执行者，已复制命令：{command}",
+  "workflow.launchHelp": "Workflow 按钮默认只复制命令。将 openspec.workflowLaunchMode 设为 adapter 会使用所选执行者；或显式设置 openspec.cursorLaunchMode 为 deeplink、chatCommand、agentCli，让动作直接走 Cursor 路由。",
 
   "fillChat.failed": "fillChat 失败: {error}",
 
@@ -92,11 +95,20 @@
   "cursor.model": "模型: {model}",
   "cursor.debugPromptStart": "--- 发送给 Agent 的内容 (debug) ---",
   "cursor.debugPromptEnd": "--- 以上为发送给 Agent 的内容 ---",
+  "cursor.agentStarted": "Cursor Agent CLI 已启动 (pid: {pid})。",
+  "cursor.waitingForOutput": "等待 Cursor Agent 输出...",
+  "cursor.noOutputYet": "暂未收到输出。Cursor Agent CLI 仍在运行；首次运行可能会静默更新 CLI 或初始化工作区状态。",
+  "cursor.stillRunningNoOutput": "已运行 {seconds}s 但仍没有输出。可以继续等待，或先在终端运行 `agent update` / `agent status` 后重试。",
   "cursor.spawnFailed": "启动 agent 失败: {error}",
   "cursor.done": "执行完成。",
   "cursor.signal": "进程收到信号 {signal}",
   "cursor.exitCode": "退出码 {code}",
   "cursor.finished": "执行结束: {msg}",
+  "cursor.copiedRunningAgent": "已复制命令并启动 Cursor Agent CLI：{command}",
+  "cursor.chatOpenedCopied": "已打开 Cursor Chat 并复制命令：{command}",
+  "cursor.chatOpenFailedCopied": "无法打开 Cursor Chat，已复制命令：{command}",
+  "cursor.promptOpenedCopied": "已打开 Cursor prompt 并复制命令：{command}",
+  "cursor.openFailedCopied": "无法打开 Cursor，已复制命令：{command}",
 
   "dashboard.loading": "正在加载 OpenSpec 数据...",
   "dashboard.loadFailed": "加载数据失败，请尝试刷新。",
@@ -135,6 +147,8 @@
   "spec.requirements": "{count} 个需求",
 
   "extension.noWorkspace": "OpenSpec：未找到工作区文件夹",
+  "extension.reloadRecommended": "OpenSpec 已安装或更新。请重载窗口以刷新侧边栏贡献点。",
+  "extension.reloadWindow": "重载窗口",
 
   "cli.notFound": "未找到 OpenSpec CLI，请安装或配置 openspec.cliPath。",
   "cli.installInstructions": "安装说明",

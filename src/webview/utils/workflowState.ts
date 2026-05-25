@@ -1,3 +1,8 @@
+import {
+  buildWorkflowCommand,
+  type WorkflowAction as WorkflowCommandAction,
+} from '../../shared/workflowCommand';
+
 export type WorkflowStep =
   | 'proposal'
   | 'specs'
@@ -11,6 +16,7 @@ export type StepStatus = 'done' | 'current' | 'upcoming';
 
 export interface WorkflowAction {
   label: string;
+  action: WorkflowCommandAction | 'archive-now';
   command: string;
   variant: 'primary' | 'secondary';
 }
@@ -110,7 +116,8 @@ export function deriveWorkflowState(
   if (nextArtifact) {
     secondaryActions.push({
       label: 'FF',
-      command: `/opsx:ff ${changeName}`,
+      action: 'ff',
+      command: buildWorkflowCommand({ action: 'ff', changeName, target: 'clipboard' }),
       variant: 'secondary',
     });
   }
@@ -118,7 +125,8 @@ export function deriveWorkflowState(
   if (allArtifactsDone && !allTasksDone) {
     secondaryActions.push({
       label: 'Verify',
-      command: `/opsx:verify ${changeName}`,
+      action: 'verify',
+      command: buildWorkflowCommand({ action: 'verify', changeName, target: 'clipboard' }),
       variant: 'secondary',
     });
   }
@@ -126,6 +134,7 @@ export function deriveWorkflowState(
   if (allTasksDone) {
     secondaryActions.push({
       label: 'Archive',
+      action: 'archive-now',
       command: '',
       variant: 'secondary',
     });
@@ -134,6 +143,7 @@ export function deriveWorkflowState(
   if (hasAnyTaskDone && !allTasksDone) {
     secondaryActions.push({
       label: 'Archive',
+      action: 'archive-now',
       command: '',
       variant: 'secondary',
     });
@@ -142,7 +152,8 @@ export function deriveWorkflowState(
   if (hasDeltaSpecs) {
     secondaryActions.push({
       label: 'Sync Specs',
-      command: `/opsx:sync ${changeName}`,
+      action: 'sync',
+      command: buildWorkflowCommand({ action: 'sync', changeName, target: 'clipboard' }),
       variant: 'secondary',
     });
   }
@@ -155,37 +166,43 @@ function buildPrimaryAction(changeName: string, currentStep: WorkflowStep): Work
     case 'proposal':
       return {
         label: 'Continue → Proposal',
-        command: `/opsx:continue ${changeName}`,
+        action: 'continue',
+        command: buildWorkflowCommand({ action: 'continue', changeName, target: 'clipboard' }),
         variant: 'primary',
       };
     case 'specs':
       return {
         label: 'Continue → Specs',
-        command: `/opsx:continue ${changeName}`,
+        action: 'continue',
+        command: buildWorkflowCommand({ action: 'continue', changeName, target: 'clipboard' }),
         variant: 'primary',
       };
     case 'design':
       return {
         label: 'Continue → Design',
-        command: `/opsx:continue ${changeName}`,
+        action: 'continue',
+        command: buildWorkflowCommand({ action: 'continue', changeName, target: 'clipboard' }),
         variant: 'primary',
       };
     case 'tasks':
       return {
         label: 'Continue → Tasks',
-        command: `/opsx:continue ${changeName}`,
+        action: 'continue',
+        command: buildWorkflowCommand({ action: 'continue', changeName, target: 'clipboard' }),
         variant: 'primary',
       };
     case 'apply':
       return {
         label: 'Apply',
-        command: `/opsx:apply ${changeName}`,
+        action: 'apply',
+        command: buildWorkflowCommand({ action: 'apply', changeName, target: 'clipboard' }),
         variant: 'primary',
       };
     case 'verify':
       return {
         label: 'Verify',
-        command: `/opsx:verify ${changeName}`,
+        action: 'verify',
+        command: buildWorkflowCommand({ action: 'verify', changeName, target: 'clipboard' }),
         variant: 'primary',
       };
     default:

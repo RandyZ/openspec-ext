@@ -1,6 +1,12 @@
 import React from 'react';
 import { type WorkflowState } from '../utils/workflowState';
 import { t } from '../../i18n';
+import type { WorkflowAction as WorkflowCommandAction } from '../../shared/workflowCommand';
+import {
+  getWorkflowActionButtonLabel,
+  getWorkflowActionTitle,
+  type WorkflowLaunchConfigView,
+} from '../utils/workflowLaunchLabels';
 
 const buttonBase: React.CSSProperties = {
   padding: '6px 10px',
@@ -33,8 +39,9 @@ export interface ActionBarProps {
   changeName: string;
   isArchived: boolean;
   workflowState?: WorkflowState;
+  workflowLaunchConfig?: WorkflowLaunchConfigView | null;
   hasDeltaSpecs?: boolean;
-  onAction?: (command: string) => void;
+  onAction?: (action: WorkflowCommandAction, changeName: string) => void;
   onCopyFf: (changeName: string) => void;
   onCopyApply: (changeName: string) => void;
   onOpenInEditor: () => void;
@@ -46,6 +53,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   changeName,
   isArchived,
   workflowState,
+  workflowLaunchConfig,
   onAction,
   onCopyFf,
   onCopyApply,
@@ -80,9 +88,11 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         <button
           type="button"
           style={primaryStyle}
-          onClick={() => onAction(workflowState.nextAction!.command)}
+          title={getWorkflowActionTitle(workflowState.nextAction.label, workflowLaunchConfig)}
+          aria-label={getWorkflowActionTitle(workflowState.nextAction.label, workflowLaunchConfig)}
+          onClick={() => onAction(workflowState.nextAction!.action as WorkflowCommandAction, changeName)}
         >
-          {workflowState.nextAction.label}
+          {getWorkflowActionButtonLabel(workflowState.nextAction.label, workflowLaunchConfig)}
         </button>
       )}
 
@@ -102,9 +112,11 @@ export const ActionBar: React.FC<ActionBarProps> = ({
               key={action.label}
               type="button"
               style={secondaryStyle}
-              onClick={() => onAction(action.command)}
+              title={getWorkflowActionTitle(action.label, workflowLaunchConfig)}
+              aria-label={getWorkflowActionTitle(action.label, workflowLaunchConfig)}
+              onClick={() => onAction(action.action as WorkflowCommandAction, changeName)}
             >
-              {action.label}
+              {getWorkflowActionButtonLabel(action.label, workflowLaunchConfig)}
             </button>
           )
         )}

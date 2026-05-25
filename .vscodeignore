@@ -4,6 +4,7 @@ node_modules/
 src/
 build/
 .git/
+.codex/
 .gitignore
 *.md
 !README.md

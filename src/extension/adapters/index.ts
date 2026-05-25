@@ -5,6 +5,7 @@ import { cursorAdapter } from './cursor-adapter';
 import { vscodeCopilotAdapter } from './vscode-copilot-adapter';
 import { claudeCodeAdapter } from './claude-code-adapter';
 import { opencodeAdapter } from './opencode-adapter';
+import { getWorkflowLaunchConfig } from '../services/workflowLaunchConfig';
 
 const registeredAdapters: IAgentExecutorAdapter[] = [
   vscodeCopilotAdapter,
@@ -21,12 +22,17 @@ export async function getAvailableAdapters(): Promise<IAgentExecutorAdapter[]> {
   return results.filter((r) => r.ok).map((r) => r.adapter);
 }
 
+export async function getAdapterById(id: string): Promise<IAgentExecutorAdapter | null> {
+  const available = await getAvailableAdapters();
+  return available.find((a) => a.id === id) ?? null;
+}
+
 export async function getCurrentAdapter(): Promise<IAgentExecutorAdapter | null> {
   const available = await getAvailableAdapters();
   if (available.length === 0) return null;
 
-  const config = vscode.workspace.getConfiguration('openspec');
-  const preferredId = config.get<string>('preferredAgentAdapter')?.trim() || '';
+  const config = getWorkflowLaunchConfig();
+  const preferredId = config.preferredAgentAdapter;
 
   if (preferredId) {
     const found = available.find((a) => a.id === preferredId);

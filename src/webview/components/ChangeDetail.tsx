@@ -8,6 +8,8 @@ import { ConfirmDialog } from './ui/ConfirmDialog';
 import { WorkflowStepIndicator } from './WorkflowStepIndicator';
 import { deriveWorkflowState, type WorkflowStep } from '../utils/workflowState';
 import { t } from '../../i18n';
+import { buildWorkflowCommand } from '../../shared/workflowCommand';
+import type { WorkflowLaunchConfigView } from '../utils/workflowLaunchLabels';
 
 const MISSING_ARTIFACT_MESSAGE = t('artifact.missing');
 
@@ -106,6 +108,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
   const [runCommandResult, setRunCommandResult] = useState<{ success: boolean; message?: string } | null>(null);
   const [taskExecutionState, setTaskExecutionState] = useState<Record<number, { success: boolean; timestamp: number }>>({});
   const [pendingTaskToggle, setPendingTaskToggle] = useState<{ taskIndex: number; taskText: string; done: boolean } | null>(null);
+  const [workflowLaunchConfig, setWorkflowLaunchConfig] = useState<WorkflowLaunchConfigView | null>(null);
 
   const requestArtifact = (artifactType: string) => {
     setLoading(true);
@@ -232,6 +235,8 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
         }
       } else if (msg.type === 'runCommandResult') {
         setRunCommandResult({ success: msg.success, message: msg.message });
+      } else if (msg.type === 'workflowLaunchConfig') {
+        setWorkflowLaunchConfig(msg.config ?? null);
       } else if (msg.type === 'artifactInvalidated' && msg.changeName === changeName) {
         // Clear cached content for invalidated artifact types so next access re-fetches
         const invalidated: string[] = msg.artifactTypes ?? [];
@@ -259,6 +264,10 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
     });
     return cleanup;
   }, [changeName, onMessage, postMessage, activeTab]);
+
+  useEffect(() => {
+    postMessage(sendMessage.getWorkflowLaunchConfig());
+  }, [postMessage]);
 
   useEffect(() => {
     if (activeTab === 'specs' && selectedSpecId) {
@@ -314,9 +323,8 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
     postMessage(sendMessage.runCommand(commandId, verifyArgsJson.trim() || undefined, changeName));
   };
 
-  const handleFillChat = (command: string) => {
-    if (!command) return;
-    postMessage(sendMessage.fillChat(command));
+  const handleLaunchWorkflow = (action: 'explore' | 'continue' | 'ff' | 'apply' | 'verify' | 'archive' | 'sync') => {
+    postMessage(sendMessage.launchWorkflowAction(action, changeName));
   };
 
   const handleStepClick = (step: WorkflowStep) => {
@@ -326,7 +334,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
     } else if (step === 'verify') {
       if (showVerifyTab) setActiveTab('verify');
     } else if (step === 'apply' && !isArchived) {
-      handleFillChat(`/opsx:apply ${changeName}`);
+      handleLaunchWorkflow('apply');
     }
   };
 
@@ -371,9 +379,14 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
         changeName={changeName}
         isArchived={isArchived}
         workflowState={workflowState}
-        onAction={handleFillChat}
-        onCopyFf={(name) => postMessage(sendMessage.copyToClipboard(`/opsx:ff ${name}`))}
-        onCopyApply={(name) => postMessage(sendMessage.copyToClipboard(`/opsx:apply ${name}`))}
+        workflowLaunchConfig={workflowLaunchConfig}
+        onAction={(action) => handleLaunchWorkflow(action)}
+        onCopyFf={(name) =>
+          postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({ action: 'ff', changeName: name, target: 'clipboard' })))
+        }
+        onCopyApply={(name) =>
+          postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({ action: 'apply', changeName: name, target: 'clipboard' })))
+        }
         onOpenInEditor={handleOpenInEditor}
         onArchive={(name) => postMessage(sendMessage.archiveChange(name))}
         onRefresh={handleRefresh}
@@ -432,7 +445,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
             {!isArchived && (
               <button
                 type="button"
-                onClick={() => handleFillChat(`/opsx:verify ${changeName}`)}
+                onClick={() => handleLaunchWorkflow('verify')}
                 className="px-4 py-2 text-sm rounded cursor-pointer w-fit font-medium"
                 style={{
                   background: 'var(--vscode-button-background)',
@@ -504,29 +517,34 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
         ) : activeTab === 'tasks' && content !== null && !loading && !error ? (
           <>
             {agentAdapters.available.length > 0 && (
-              <div className="flex items-center gap-2 mb-3 text-sm">
-                <span style={{ color: 'var(--vscode-descriptionForeground)' }}>{t('task.executor')}</span>
-                <select
-                  value={agentAdapters.currentId ?? ''}
-                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
-                    const id = e.target.value;
-                    if (id) {
-                      postMessage(sendMessage.setPreferredAgentAdapter(id));
-                      setAgentAdapters((prev) => ({ ...prev, currentId: id }));
-                    }
-                  }}
-                  style={{
-                    padding: '2px 8px',
-                    background: 'var(--vscode-input-background)',
-                    color: 'var(--vscode-input-foreground)',
-                    border: '1px solid var(--vscode-input-border)',
-                    borderRadius: '4px',
-                  }}
-                >
-                  {agentAdapters.available.map((a) => (
-                    <option key={a.id} value={a.id}>{a.displayName}</option>
-                  ))}
-                </select>
+              <div className="flex flex-col gap-1 mb-3 text-sm">
+                <div className="flex items-center gap-2">
+                  <span style={{ color: 'var(--vscode-descriptionForeground)' }}>{t('task.executor')}</span>
+                  <select
+                    value={agentAdapters.currentId ?? ''}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                      const id = e.target.value;
+                      if (id) {
+                        postMessage(sendMessage.setPreferredAgentAdapter(id));
+                        setAgentAdapters((prev) => ({ ...prev, currentId: id }));
+                      }
+                    }}
+                    style={{
+                      padding: '2px 8px',
+                      background: 'var(--vscode-input-background)',
+                      color: 'var(--vscode-input-foreground)',
+                      border: '1px solid var(--vscode-input-border)',
+                      borderRadius: '4px',
+                    }}
+                  >
+                    {agentAdapters.available.map((a) => (
+                      <option key={a.id} value={a.id}>{a.displayName}</option>
+                    ))}
+                  </select>
+                </div>
+                <p className="text-xs" style={{ color: 'var(--vscode-descriptionForeground)' }}>
+                  {t('workflow.launchHelp')}
+                </p>
               </div>
             )}
             {isArchived && (
@@ -557,14 +575,14 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({ changeName, existing
             errorCode={errorCode}
             onOpenInEditor={handleOpenInEditor}
             onCreateWithAi={isArchived ? undefined : () =>
-              postMessage(sendMessage.requestCreateArtifact(changeName, activeTab))
+              handleLaunchWorkflow('continue')
             }
             onContinue={isArchived ? undefined : () =>
-              handleFillChat(`/opsx:continue ${changeName}`)
+              handleLaunchWorkflow('continue')
             }
             onExplore={
               !isArchived && activeTab === 'proposal' && !(existingArtifactIds?.includes('proposal'))
-                ? () => handleFillChat(`/opsx:explore ${changeName}`)
+                ? () => handleLaunchWorkflow('explore')
                 : undefined
             }
             createDisabledReason={getCreateDisabledReason(activeTab, existingArtifactIds)}

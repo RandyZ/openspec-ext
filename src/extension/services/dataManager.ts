@@ -45,6 +45,7 @@ export class DataManager {
   private fileWatcher: FileWatcherService;
   private taskExecutorService: TaskExecutorService;
   private cachedData: DashboardData | null = null;
+  private cliAvailable = false;
   private refreshCallbacks: Set<(data: DashboardData) => void> = new Set();
   private artifactChangedCallbacks: Set<(event: ArtifactChangedEvent) => void> = new Set();
 
@@ -67,15 +68,13 @@ export class DataManager {
    * Initialize services
    */
   async initialize(): Promise<void> {
-    // Check CLI availability
-    const cliAvailable = await this.cliService.checkAvailability();
-    if (!cliAvailable) {
-      this.cliService.showCliNotFoundError();
-      throw new Error('OpenSpec CLI not available');
+    this.cliAvailable = await this.cliService.checkAvailability(false);
+    if (this.cliAvailable) {
+      const version = await this.cliService.getVersion();
+      logger.info(`Initialized with OpenSpec CLI ${version}`);
+    } else {
+      logger.warn('OpenSpec CLI not available; continuing with filesystem fallback mode');
     }
-
-    const version = await this.cliService.getVersion();
-    logger.info(`Initialized with OpenSpec CLI ${version}`);
 
     // One-time migration: move openspec/.execution-state.json into each change's .openspec.yaml
     await this.migrateExecutionStateFromGlobalFile();
@@ -185,7 +184,7 @@ export class DataManager {
       logger.info('Refreshing dashboard data...');
 
       const [rawChanges, specs] = await Promise.all([
-        this.stateReader.listChanges(),
+        this.listChangesWithFallback(),
         this.stateReader.listSpecs(),
       ]);
       const changes = await this.enrichChangesWithProposalWhy(rawChanges);
@@ -204,6 +203,90 @@ export class DataManager {
       logger.error('Failed to refresh dashboard data', error as Error);
       throw error;
     }
+  }
+
+  private async listChangesWithFallback(): Promise<ChangeInfo[]> {
+    if (!this.cliAvailable) {
+      return await this.listChangesFromFilesystem();
+    }
+
+    try {
+      return await this.stateReader.listChanges();
+    } catch (error) {
+      logger.warn('CLI change listing failed; falling back to filesystem scan', error as Error);
+      this.cliAvailable = false;
+      return await this.listChangesFromFilesystem();
+    }
+  }
+
+  private async listChangesFromFilesystem(): Promise<ChangeInfo[]> {
+    const changesDir = path.join(this.workspaceRoot, 'openspec', 'changes');
+    let entries: fs.Dirent[];
+    try {
+      entries = await fs.promises.readdir(changesDir, { withFileTypes: true });
+    } catch (error) {
+      logger.warn('Filesystem fallback could not read changes directory', error as Error);
+      return [];
+    }
+
+    const changes = await Promise.all(
+      entries
+        .filter((entry) => entry.isDirectory() && entry.name !== 'archive')
+        .map(async (entry): Promise<ChangeInfo> => {
+          const changeName = entry.name;
+          const changeDir = path.join(changesDir, changeName);
+          const [completedTasks, totalTasks] = await this.countTaskProgress(changeName);
+          const artifacts = await this.getFilesystemArtifactStatuses(changeName);
+          let lastModified = new Date().toISOString();
+          try {
+            const stat = await fs.promises.stat(changeDir);
+            lastModified = stat.mtime.toISOString();
+          } catch {
+            // Keep current timestamp when stat fails; the entry still exists.
+          }
+          return {
+            name: changeName,
+            completedTasks,
+            totalTasks,
+            lastModified,
+            status: totalTasks === 0 ? 'draft' : completedTasks === totalTasks ? 'complete' : 'in-progress',
+            artifacts,
+          };
+        })
+    );
+
+    changes.sort((a, b) => b.lastModified.localeCompare(a.lastModified));
+    logger.info(`Filesystem fallback listed ${changes.length} changes`);
+    return changes;
+  }
+
+  private async countTaskProgress(changeName: string): Promise<[number, number]> {
+    const tasks = await this.contentAccess.readTasks(changeName);
+    const completed = tasks.filter((task) => task.done).length;
+    return [completed, tasks.length];
+  }
+
+  private async getFilesystemArtifactStatuses(changeName: string): Promise<ChangeInfo['artifacts']> {
+    const artifacts: NonNullable<ChangeInfo['artifacts']> = [];
+    for (const artifactType of ['proposal', 'design', 'tasks'] as const) {
+      if (await this.contentAccess.artifactExists(changeName, artifactType)) {
+        artifacts.push({
+          id: artifactType,
+          outputPath: `openspec/changes/${changeName}/${artifactType}.md`,
+          status: 'done',
+        });
+      }
+    }
+
+    const deltaSpecIds = await this.contentAccess.listDeltaSpecIds(changeName);
+    if (deltaSpecIds.length > 0) {
+      artifacts.push({
+        id: 'specs',
+        outputPath: `openspec/changes/${changeName}/specs`,
+        status: 'done',
+      });
+    }
+    return artifacts;
   }
 
   /**

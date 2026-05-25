@@ -72,16 +72,20 @@ Change 详情页提供工作流操作、artifact tabs、任务执行入口，以
 | `openspec.focusSidebarViewWhenOpeningDashboard` | `false` | 执行 Open Dashboard 命令时聚焦 OpenSpec sidebar |
 | `openspec.cliPath` | `""` | 可选的 OpenSpec CLI 绝对路径；为空时自动从 PATH 和 login shell 检测 |
 | `openspec.taskExecutionMode` | `fillChat` | 点击任务执行时的模式：`auto` 通过 adapter 执行；`fillChat` 填充 chat 或复制到剪贴板 |
-| `openspec.preferredAgentAdapter` | `""` | 首选执行适配器 id，例如 `cursor`、`clipboard`；为空时使用第一个可用适配器 |
+| `openspec.workflowLaunchMode` | `clipboard` | workflow 按钮行为：`clipboard` 只复制命令；`adapter` 按首选 adapter 路由 |
+| `openspec.preferredAgentAdapter` | `clipboard` | `workflowLaunchMode=adapter` 时使用的首选执行适配器：`clipboard`、`cursor`、`vscode-copilot`、`claude-code` 或 `opencode` |
+| `openspec.cursorLaunchMode` | `clipboard` | Cursor adapter 的启动方式：`clipboard` 仅复制；`deeplink` 打开 Cursor prompt 并复制兜底；`chatCommand` 尝试 Cursor Chat query 并复制兜底；`agentCli` 运行 Cursor Agent CLI |
 | `openspec.taskDependencyPolicy` | `block` | 前置任务未完成时的策略：`block` 阻止执行；`warn` 提示后允许继续 |
-| `openspec.agentModel` | `auto` | Cursor agent CLI 模型；`auto` 表示由 Cursor 选择 |
+| `openspec.cursorAgentModel` | `auto` | 显式 Cursor Agent CLI 执行时使用的模型；`auto` 表示由 Cursor 选择 |
+| `openspec.agentModel` | `auto` | 旧版 Cursor Agent CLI 模型配置；建议改用 `openspec.cursorAgentModel` |
 | `openspec.debug` | `false` | 启用 debug：显示 Verify tab，并在 Output 中打印完整 prompt |
 
 ### 任务执行与适配器
 
-- **Clipboard** (`clipboard`)：始终可用。`fillChat` 模式复制 prompt 到剪贴板；`auto` 模式也会复制，不直接执行。
-- **Cursor** (`cursor`)：当 Cursor `agent` CLI 在 PATH 中可用时启用。可通过 agent CLI 执行任务，也可填充 chat / 复制到剪贴板。
-- 可在 change 详情页的 Adapter 下拉框选择适配器，或通过 `openspec.preferredAgentAdapter` 设置。若选中的适配器不可用，扩展会回退到第一个可用适配器（通常是 Clipboard）。
+- **Clipboard** (`clipboard`)：始终可用，也是默认 workflow 启动方式，只复制生成的 `/opsx:*` 命令。
+- **Cursor** (`cursor`)：在 Cursor 中可复制命令并打开官方 prompt deeplink、尝试 Chat query、仅复制，或在用户显式配置时启动 Agent CLI。
+- **OpenCode** (`opencode`)：通过 adapter 路由时使用 `/opsx-<action>` 命令格式。
+- workflow 动作默认使用 `workflowLaunchMode=clipboard`。当你希望按钮打开所选 adapter 时，设置 `openspec.workflowLaunchMode=adapter` 并选择 `openspec.preferredAgentAdapter`。在 Cursor 中，显式设置 `openspec.cursorLaunchMode` 为 `deeplink`、`chatCommand` 或 `agentCli` 也会让 workflow 按钮走 Cursor 路由。
 
 ### Dashboard
 

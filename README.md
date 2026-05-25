@@ -72,16 +72,20 @@ Open Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`):
 | `openspec.focusSidebarViewWhenOpeningDashboard` | `false` | Focus OpenSpec sidebar when opening dashboard |
 | `openspec.cliPath` | `""` | Optional absolute path to OpenSpec CLI; empty = auto-detect from PATH and login shell |
 | `openspec.taskExecutionMode` | `fillChat` | When clicking task execute: `auto` = run via adapter; `fillChat` = fill chat or copy to clipboard |
-| `openspec.preferredAgentAdapter` | `""` | Preferred agent executor adapter id (e.g. `cursor`, `clipboard`). Empty = use first available |
+| `openspec.workflowLaunchMode` | `clipboard` | Workflow button behavior: `clipboard` copies the generated command; `adapter` routes through the selected adapter |
+| `openspec.preferredAgentAdapter` | `clipboard` | Preferred agent executor adapter id used when `workflowLaunchMode=adapter`: `clipboard`, `cursor`, `vscode-copilot`, `claude-code`, or `opencode` |
+| `openspec.cursorLaunchMode` | `clipboard` | Cursor adapter launch behavior: `clipboard` copies only; `deeplink` opens Cursor prompt with fallback copy; `chatCommand` tries Cursor Chat query with fallback copy; `agentCli` runs Cursor Agent CLI |
 | `openspec.taskDependencyPolicy` | `block` | When preceding tasks are incomplete: `block` = prevent execution; `warn` = show warning and allow proceed |
-| `openspec.agentModel` | `auto` | Cursor agent CLI model (only when using Cursor adapter). Use `auto` or a specific model name |
+| `openspec.cursorAgentModel` | `auto` | Cursor Agent CLI model for explicit Agent CLI execution. Use `auto` or a specific model name |
+| `openspec.agentModel` | `auto` | Legacy Cursor Agent CLI model setting; prefer `openspec.cursorAgentModel` |
 | `openspec.debug` | `false` | Enable debug: Verify tab and full prompt in Output when executing tasks |
 
 **Task execution & Adapters**
 
-- **Clipboard** (`clipboard`): Always available. In fillChat mode it copies the prompt to the clipboard and notifies you; in auto mode it also copies (no direct execution).
-- **Cursor** (`cursor`): Available when the Cursor `agent` CLI is on PATH (e.g. in Cursor IDE). Executes tasks via the agent CLI or fills chat / copies to clipboard.
-- You can choose the adapter in the change detail UI (Adapter dropdown) or set `openspec.preferredAgentAdapter` in settings. If the selected adapter is unavailable, the extension falls back to the first available one (often clipboard).
+- **Clipboard** (`clipboard`): Always available. This is the default workflow launch behavior and only copies the generated `/opsx:*` command.
+- **Cursor** (`cursor`): In Cursor, the adapter can copy the command and open the official prompt deeplink, try a Chat query, copy only, or explicitly run the Agent CLI depending on `openspec.cursorLaunchMode`.
+- **OpenCode** (`opencode`): Uses `/opsx-<action>` command format when routed through the adapter.
+- Workflow actions default to `workflowLaunchMode=clipboard`. Set `openspec.workflowLaunchMode=adapter` and choose `openspec.preferredAgentAdapter` when you want buttons to open the selected adapter. In Cursor, explicitly setting `openspec.cursorLaunchMode` to `deeplink`, `chatCommand`, or `agentCli` also routes workflow buttons through Cursor.
 
 ### Dashboard
 
