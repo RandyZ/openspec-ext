@@ -98,27 +98,16 @@ export const ActionBar: React.FC<ActionBarProps> = ({
 
       {!isArchived &&
         workflowState.secondaryActions.map((action) =>
-          action.label === 'Archive' ? (
-            <button
-              key={action.label}
-              type="button"
-              style={warningStyle}
-              onClick={() => onArchive(changeName)}
-            >
-              {t('action.archiveChange')}
-            </button>
-          ) : (
-            <button
-              key={action.label}
-              type="button"
-              style={secondaryStyle}
-              title={getWorkflowActionTitle(action.label, workflowLaunchConfig)}
-              aria-label={getWorkflowActionTitle(action.label, workflowLaunchConfig)}
-              onClick={() => onAction(action.action as WorkflowCommandAction, changeName)}
-            >
-              {getWorkflowActionButtonLabel(action.label, workflowLaunchConfig)}
-            </button>
-          )
+          <button
+            key={action.label}
+            type="button"
+            style={secondaryStyle}
+            title={getWorkflowActionTitle(action.label, workflowLaunchConfig)}
+            aria-label={getWorkflowActionTitle(action.label, workflowLaunchConfig)}
+            onClick={() => onAction(action.action as WorkflowCommandAction, changeName)}
+          >
+            {getWorkflowActionButtonLabel(action.label, workflowLaunchConfig)}
+          </button>
         )}
 
       <button type="button" style={secondaryStyle} onClick={onOpenInEditor}>

@@ -3,9 +3,7 @@
 ## Purpose
 
 The Dashboard is the main entry point for the OpenSpec VSCode extension, providing a visual overview of all changes and their status.
-
 ## Requirements
-
 ### Requirement: Change List Display
 The system SHALL display all active changes grouped by status, with searchable contextual information for each change.
 
@@ -111,7 +109,7 @@ The system SHALL reflect file system changes and extension-triggered state chang
 - AND it MUST NOT perform an additional full OpenSpec scan solely because of the click
 
 ### Requirement: Dashboard Actions
-The system SHALL provide quick actions for common operations.
+The system SHALL provide quick actions for common operations, and workflow-oriented quick actions SHALL route through the shared OpenSpec workflow command routing capability.
 
 #### Scenario: Create new change
 - GIVEN the dashboard is open
@@ -129,9 +127,31 @@ The system SHALL provide quick actions for common operations.
 
 #### Scenario: Copy opsx command
 - GIVEN a change in the dashboard
-- WHEN the user clicks "Copy /opsx:ff"
-- THEN the command `/opsx:ff <change-name>` MUST be copied to clipboard
+- WHEN the user clicks a copy-command quick action
+- THEN the command builder MUST generate the command using the Clipboard target
+- AND the generated command MUST use colon format such as `/opsx:apply <change>`
+- AND the generated command MUST be copied to clipboard
 - AND a notification SHOULD confirm the copy action
+
+#### Scenario: Open workflow command from quick action through launch settings
+- GIVEN a change in the dashboard
+- WHEN the user clicks a workflow quick action such as Continue, FF, Apply, Verify, or Sync
+- THEN the action MUST route through the shared workflow launch settings
+- AND `openspec.workflowLaunchMode=clipboard` MUST copy the generated command and show a non-modal notification
+- AND `openspec.workflowLaunchMode=adapter` MUST route through the selected adapter's configured launch behavior
+- AND the dashboard quick action MUST NOT directly modify OpenSpec change files
+
+#### Scenario: Cursor quick action uses hyphen command when adapter launch is selected
+- GIVEN `openspec.workflowLaunchMode` is `adapter`
+- AND the selected adapter target is Cursor
+- WHEN the user clicks a workflow quick action in the dashboard
+- THEN the command opened, copied, or executed through Cursor MUST use `/opsx-<action> <change>` format
+
+#### Scenario: Default dashboard quick action is clipboard safe
+- GIVEN the extension uses default settings
+- WHEN the user clicks a workflow quick action in the dashboard
+- THEN the generated command MUST be copied to the clipboard
+- AND no Agent window, deeplink, or CLI process MUST start automatically
 
 ### Requirement: Specs Overview
 The system SHALL display a summary of all specs.

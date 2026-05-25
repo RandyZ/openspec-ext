@@ -13,7 +13,6 @@ interface ChangesSectionProps {
   onRequestNewChange?: () => void;
   onCopyFf?: (changeName: string) => void;
   onCopyApply?: (changeName: string) => void;
-  onArchive?: (changeName: string) => void;
   onLaunchWorkflow?: (action: WorkflowAction, changeName: string) => void;
   archivedExpanded?: boolean;
   onArchivedToggle?: () => void;
@@ -50,7 +49,6 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
   onRequestNewChange,
   onCopyFf,
   onCopyApply,
-  onArchive,
   onLaunchWorkflow,
   archivedExpanded = false,
   onArchivedToggle,
@@ -119,7 +117,6 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
                       onClick={onOpenChange}
                       onCopyFf={onCopyFf}
                       onCopyApply={onCopyApply}
-                      onArchive={onArchive}
                       onLaunchWorkflow={onLaunchWorkflow}
                       workflowLaunchConfig={workflowLaunchConfig}
                     />

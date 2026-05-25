@@ -95,10 +95,6 @@ export const Dashboard: React.FC = () => {
     postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({ action: 'apply', changeName, target: 'clipboard' })));
   };
 
-  const handleArchive = (changeName: string) => {
-    postMessage(sendMessage.archiveChange(changeName));
-  };
-
   const handleLaunchWorkflow = (action: WorkflowAction, changeName: string) => {
     postMessage(sendMessage.launchWorkflowAction(action, changeName));
   };
@@ -148,7 +144,6 @@ export const Dashboard: React.FC = () => {
               onRequestNewChange={handleRequestNewChange}
               onCopyFf={handleCopyFf}
               onCopyApply={handleCopyApply}
-              onArchive={handleArchive}
               onLaunchWorkflow={handleLaunchWorkflow}
               archivedExpanded={archivedExpanded}
               onArchivedToggle={handleArchivedToggle}

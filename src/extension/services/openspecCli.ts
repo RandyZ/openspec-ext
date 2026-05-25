@@ -244,12 +244,31 @@ export class OpenSpecCliService {
    */
   async archiveChange(name: string): Promise<void> {
     try {
-      await this.execOpenSpec(['archive', name]);
+      const output = await this.execOpenSpec(['archive', name, '--yes'], 1, { timeoutMs: 120000 });
+      if (this.isArchiveAbortOutput(output)) {
+        throw new OpenSpecCliError(this.extractArchiveAbortMessage(output), 0, output);
+      }
       logger.info(`Archived change: ${name}`);
     } catch (error) {
       logger.error(`Failed to archive change: ${name}`, error as Error);
       throw error;
     }
+  }
+
+  private isArchiveAbortOutput(output: string): boolean {
+    return /Aborted\.\s+No files were changed\./i.test(output);
+  }
+
+  private extractArchiveAbortMessage(output: string): string {
+    const lines = output
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const abortIndex = lines.findIndex((line) => /Aborted\.\s+No files were changed\./i.test(line));
+    if (abortIndex <= 0) {
+      return lines[abortIndex] ?? 'Archive aborted. No files were changed.';
+    }
+    return `${lines[abortIndex - 1]}\n${lines[abortIndex]}`;
   }
 
   /**
@@ -274,14 +293,15 @@ export class OpenSpecCliService {
   private async execOpenSpec(
     args: string[],
     retries: number = 3,
-    options: { notifyCliNotFound?: boolean } = {}
+    options: { notifyCliNotFound?: boolean; timeoutMs?: number } = {}
   ): Promise<string> {
     let lastError: Error | undefined;
     const notifyCliNotFound = options.notifyCliNotFound ?? true;
+    const timeoutMs = options.timeoutMs ?? 30000;
 
     for (let attempt = 0; attempt < retries; attempt++) {
       try {
-        return await this.execOpenSpecOnce(args);
+        return await this.execOpenSpecOnce(args, timeoutMs);
       } catch (error) {
         lastError = error as Error;
 
@@ -318,7 +338,7 @@ export class OpenSpecCliService {
   /**
    * Execute OpenSpec CLI command (single attempt)
    */
-  private async execOpenSpecOnce(args: string[]): Promise<string> {
+  private async execOpenSpecOnce(args: string[], timeoutMs: number): Promise<string> {
     return new Promise((resolve, reject) => {
       this.resolver.resolve().then(({ command, env }) => {
       const proc = spawn(command, args, {
@@ -361,11 +381,10 @@ export class OpenSpecCliService {
         reject(new Error(`Failed to spawn openspec: ${error.message}`));
       });
 
-      // Timeout after 30 seconds
       const timeout = setTimeout(() => {
         proc.kill();
-        reject(new Error('Command timed out after 30 seconds'));
-      }, 30000);
+        reject(new Error(`Command timed out after ${Math.round(timeoutMs / 1000)} seconds`));
+      }, timeoutMs);
 
       proc.on('close', () => {
         clearTimeout(timeout);

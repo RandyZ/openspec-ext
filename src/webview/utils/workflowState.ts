@@ -16,7 +16,7 @@ export type StepStatus = 'done' | 'current' | 'upcoming';
 
 export interface WorkflowAction {
   label: string;
-  action: WorkflowCommandAction | 'archive-now';
+  action: WorkflowCommandAction;
   command: string;
   variant: 'primary' | 'secondary';
 }
@@ -134,8 +134,8 @@ export function deriveWorkflowState(
   if (allTasksDone) {
     secondaryActions.push({
       label: 'Archive',
-      action: 'archive-now',
-      command: '',
+      action: 'archive',
+      command: buildWorkflowCommand({ action: 'archive', changeName, target: 'clipboard' }),
       variant: 'secondary',
     });
   }
@@ -143,8 +143,8 @@ export function deriveWorkflowState(
   if (hasAnyTaskDone && !allTasksDone) {
     secondaryActions.push({
       label: 'Archive',
-      action: 'archive-now',
-      command: '',
+      action: 'archive',
+      command: buildWorkflowCommand({ action: 'archive', changeName, target: 'clipboard' }),
       variant: 'secondary',
     });
   }

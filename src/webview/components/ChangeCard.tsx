@@ -64,6 +64,7 @@ function getSmartActions(change: ChangeInfo): { label: string; action: WorkflowA
   if (allTasksDone) {
     return [
       { label: 'Verify', action: 'verify' },
+      { label: 'Archive', action: 'archive' },
     ];
   }
   return [
@@ -189,7 +190,7 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
               {getWorkflowActionButtonLabel(action.label, workflowLaunchConfig)}
             </button>
           ))}
-          {onArchive && change.totalTasks > 0 && change.completedTasks === change.totalTasks && (
+          {onArchive && !onLaunchWorkflow && change.totalTasks > 0 && change.completedTasks === change.totalTasks && (
             <button
               type="button"
               data-action

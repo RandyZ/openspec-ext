@@ -37,6 +37,7 @@
 - [x] 4.2 迁移 Dashboard card、Change Detail action bar、Workflow step click、Artifact create/continue/explore 等入口到统一 workflow launch 路由。
 - [x] 4.3 更新 UI 文案和通知，区分 `Open in Chat`、`Copy Command`、`Run Agent CLI` 等真实动作。
 - [x] 4.4 运行 webview action 相关测试或组件验证，确认新增测试完成 RED→GREEN。
+- [x] 4.5 将 Dashboard 和 Change Detail 的 Archive 按钮纳入统一 workflow launch 路由，保留 command palette direct archive 作为显式归档入口。
 
 ## 5. Verification
 
@@ -45,4 +46,4 @@
 - [x] 5.3 在 Cursor Extension Development Host 中手工验证：默认设置点击 Apply 只复制命令并显示 toast。
 - [x] 5.4 在 Cursor Extension Development Host 中手工验证：`workflowLaunchMode=adapter` 且 `cursorLaunchMode=deeplink` 时点击 Apply 打开 Cursor deeplink 并预填 `/opsx-apply <change>`，同时剪贴板可用。
 - [x] 5.5 在 Cursor Extension Development Host 中手工验证：`cursorLaunchMode=agentCli` 或 `taskExecutionMode=auto` 时只在用户显式配置后启动 Cursor Agent CLI。
-- [x] 5.6 确认本 change 仅提供 archive workflow command 生成和路由能力（例如 Cursor `/opsx-archive <change>`），可供 `add-ai-guided-archive-flow` 消费，但不实现 Archive split button。
+- [x] 5.6 确认本 change 提供 archive workflow command 生成和 UI 路由能力（例如 Cursor `/opsx-archive <change>`），可供 `add-ai-guided-archive-flow` 消费；command palette direct archive 继续保留。

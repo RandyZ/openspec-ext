@@ -361,7 +361,55 @@ describe('OpenSpecCliService', () => {
       mockSpawnSuccess('');
       const service = new OpenSpecCliService(workspaceRoot);
       await expect(service.archiveChange('my-change')).resolves.toBeUndefined();
-      expect(spawn).toHaveBeenCalledWith('openspec', ['archive', 'my-change'], expect.any(Object));
+      expect(spawn).toHaveBeenCalledWith('openspec', ['archive', 'my-change', '--yes'], expect.any(Object));
+    });
+
+    it('rejects when archive command exits 0 but reports an abort', async () => {
+      mockSpawnSuccess('Task status: ✓ Complete\nAborted. No files were changed.\n');
+      const service = new OpenSpecCliService(workspaceRoot);
+      await expect(service.archiveChange('my-change')).rejects.toThrow('Aborted. No files were changed.');
+    });
+
+    it('uses a longer timeout for archive operations', async () => {
+      vi.useFakeTimers();
+      const archiveProc = {
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn(),
+        kill: vi.fn(),
+      };
+      vi.mocked(spawn).mockImplementation((_cmd, args: readonly string[]) => {
+        if (args[0] === '--version') {
+          return {
+            stdout: {
+              on: (_e: string, fn: (d: Buffer) => void) => {
+                setImmediate(() => fn(Buffer.from('1.3.1')));
+              },
+            },
+            stderr: { on: vi.fn() },
+            on: (_e: string, fn: (...args: any[]) => void) => {
+              if (_e === 'close') setImmediate(() => fn(0));
+            },
+            kill: vi.fn(),
+          } as any;
+        }
+        return archiveProc as any;
+      });
+
+      try {
+        const service = new OpenSpecCliService(workspaceRoot);
+        const promise = service.archiveChange('my-change');
+        const expectation = expect(promise).rejects.toThrow('Command timed out after 120 seconds');
+
+        await vi.advanceTimersByTimeAsync(30000);
+        expect(archiveProc.kill).not.toHaveBeenCalled();
+
+        await vi.advanceTimersByTimeAsync(90000);
+        await expectation;
+        expect(archiveProc.kill).toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 

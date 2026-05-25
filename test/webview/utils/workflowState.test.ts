@@ -89,12 +89,12 @@ describe('deriveWorkflowState', () => {
     expect(state.secondaryActions.some((a) => a.label === 'Archive')).toBe(true);
   });
 
-  it('keeps archive as the existing direct archive action instead of a workflow split action', () => {
+  it('exposes archive as a workflow command action', () => {
     const state = deriveWorkflowState(name, ['proposal', 'specs', 'design', 'tasks'], 5, 5, false, false);
     const archive = state.secondaryActions.find((a) => a.label === 'Archive');
     expect(archive).toMatchObject({
-      action: 'archive-now',
-      command: '',
+      action: 'archive',
+      command: '/opsx:archive test-change',
       variant: 'secondary',
     });
   });

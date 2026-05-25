@@ -2,7 +2,7 @@
 
 ## MODIFIED Requirements
 
-### Requirement: Execution mode and workflow launch delegation
+### Requirement: Execution mode and adapter delegation
 The system SHALL use the configured execution mode, workflow launch mode, and selected adapter when the user triggers execution after dependency check passes, and workflow prompts SHALL be generated through the shared OpenSpec workflow command or payload builder.
 
 #### Scenario: Auto mode calls executeTask

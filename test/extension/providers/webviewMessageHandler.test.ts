@@ -96,6 +96,24 @@ describe('handleWebviewMessage toggleTask', () => {
     expect(adapterFillChat).not.toHaveBeenCalled();
   });
 
+  it('copies an archive workflow command for launchWorkflowAction by default', async () => {
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+    };
+    const webview = {
+      postMessage: vi.fn(),
+    };
+
+    await handleWebviewMessage(
+      { type: 'launchWorkflowAction', action: 'archive', changeName: 'demo-change' },
+      webview as any,
+      dataManager as any
+    );
+
+    expect(vscode.env.clipboard.writeText).toHaveBeenCalledWith('/opsx:archive demo-change');
+    expect(adapterFillChat).not.toHaveBeenCalled();
+  });
+
   it('routes launchWorkflowAction through Cursor adapter with hyphen command when adapter mode is selected', async () => {
     vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
       get: vi.fn((key: string) => {
