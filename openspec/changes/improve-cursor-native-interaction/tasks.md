@@ -42,7 +42,7 @@
 
 - [x] 5.1 运行相关单元测试，确认配置解析、command builder、Cursor deeplink、Cursor adapter fallback、task execution prompt 测试通过。
 - [x] 5.2 运行 `pnpm run build`，确认 extension host 和 webview 构建通过。
-- [ ] 5.3 在 Cursor Extension Development Host 中手工验证：默认设置点击 Apply 只复制命令并显示 toast。
-- [ ] 5.4 在 Cursor Extension Development Host 中手工验证：`workflowLaunchMode=adapter` 且 `cursorLaunchMode=deeplink` 时点击 Apply 打开 Cursor deeplink 并预填 `/opsx-apply <change>`，同时剪贴板可用。
-- [ ] 5.5 在 Cursor Extension Development Host 中手工验证：`cursorLaunchMode=agentCli` 或 `taskExecutionMode=auto` 时只在用户显式配置后启动 Cursor Agent CLI。
+- [x] 5.3 在 Cursor Extension Development Host 中手工验证：默认设置点击 Apply 只复制命令并显示 toast。
+- [x] 5.4 在 Cursor Extension Development Host 中手工验证：`workflowLaunchMode=adapter` 且 `cursorLaunchMode=deeplink` 时点击 Apply 打开 Cursor deeplink 并预填 `/opsx-apply <change>`，同时剪贴板可用。
+- [x] 5.5 在 Cursor Extension Development Host 中手工验证：`cursorLaunchMode=agentCli` 或 `taskExecutionMode=auto` 时只在用户显式配置后启动 Cursor Agent CLI。
 - [x] 5.6 确认本 change 仅提供 archive workflow command 生成和路由能力（例如 Cursor `/opsx-archive <change>`），可供 `add-ai-guided-archive-flow` 消费，但不实现 Archive split button。
