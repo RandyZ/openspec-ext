@@ -1,6 +1,6 @@
 ## Context
 
-参考 Superpowers 设计文档：[Cursor 原生交互与 AI 归档流程设计](../../../docs/superpowers/specs/2026-05-23-cursor-native-interaction-and-ai-archive-design.md)。
+参考 Superpowers 设计文档：[Cursor 原生交互与 AI 归档流程设计](superpowers/design/2026-05-23-cursor-native-interaction-and-ai-archive-design.md)。
 
 当前扩展已经具备 Dashboard、Change Detail、Task execution entry、Agent adapter 等基础能力，但配置体验和 Cursor 启动方式混在一起：`preferredAgentAdapter` 为空时会按内部 adapter 顺序选择，`taskExecutionMode=fillChat` 既可能复制、打开 Chat，也可能什么都没填入。Cursor 环境下的核心问题是：默认行为不够安全可预期，Cursor adapter 能打开 Agent/Chat 但不能稳定填入内容，且 UI 生成的 `/opsx:*` 命令与 Cursor command 文件当前使用的 `/opsx-*` 形式不一致。
 

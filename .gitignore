@@ -11,3 +11,4 @@ build/
 .opencode/config.jsonc
 pnpm-workspace.yaml
 .omc/
+.superpowers/

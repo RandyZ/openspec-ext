@@ -1,7 +1,9 @@
 # agent-command-routing Specification
 
 ## Purpose
-TBD - created by archiving change improve-cursor-native-interaction. Update Purpose after archive.
+
+Define how OpenSpec workflow actions are converted into commands or launch payloads for Clipboard, Cursor, OpenCode, VS Code Copilot, Claude Code, and other adapter targets, while keeping clipboard copy as the safe default.
+
 ## Requirements
 ### Requirement: Workflow launch configuration
 The extension SHALL expose clear workflow launch settings that separate safe default behavior, target adapter selection, Cursor launch behavior, and automatic execution behavior.

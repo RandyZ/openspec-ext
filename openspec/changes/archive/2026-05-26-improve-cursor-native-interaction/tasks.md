@@ -1,6 +1,6 @@
-> 参考 Superpowers 设计文档：[Cursor 原生交互与 AI 归档流程设计](../../../docs/superpowers/specs/2026-05-23-cursor-native-interaction-and-ai-archive-design.md)
+> 参考 Superpowers 设计文档：[Cursor 原生交互与 AI 归档流程设计](superpowers/design/2026-05-23-cursor-native-interaction-and-ai-archive-design.md)
 >
-> 参考 Superpowers 实现计划：[Cursor Native Interaction And AI Archive Implementation Plan](../../../docs/superpowers/plans/2026-05-23-cursor-native-interaction-and-ai-archive-plan.md)
+> 参考 Superpowers 实现计划：[Cursor Native Interaction And AI Archive Implementation Plan](superpowers/plan/2026-05-23-cursor-native-interaction-and-ai-archive-plan.md)
 >
 > 本 tasks.md 以设计文档、实现计划和本 change 的 specs/design 为任务来源。实现阶段必须按 TDD 执行：先写失败测试并确认 RED，再实现最小 GREEN，最后重构。具体执行步骤以实现计划中的 Task 1-4、Task 8 相关部分为准。
 

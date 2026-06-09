@@ -135,11 +135,19 @@ The system SHALL provide quick actions for common operations, and workflow-orien
 
 #### Scenario: Open workflow command from quick action through launch settings
 - GIVEN a change in the dashboard
-- WHEN the user clicks a workflow quick action such as Continue, FF, Apply, Verify, or Sync
+- WHEN the user clicks a workflow quick action such as Continue, FF, Apply, Verify, Archive, or Sync
 - THEN the action MUST route through the shared workflow launch settings
 - AND `openspec.workflowLaunchMode=clipboard` MUST copy the generated command and show a non-modal notification
 - AND `openspec.workflowLaunchMode=adapter` MUST route through the selected adapter's configured launch behavior
 - AND the dashboard quick action MUST NOT directly modify OpenSpec change files
+
+#### Scenario: Archive quick action uses workflow routing
+- GIVEN a completed change is shown in the dashboard or change detail action bar
+- WHEN the user clicks the Archive workflow action
+- THEN the action MUST send the shared `archive` workflow action through launch settings
+- AND the default command MUST be `/opsx:archive <change>`
+- AND Cursor adapter routing MUST use `/opsx-archive <change>`
+- AND the action MUST NOT send the direct `archiveChange` message
 
 #### Scenario: Cursor quick action uses hyphen command when adapter launch is selected
 - GIVEN `openspec.workflowLaunchMode` is `adapter`

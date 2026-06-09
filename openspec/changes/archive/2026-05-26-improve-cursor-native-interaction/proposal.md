@@ -2,7 +2,7 @@
 
 OpenSpec 扩展已经能展示 change 状态并提供 Apply、Verify、Continue 等快捷操作，但当前执行配置把“默认复制、目标 adapter、Cursor 打开方式、CLI 自动执行”混在一起，导致用户难以预期按钮点击后的行为。Cursor 中还存在两个具体断点：默认 adapter 可能不是最安全的剪贴板路径，以及 Cursor adapter 只能打开 Agent/Chat 窗口却不能稳定填入内容。
 
-参考 Superpowers 设计文档：[Cursor 原生交互与 AI 归档流程设计](../../../docs/superpowers/specs/2026-05-23-cursor-native-interaction-and-ai-archive-design.md)。
+参考 Superpowers 设计文档：[Cursor 原生交互与 AI 归档流程设计](superpowers/design/2026-05-23-cursor-native-interaction-and-ai-archive-design.md)。
 
 ## What Changes
 

@@ -135,7 +135,7 @@ The system SHALL allow navigation to task context in files.
 - AND the cursor SHOULD jump to that task line
 
 ### Requirement: Bulk Operations (Phase 2)
-The system MAY support batch task operations.
+The system MAY support batch task operations and MUST preserve task file consistency when batch operations are available.
 
 #### Scenario: Mark all complete
 - GIVEN multiple incomplete tasks
@@ -229,19 +229,44 @@ The system SHALL enforce dependency order before allowing task execution or fill
 - AND if the user proceeds, MUST call the adapter as usual
 
 ### Requirement: Execution mode and adapter delegation
-The system SHALL use the configured execution mode and selected adapter when the user triggers execution (after dependency check passes).
+The system SHALL use the configured execution mode, workflow launch mode, and selected adapter when the user triggers execution after dependency check passes, and workflow prompts SHALL be generated through the shared OpenSpec workflow command or payload builder.
 
 #### Scenario: Auto mode calls executeTask
 - GIVEN taskExecutionMode is "auto" and dependency check passes
 - WHEN the user triggers execution for a task
 - THEN the system MUST call the selected adapter's executeTask(request)
 - AND MUST NOT open Chat or copy to clipboard as the primary action
+- AND the request prompt MUST be generated through the shared workflow command builder
 
-#### Scenario: FillChat mode calls fillChat
+#### Scenario: FillChat mode with default clipboard launch
 - GIVEN taskExecutionMode is "fillChat" and dependency check passes
+- AND `openspec.workflowLaunchMode` is `clipboard`
+- WHEN the user triggers execution for a task
+- THEN the generated workflow command MUST be copied to the clipboard
+- AND the extension MUST show a non-modal notification
+- AND no adapter Chat window, deeplink, or CLI process MUST start automatically
+
+#### Scenario: FillChat mode with adapter launch
+- GIVEN taskExecutionMode is "fillChat" and dependency check passes
+- AND `openspec.workflowLaunchMode` is `adapter`
 - WHEN the user triggers execution for a task
 - THEN the system MUST call the selected adapter's fillChat(request)
-- AND the adapter MAY prefill Chat or use clipboard fallback; the plugin treats both as success
+- AND the adapter MAY prefill Chat, open a deeplink, or use clipboard fallback according to its own settings
+- AND the request prompt MUST be generated through the shared workflow command or payload builder
+
+#### Scenario: Cursor task execution prompt uses hyphen command
+- GIVEN the selected adapter target is Cursor
+- AND taskExecutionMode is "fillChat"
+- AND `openspec.workflowLaunchMode` is `adapter`
+- WHEN the user triggers execution for a task
+- THEN the generated prompt MUST use `/opsx-apply <change>` format
+- AND it MUST NOT use `/opsx:apply <change>` format
+
+#### Scenario: Generic task execution prompt keeps compatibility
+- GIVEN the selected adapter target is Clipboard, VS Code Copilot, Generic Chat, or unknown
+- AND taskExecutionMode is "fillChat"
+- WHEN the user triggers execution for a task
+- THEN the generated prompt MUST use `/opsx:apply <change>` format
 
 ### Requirement: Plugin does not update task completion from execution
 The system SHALL NOT update task checkboxes in tasks.md as a result of the user triggering execution or fillChat.
