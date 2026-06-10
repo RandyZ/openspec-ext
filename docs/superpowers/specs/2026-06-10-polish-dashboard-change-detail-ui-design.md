@@ -175,10 +175,10 @@ Step Indicator 行为：
 - webview 本地可短暂把 copy icon 切换为 check icon，约 `1.2s` 后恢复。
 - 如果复制失败，不显示成功 icon，依赖 extension 错误通知或保持原状态。
 
-复制内容：
+复制内容示例：
 
 ```text
-<changeName>
+polish-dashboard-change-detail-ui
 ```
 
 不包含 `/opsx:*` 命令、不包含 archive 前缀以外的额外描述。
