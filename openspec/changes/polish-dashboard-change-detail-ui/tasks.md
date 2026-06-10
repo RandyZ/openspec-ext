@@ -38,12 +38,12 @@
 
 ## 4. Codicons、IconButton 与 i18n
 
-- [ ] 4.1 检查 `@vscode/codicons` 是否已安装；若未安装，使用 `pnpm add @vscode/codicons` 引入，并确认构建产物能加载 codicon 字体或样式资源。
-- [ ] 4.2 在 `src/webview/components/ui/` 中沉淀轻量 `IconButton` primitive，统一 icon-only button 的尺寸、对齐、hover/focus、disabled、tooltip 和 `aria-label` 行为。
+- [x] 4.1 检查 `@vscode/codicons` 是否已安装；若未安装，使用 `pnpm add @vscode/codicons` 引入，并确认构建产物能加载 codicon 字体或样式资源。
+- [x] 4.2 在 `src/webview/components/ui/` 中沉淀轻量 `IconButton` primitive，统一 icon-only button 的尺寸、对齐、hover/focus、disabled、tooltip 和 `aria-label` 行为。
 - [ ] 4.3 使用 `IconButton` 替换或承载 ChangeDetail header 中的 copy、open、refresh 图标按钮，并确保 Codicons 加载失败时按钮仍有可点击区域和可访问名称。
-- [ ] 4.4 在 Dashboard quick actions 或其他仅图标按钮中复用同一 `IconButton` 约束，避免 Dashboard 与 ChangeDetail 的按钮尺寸和 focus ring 分叉。
-- [ ] 4.5 更新 `src/i18n/locales/en.json` 和 `src/i18n/locales/zh-cn.json`，新增或调整 `change.created`、`change.updated`、`action.copyChangeName`、`action.copiedChangeName` 等文案。
-- [ ] 4.6 检查 `src/i18n/index.ts` 与 webview 文案调用点，确保 Created/Updated、tooltip、aria-label 和复制成功反馈全部通过 `t('key')` 获取，不硬编码用户可见字符串。
+- [ ] 4.4 在 Dashboard quick actions 或其他仅图标按钮中复用同一 `IconButton` 约束，避免 Dashboard 与 ChangeDetail 的按钮尺寸 and focus ring 分叉。
+- [x] 4.5 更新 `src/i18n/locales/en.json` 和 `src/i18n/locales/zh-cn.json`，新增或调整 `change.created`、`change.updated`、`action.copyChangeName`、`action.copiedChangeName` 等文案。
+- [x] 4.6 检查 `src/i18n/index.ts` 与 webview 文案调用点，确保 Created/Updated、tooltip、aria-label 和复制成功反馈全部通过 `t('key')` 获取，不硬编码用户可见字符串。
 - [ ] 4.7 为 icon-only button 增加可访问性测试或组件断言，确认每个按钮都有 `aria-label`、tooltip 或等价提示，并且键盘可聚焦、可触发。
 
 ## 5. 测试、构建与人工 smoke 验证

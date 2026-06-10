@@ -36,7 +36,7 @@
   "clipboard.copiedCursorChat": "Copied to clipboard. Chat opened — paste and send.",
   "workflow.copiedCommand": "Copied command: {command}",
   "workflow.noAdapterCopied": "No executor available. Copied command: {command}",
-  "workflow.launchHelp": "Workflow buttons copy commands by default. Set openspec.workflowLaunchMode to adapter to use the selected executor, or explicitly set openspec.cursorLaunchMode to deeplink, chatCommand, or agentCli to route actions through Cursor.",
+  "workflow.launchHelp": "Workflow buttons copy commands by default. Set openspec.workflowLaunchMode to adapter to use the selected executor, or explicitly set openspec.cursorLaunchMode to deeplink, chatCommand, or headless agentCli to route actions through Cursor.",
 
   "fillChat.failed": "fillChat failed: {error}",
 
@@ -87,6 +87,21 @@
   "verify.invalidJson": "Arguments are not valid JSON",
   "verify.debugLabel": "Debug: Run IDE Command",
   "verify.executed": "Command executed.",
+  "verifyArchive.title": "Verify and archive this change",
+  "verifyArchive.description": "Verify and Archive run in a real VS Code terminal session so Agent follow-up questions can stay interactive.",
+  "verifyArchive.verifyTitle": "Verify & Validate",
+  "verifyArchive.archiveTitle": "Archive",
+  "verifyArchive.runVerify": "Run Verify",
+  "verifyArchive.runArchive": "Run Archive",
+  "verifyArchive.revealTerminal": "Reveal Terminal",
+  "verifyArchive.stop": "Stop",
+  "verifyArchive.clearSession": "Clear Session",
+  "verifyArchive.archiveDisabledArchived": "Archived changes are read-only. Verify can still run, Archive cannot.",
+  "verifyArchive.running": "Running",
+  "verifyArchive.ready": "Ready",
+  "verifyArchive.statusArchived": "Archived change · read-only",
+  "verifyArchive.statusTasks": "{artifacts} artifacts · {completed}/{total} tasks complete",
+  "verifyArchive.statusArtifacts": "{count} planning artifacts ready",
 
   "cursor.executing": "Executing: {task}",
   "cursor.promptLength": "Prompt length: {length} chars",
@@ -160,5 +175,9 @@
   "cli.runInit": "Run: openspec init",
 
   "noContent": "No content",
-  "loading": "Loading..."
+  "loading": "Loading...",
+  "change.created": "Created {date}",
+  "change.updated": "Updated {date}",
+  "action.copyChangeName": "Copy change name",
+  "action.copiedChangeName": "Copied change name"
 }

@@ -18,3 +18,5 @@ export { Tabs, TabsContent } from './Tabs';
 export type { TabsProps } from './Tabs';
 export { Tooltip } from './Tooltip';
 export type { TooltipProps } from './Tooltip';
+export { IconButton } from './IconButton';
+export type { IconButtonProps } from './IconButton';

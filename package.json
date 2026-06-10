@@ -86,6 +86,7 @@
             "agentCli"
           ],
           "default": "clipboard",
+          "description": "Cursor adapter launch behavior for non-interactive workflow actions. Verify and Archive use the dedicated Verify & Archive tab; `agentCli` here means headless Agent CLI.",
           "enumDescriptions": [
             "Only copy the generated command to the clipboard. Does not open Cursor or start Agent CLI.",
             "Open Cursor through the prompt deeplink with the generated command prefilled. The command is also copied as fallback.",
@@ -190,9 +191,6 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@resvg/resvg-js": "^2.6.2",
-    "@vscode/vsce": "^3.2.2",
-    "sharp": "^0.33.5",
-    "ovsx": "^0.10.9",
     "@tailwindcss/postcss": "^4.1.18",
     "@tailwindcss/vite": "^4.1.18",
     "@types/node": "^25.2.1",
@@ -202,12 +200,15 @@
     "@typescript-eslint/eslint-plugin": "^8.54.0",
     "@typescript-eslint/parser": "^8.54.0",
     "@vitejs/plugin-react": "^5.1.3",
+    "@vscode/vsce": "^3.2.2",
     "autoprefixer": "^10.4.24",
     "esbuild": "^0.27.3",
     "eslint": "^10.0.0",
     "eslint-config-prettier": "^10.1.8",
+    "ovsx": "^0.10.9",
     "postcss": "^8.5.6",
     "prettier": "^3.8.1",
+    "sharp": "^0.33.5",
     "tailwindcss": "^3.4.19",
     "typescript": "^5.9.3",
     "vite": "^7.3.1",
@@ -215,15 +216,16 @@
   },
   "packageManager": "pnpm@10.14.0",
   "dependencies": {
-    "yaml": "^2.7.0",
     "@radix-ui/react-progress": "^1.1.8",
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",
+    "@vscode/codicons": "^0.0.45",
     "class-variance-authority": "^0.7.1",
     "highlight.js": "^11.11.1",
     "marked": "^17.0.1",
     "mermaid": "^11.12.2",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "yaml": "^2.7.0"
   }
 }

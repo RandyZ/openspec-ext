@@ -38,7 +38,7 @@
   "clipboard.copiedCursorChat": "已复制到剪贴板，Chat 已打开，请粘贴到输入框后发送。",
   "workflow.copiedCommand": "已复制命令：{command}",
   "workflow.noAdapterCopied": "当前没有可用执行者，已复制命令：{command}",
-  "workflow.launchHelp": "Workflow 按钮默认只复制命令。将 openspec.workflowLaunchMode 设为 adapter 会使用所选执行者；或显式设置 openspec.cursorLaunchMode 为 deeplink、chatCommand、agentCli，让动作直接走 Cursor 路由。",
+  "workflow.launchHelp": "Workflow 按钮默认只复制命令。将 openspec.workflowLaunchMode 设为 adapter 会使用所选执行者；或显式设置 openspec.cursorLaunchMode 为 deeplink、chatCommand、headless agentCli，让动作直接走 Cursor 路由。",
 
   "fillChat.failed": "fillChat 失败: {error}",
 
@@ -89,6 +89,21 @@
   "verify.invalidJson": "参数不是合法 JSON",
   "verify.debugLabel": "Debug: 执行 IDE 命令",
   "verify.executed": "命令已执行。",
+  "verifyArchive.title": "在交互式终端中执行 Verify 与 Archive",
+  "verifyArchive.description": "Verify 和 Archive 会在 VS Code 官方终端里运行，这样 Agent 中途反问时用户可以直接继续输入。",
+  "verifyArchive.verifyTitle": "Verify & Validate",
+  "verifyArchive.archiveTitle": "Archive",
+  "verifyArchive.runVerify": "Run Verify",
+  "verifyArchive.runArchive": "Run Archive",
+  "verifyArchive.revealTerminal": "Reveal Terminal",
+  "verifyArchive.stop": "Stop",
+  "verifyArchive.clearSession": "Clear Session",
+  "verifyArchive.archiveDisabledArchived": "已归档 change 为只读。仍可执行 Verify，但不能再次 Archive。",
+  "verifyArchive.running": "运行中",
+  "verifyArchive.ready": "可开始",
+  "verifyArchive.statusArchived": "已归档 change · 只读",
+  "verifyArchive.statusTasks": "{artifacts} 个 artifact · 已完成 {completed}/{total} 个任务",
+  "verifyArchive.statusArtifacts": "已就绪 {count} 个 planning artifact",
 
   "cursor.executing": "正在执行: {task}",
   "cursor.promptLength": "Prompt 长度: {length} 字符",
@@ -160,5 +175,9 @@
   "cli.runInit": "运行: openspec init",
 
   "noContent": "暂无内容",
-  "loading": "加载中..."
+  "loading": "加载中...",
+  "change.created": "创建于 {date}",
+  "change.updated": "更新于 {date}",
+  "action.copyChangeName": "复制 change 名称",
+  "action.copiedChangeName": "已复制 change 名称"
 }
