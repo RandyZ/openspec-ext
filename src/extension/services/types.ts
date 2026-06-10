@@ -3,6 +3,7 @@ export interface ChangeInfo {
   completedTasks: number;
   totalTasks: number;
   lastModified: string;
+  createdAt?: string;
   status: 'draft' | 'in-progress' | 'complete';
   artifacts?: ArtifactStatus[];
   proposalWhySummary?: string;

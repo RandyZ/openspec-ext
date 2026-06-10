@@ -7,12 +7,12 @@
 
 ## 1. 数据模型与 createdAt 采集
 
-- [ ] 1.1 在 `src/extension/services/types.ts` 和 `src/webview/types/messages.ts` 的 `ChangeInfo` 类型中增加可选 `createdAt?: string`，并确认 `DashboardData.changes` 仍复用同一 change 列表消息通道，不新增 dashboard 消息类型。
-- [ ] 1.2 为 extension 数据层补充单元测试，覆盖 CLI 返回明确创建时间时 `ChangeInfo.createdAt` 被保留，并且 `createdAt` 不参与 status、任务进度或 workflow 动作判断。
-- [ ] 1.3 在 `src/extension/services/dataManager.ts` 的 change 列举链路中补充 `createdAt` 填充逻辑：优先使用 CLI/change metadata 中的明确创建时间；缺失时从本地 change 目录或关键 artifact 的文件系统时间推导稳定 fallback。
-- [ ] 1.4 为 filesystem fallback 写失败路径测试：当 change 目录或 artifact stat 失败、时间不可解析或没有可用创建时间时，`createdAt` 保持缺失，change list 仍正常返回且 `lastModified` 继续沿用现有 fallback。
-- [ ] 1.5 更新 `src/extension/services/dataManager.ts` 或相关 search enrichment 逻辑，使格式化后的 created 文本可以进入 `searchText`，但搜索结果不能只依赖 created 文本作为唯一可识别字段。
-- [ ] 1.6 运行与数据层相关的 targeted vitest，确认 `createdAt` 采集、fallback、searchText 合并和原有 `proposalWhy` enrichment 均通过。
+- [x] 1.1 在 `src/extension/services/types.ts` 和 `src/webview/types/messages.ts` 的 `ChangeInfo` 类型中增加可选 `createdAt?: string`，并确认 `DashboardData.changes` 仍复用同一 change 列表消息通道，不新增 dashboard 消息类型。
+- [x] 1.2 为 extension 数据层补充单元测试，覆盖 CLI 返回明确创建时间时 `ChangeInfo.createdAt` 被保留，并且 `createdAt` 不参与 status、任务进度或 workflow 动作判断。
+- [x] 1.3 在 `src/extension/services/dataManager.ts` 的 change 列举链路中补充 `createdAt` 填充逻辑：优先使用 CLI/change metadata 中的明确创建时间；缺失时从本地 change 目录或关键 artifact 的文件系统时间推导稳定 fallback。
+- [x] 1.4 为 filesystem fallback 写失败路径测试：当 change 目录或 artifact stat 失败、时间不可解析或没有可用创建时间时，`createdAt` 保持缺失，change list 仍正常返回且 `lastModified` 继续沿用现有 fallback。
+- [x] 1.5 更新 `src/extension/services/dataManager.ts` 或相关 search enrichment 逻辑，使格式化后的 created 文本可以进入 `searchText`，但搜索结果不能只依赖 created 文本作为唯一可识别字段。
+- [x] 1.6 运行与数据层相关的 targeted vitest，确认 `createdAt` 采集、fallback、searchText 合并和原有 `proposalWhy` enrichment 均通过。
 
 ## 2. Dashboard ChangeCard 信息层级
 

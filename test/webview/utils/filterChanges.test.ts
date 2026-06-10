@@ -23,7 +23,8 @@ describe('filterChanges', () => {
       artifacts: [{ id: 'proposal', outputPath: 'proposal.md', status: 'done' }],
       proposalWhySummary: 'Find changes quickly from the sidebar',
       proposalWhyFullText: 'Find changes quickly from the sidebar and inspect context.',
-      searchText: 'find changes quickly from the sidebar and inspect context proposal done',
+      createdAt: '2026-06-01T09:00:00.000Z',
+      searchText: 'find changes quickly from the sidebar and inspect context proposal done created 2026-06-01',
     }),
     change({
       name: 'archive-old-flow',
@@ -45,6 +46,7 @@ describe('filterChanges', () => {
     expect(filterChanges(changes, 'complete')).toEqual([changes[1]]);
     expect(filterChanges(changes, 'proposal')).toEqual([changes[0]]);
     expect(filterChanges(changes, 'inspect context')).toEqual([changes[0]]);
+    expect(filterChanges(changes, '2026-06-01')).toEqual([changes[0]]);
   });
 
   it('returns an empty array when no loaded metadata matches', () => {

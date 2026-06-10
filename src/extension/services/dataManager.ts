@@ -275,6 +275,12 @@ export class DataManager {
     }
   }
 
+  private statCreatedAt(stat: fs.Stats): string | undefined {
+    const time = stat.birthtimeMs > 0 ? stat.birthtime : stat.ctime;
+    const ms = time.getTime();
+    return Number.isFinite(ms) && ms > 0 ? time.toISOString() : undefined;
+  }
+
   private async listChangesFromFilesystem(): Promise<ChangeInfo[]> {
     const changesDir = path.join(this.workspaceRoot, 'openspec', 'changes');
     let entries: fs.Dirent[];
@@ -294,9 +300,11 @@ export class DataManager {
           const [completedTasks, totalTasks] = await this.countTaskProgress(changeName);
           const artifacts = await this.getFilesystemArtifactStatuses(changeName);
           let lastModified = new Date().toISOString();
+          let createdAt: string | undefined;
           try {
             const stat = await fs.promises.stat(changeDir);
             lastModified = stat.mtime.toISOString();
+            createdAt = this.statCreatedAt(stat);
           } catch {
             // Keep current timestamp when stat fails; the entry still exists.
           }
@@ -305,6 +313,7 @@ export class DataManager {
             completedTasks,
             totalTasks,
             lastModified,
+            createdAt,
             status: totalTasks === 0 ? 'draft' : completedTasks === totalTasks ? 'complete' : 'in-progress',
             artifacts,
           };
@@ -345,16 +354,6 @@ export class DataManager {
     return artifacts;
   }
 
-  /**
-   * Get cached dashboard data or refresh
-   */
-  async getDashboardData(): Promise<DashboardData> {
-    if (!this.cachedData) {
-      return await this.refresh();
-    }
-    return this.cachedData;
-  }
-
   private async enrichChangesWithProposalWhy(changes: ChangeInfo[]): Promise<ChangeInfo[]> {
     return await Promise.all(
       changes.map(async (change) => {
@@ -364,12 +363,14 @@ export class DataManager {
           const artifactSearchText = (change.artifacts ?? [])
             .map((a) => `${a.id} ${a.status}`)
             .join(' ');
+          const createdSearchText = change.createdAt ? `created ${change.createdAt.split('T')[0]}` : '';
           const searchText = [
             change.name,
             change.status,
             artifactSearchText,
             why.summary,
             why.fullText,
+            createdSearchText,
           ]
             .filter(Boolean)
             .join(' ')

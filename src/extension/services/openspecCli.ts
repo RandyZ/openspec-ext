@@ -79,6 +79,11 @@ export class OpenSpecCliService {
     }
   }
 
+  private normalizeCreatedAt(change: any): string | undefined {
+    const value = change.createdAt ?? change.created ?? change.metadataCreated;
+    return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+  }
+
   /**
    * List all changes with artifact status.
    * Handles non-JSON output (e.g. human-readable "Active changes:") by returning [].
@@ -104,6 +109,7 @@ export class OpenSpecCliService {
               completedTasks: c.completedTasks || 0,
               totalTasks: c.totalTasks || 0,
               lastModified: c.lastModified,
+              createdAt: this.normalizeCreatedAt(c),
               status: this.determineStatus(c),
               artifacts,
             };
@@ -113,6 +119,7 @@ export class OpenSpecCliService {
               completedTasks: c.completedTasks || 0,
               totalTasks: c.totalTasks || 0,
               lastModified: c.lastModified,
+              createdAt: this.normalizeCreatedAt(c),
               status: this.determineStatus(c),
               artifacts: [] as ArtifactStatus[],
             };

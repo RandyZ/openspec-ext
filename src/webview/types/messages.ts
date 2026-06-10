@@ -1,5 +1,10 @@
 import type { WorkflowAction } from '../../shared/workflowCommand';
 import type { WorkflowLaunchConfigView } from '../../shared/workflowLaunchConfig';
+import type {
+  ChangeDetailTabId,
+  InteractiveWorkflowAction,
+  InteractiveWorkflowState,
+} from '../../shared/interactiveWorkflow';
 
 // Message types from webview to extension
 export type WebviewMessage =
@@ -17,7 +22,12 @@ export type WebviewMessage =
   | { type: 'getArtifactContent'; changeName: string; artifactType: string }
   | { type: 'listDeltaSpecs'; changeName: string }
   | { type: 'getDeltaSpecContent'; changeName: string; specId: string }
-  | { type: 'openChangeDetailInEditor'; changeName: string }
+  | {
+    type: 'openChangeDetailInEditor';
+    changeName: string;
+    initialTab?: ChangeDetailTabId;
+    interactiveAction?: InteractiveWorkflowAction;
+  }
   | { type: 'getArchivedChanges' }
   | { type: 'revealSidebar' }
   | { type: 'executeTask'; changeName: string; taskIndex: number; taskText: string }
@@ -31,7 +41,12 @@ export type WebviewMessage =
   | { type: 'getSpecContent'; specId: string }
   | { type: 'getSpecRequirements'; specId: string }
   | { type: 'openSpecInEditor'; specId: string; requirementIndex?: number }
-  | { type: 'getTaskExecutionState'; changeName: string };
+  | { type: 'getTaskExecutionState'; changeName: string }
+  | { type: 'runInteractiveWorkflow'; changeName: string; action: InteractiveWorkflowAction }
+  | { type: 'revealInteractiveWorkflow'; changeName: string; action: InteractiveWorkflowAction }
+  | { type: 'stopInteractiveWorkflow'; changeName: string; action: InteractiveWorkflowAction }
+  | { type: 'clearInteractiveWorkflow'; changeName: string; action: InteractiveWorkflowAction }
+  | { type: 'getInteractiveWorkflowState'; changeName: string };
 
 // Message types from extension to webview
 export type ExtensionMessage =
@@ -42,7 +57,15 @@ export type ExtensionMessage =
   | { type: 'deltaSpecList'; changeName: string; specIds: string[] }
   | { type: 'deltaSpecContent'; changeName: string; specId: string; content: string }
   | { type: 'deltaSpecContentError'; changeName: string; specId: string; message: string }
-  | { type: 'setContext'; view: 'changeDetail'; changeName: string; existingArtifactIds?: string[]; debug?: boolean }
+  | {
+    type: 'setContext';
+    view: 'changeDetail';
+    changeName: string;
+    existingArtifactIds?: string[];
+    debug?: boolean;
+    initialTab?: ChangeDetailTabId;
+    interactiveAction?: InteractiveWorkflowAction;
+  }
   | { type: 'archivedChanges'; items: ArchivedChangeInfo[] }
   | { type: 'agentAdapters'; available: { id: string; displayName: string }[]; currentId: string | null }
   | { type: 'workflowLaunchConfig'; config: WorkflowLaunchConfigView }
@@ -52,7 +75,8 @@ export type ExtensionMessage =
   | { type: 'specContent'; specId: string; content: string }
   | { type: 'specContentError'; specId: string; message: string }
   | { type: 'specRequirements'; specId: string; requirements: string[] }
-  | { type: 'artifactInvalidated'; changeName: string; artifactTypes: string[] };
+  | { type: 'artifactInvalidated'; changeName: string; artifactTypes: string[] }
+  | { type: 'interactiveWorkflowState'; changeName: string; state: InteractiveWorkflowState };
 
 // Data types
 export interface DashboardData {
@@ -66,6 +90,7 @@ export interface ChangeInfo {
   completedTasks: number;
   totalTasks: number;
   lastModified: string;
+  createdAt?: string;
   status: 'draft' | 'in-progress' | 'complete';
   artifacts?: ArtifactStatus[];
   proposalWhySummary?: string;
@@ -165,9 +190,15 @@ export const sendMessage = {
     specId,
   }),
 
-  openChangeDetailInEditor: (changeName: string): WebviewMessage => ({
+  openChangeDetailInEditor: (
+    changeName: string,
+    initialTab?: ChangeDetailTabId,
+    interactiveAction?: InteractiveWorkflowAction
+  ): WebviewMessage => ({
     type: 'openChangeDetailInEditor',
     changeName,
+    ...(initialTab !== undefined ? { initialTab } : {}),
+    ...(interactiveAction !== undefined ? { interactiveAction } : {}),
   }),
 
   getArchivedChanges: (): WebviewMessage => ({
@@ -240,6 +271,35 @@ export const sendMessage = {
 
   getTaskExecutionState: (changeName: string): WebviewMessage => ({
     type: 'getTaskExecutionState',
+    changeName,
+  }),
+
+  runInteractiveWorkflow: (changeName: string, action: InteractiveWorkflowAction): WebviewMessage => ({
+    type: 'runInteractiveWorkflow',
+    changeName,
+    action,
+  }),
+
+  revealInteractiveWorkflow: (changeName: string, action: InteractiveWorkflowAction): WebviewMessage => ({
+    type: 'revealInteractiveWorkflow',
+    changeName,
+    action,
+  }),
+
+  stopInteractiveWorkflow: (changeName: string, action: InteractiveWorkflowAction): WebviewMessage => ({
+    type: 'stopInteractiveWorkflow',
+    changeName,
+    action,
+  }),
+
+  clearInteractiveWorkflow: (changeName: string, action: InteractiveWorkflowAction): WebviewMessage => ({
+    type: 'clearInteractiveWorkflow',
+    changeName,
+    action,
+  }),
+
+  getInteractiveWorkflowState: (changeName: string): WebviewMessage => ({
+    type: 'getInteractiveWorkflowState',
     changeName,
   }),
 };

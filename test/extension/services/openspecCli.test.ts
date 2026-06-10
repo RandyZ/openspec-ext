@@ -209,6 +209,35 @@ describe('OpenSpecCliService', () => {
       expect(result[0].name).toBe('add-dark-mode');
       expect(result[0].artifacts).toEqual([{ id: 'proposal', outputPath: '', status: 'done' }]);
     });
+
+    it('preserves explicit created metadata from openspec list output', async () => {
+      const service = new OpenSpecCliService('/workspace');
+      const exec = vi.spyOn(service as any, 'execOpenSpec');
+
+      exec
+        .mockResolvedValueOnce(JSON.stringify({
+          changes: [
+            {
+              name: 'polish-ui',
+              completedTasks: 1,
+              totalTasks: 2,
+              lastModified: '2026-06-10T12:00:00.000Z',
+              createdAt: '2026-06-01T09:00:00.000Z',
+            },
+          ],
+        }))
+        .mockResolvedValueOnce(JSON.stringify({
+          artifacts: [],
+        }));
+
+      await expect(service.listChanges()).resolves.toMatchObject([
+        {
+          name: 'polish-ui',
+          lastModified: '2026-06-10T12:00:00.000Z',
+          createdAt: '2026-06-01T09:00:00.000Z',
+        },
+      ]);
+    });
   });
 
   describe('getChangeStatus', () => {

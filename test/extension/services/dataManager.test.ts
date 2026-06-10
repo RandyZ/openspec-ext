@@ -32,6 +32,7 @@ function createManager() {
 
   Object.assign(manager as any, {
     stateReader,
+    cliAvailable: true,
     contentAccess: {
       readArtifact: vi.fn(),
       getChangeOpenspecYamlPath: vi.fn((changeName: string) => `/tmp/${changeName}/.openspec.yaml`),
@@ -223,5 +224,57 @@ describe('DataManager dashboard data loading', () => {
     await expect(manager.getDashboardData()).resolves.toMatchObject({
       changes: [secondMutationChange],
     });
+  });
+
+  it('uses filesystem birthtime as createdAt fallback without changing status', async () => {
+    const { manager } = createManager();
+    const birthtime = new Date('2026-06-01T09:00:00.000Z');
+    const mtime = new Date('2026-06-10T12:00:00.000Z');
+
+    const fs = await import('fs');
+    vi.spyOn(fs.promises, 'readdir').mockResolvedValue([
+      { name: 'polish-ui', isDirectory: () => true },
+    ] as any);
+    vi.spyOn(fs.promises, 'stat').mockResolvedValue({
+      birthtime,
+      ctime: birthtime,
+      mtime,
+      birthtimeMs: birthtime.getTime(),
+    } as any);
+
+    vi.spyOn(manager as any, 'countTaskProgress').mockResolvedValue([0, 2]);
+    vi.spyOn(manager as any, 'getFilesystemArtifactStatuses').mockResolvedValue([]);
+
+    const changes = await (manager as any).listChangesFromFilesystem();
+
+    expect(changes).toEqual([
+      expect.objectContaining({
+        name: 'polish-ui',
+        createdAt: '2026-06-01T09:00:00.000Z',
+        lastModified: '2026-06-10T12:00:00.000Z',
+        status: 'in-progress',
+      }),
+    ]);
+  });
+
+  it('omits createdAt when filesystem fallback time is not available', async () => {
+    const { manager } = createManager();
+    const fs = await import('fs');
+
+    vi.spyOn(fs.promises, 'readdir').mockResolvedValue([
+      { name: 'missing-time', isDirectory: () => true },
+    ] as any);
+    vi.spyOn(fs.promises, 'stat').mockRejectedValue(new Error('stat failed'));
+    vi.spyOn(manager as any, 'countTaskProgress').mockResolvedValue([0, 0]);
+    vi.spyOn(manager as any, 'getFilesystemArtifactStatuses').mockResolvedValue([]);
+
+    const changes = await (manager as any).listChangesFromFilesystem();
+
+    expect(changes[0]).toMatchObject({
+      name: 'missing-time',
+      status: 'draft',
+      lastModified: expect.any(String),
+    });
+    expect(changes[0].createdAt).toBeUndefined();
   });
 });
