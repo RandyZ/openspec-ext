@@ -117,5 +117,22 @@ describe('i18n', () => {
       const empty = zhKeys.filter(k => !(zhCn as Record<string, string>)[k]?.trim());
       expect(empty).toEqual([]);
     });
+
+    it('contains CLI activation diagnostic keys in both locales', () => {
+      const requiredKeys = [
+        'cliDiagnostic.actionOpenSettings',
+        'cliDiagnostic.actionRetry',
+        'cliDiagnostic.actionCopyDiagnostics',
+        'cliDiagnostic.actionOpenDocs',
+        'cliDiagnostic.staleWarning',
+        'cli.copyDiagnostics',
+        'cli.versionUnsupported',
+      ];
+
+      for (const key of requiredKeys) {
+        expect(en[key as keyof typeof en]).toBeTruthy();
+        expect(zhCn[key as keyof typeof zhCn]).toBeTruthy();
+      }
+    });
   });
 });

@@ -12,6 +12,7 @@ import type { IOpenSpecContentAccess } from './contentAccess';
 import { getAvailableAdapters, getCurrentAdapter } from '../adapters';
 import { ChangeInfo, ChangeDetails, SpecInfo, ArchivedChangeInfo } from './types';
 import { extractProposalWhy } from './proposalWhy';
+import type { CliActivationDiagnostic } from './cliActivationDiagnostic';
 
 export interface DashboardData {
   changes: ChangeInfo[];
@@ -45,6 +46,7 @@ export class DataManager {
   private fileWatcher: FileWatcherService;
   private taskExecutorService: TaskExecutorService;
   private cachedData: DashboardData | null = null;
+  private cliDiagnostic: CliActivationDiagnostic | null = null;
   private refreshInFlight: Promise<DashboardData> | null = null;
   private queuedRefresh: Promise<DashboardData> | null = null;
   private refreshCallbacks: Set<(data: DashboardData) => void> = new Set();
@@ -66,10 +68,19 @@ export class DataManager {
   }
 
   /**
+   * Get the latest CLI activation diagnostic, if any.
+   * Read-only access; retry/cache orchestration lives elsewhere.
+   */
+  getCliDiagnostic(): CliActivationDiagnostic | null {
+    return this.cliDiagnostic;
+  }
+
+  /**
    * Initialize services
    */
   async initialize(): Promise<void> {
     this.cliAvailable = await this.cliService.checkAvailability(false);
+    this.cliDiagnostic = this.cliService.getCliActivationDiagnostic();
     if (this.cliAvailable) {
       const version = await this.cliService.getVersion();
       logger.info(`Initialized with OpenSpec CLI ${version}`);
@@ -251,24 +262,45 @@ export class DataManager {
         lastRefresh: Date.now(),
       };
       this.cachedData = data;
+      this.cliDiagnostic = null;
 
       logger.info(`Refreshed: ${changes.length} changes, ${specs.length} specs`);
       this.notifyRefresh(data);
       return this.cachedData;
     } catch (error) {
       logger.error('Failed to refresh dashboard data', error as Error);
+
+      const diagnostic = this.cliService.getCliActivationDiagnostic();
+      if (diagnostic) {
+        this.cliDiagnostic = diagnostic;
+        if (this.cachedData) {
+          this.notifyRefresh(this.cachedData);
+          return this.cachedData;
+        }
+      }
+
       throw error;
     }
   }
 
   private async listChangesWithFallback(): Promise<ChangeInfo[]> {
     if (!this.cliAvailable) {
+      const diagnostic = this.cliService.getCliActivationDiagnostic();
+      if (diagnostic) {
+        this.cliDiagnostic = diagnostic;
+        throw new Error(diagnostic.message);
+      }
       return await this.listChangesFromFilesystem();
     }
 
     try {
       return await this.stateReader.listChanges();
     } catch (error) {
+      const diagnostic = this.cliService.getCliActivationDiagnostic();
+      if (diagnostic) {
+        this.cliDiagnostic = diagnostic;
+        throw error;
+      }
       logger.warn('CLI change listing failed; falling back to filesystem scan', error as Error);
       this.cliAvailable = false;
       return await this.listChangesFromFilesystem();

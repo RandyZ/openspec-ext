@@ -13,6 +13,7 @@ vi.mock('vscode', () => {
     Disposable,
     Uri: {
       file: (fsPath: string) => ({ fsPath }),
+      parse: (uri: string) => ({ fsPath: uri, toString: () => uri }),
     },
     workspace: {
       getConfiguration: vi.fn(() => ({
@@ -21,6 +22,10 @@ vi.mock('vscode', () => {
     },
     env: {
       language: 'en',
+      clipboard: {
+        writeText: vi.fn(),
+      },
+      openExternal: vi.fn(),
     },
     commands: {
       executeCommand: vi.fn(),
@@ -55,6 +60,7 @@ describe('DashboardViewProvider', () => {
     const dataManager = {
       onRefresh: vi.fn(() => ({ dispose: vi.fn() })),
       getDashboardData: vi.fn().mockResolvedValue(dashboardData),
+      getCliDiagnostic: vi.fn().mockReturnValue(null),
     };
     const webview = {
       options: undefined,
@@ -92,6 +98,7 @@ describe('DashboardViewProvider', () => {
     const dataManager = {
       onRefresh: vi.fn(() => ({ dispose: vi.fn() })),
       getDashboardData: vi.fn().mockResolvedValue(dashboardData),
+      getCliDiagnostic: vi.fn().mockReturnValue(null),
     };
     const webview = {
       options: undefined,
@@ -162,6 +169,172 @@ describe('DashboardViewProvider', () => {
     expect(panelManager.open).toHaveBeenCalledWith('demo-change', {
       initialTab: 'verifyArchive',
       interactiveAction: 'archive',
+    });
+  });
+
+  describe('CLI activation diagnostic', () => {
+    const diagnostic = {
+      category: 'cli-not-found',
+      message: 'OpenSpec CLI unavailable',
+      recoveryActions: ['open-docs', 'open-settings', 'retry', 'copy-diagnostics'],
+      safeDetails: ['extension host PATH: failed ENOENT'],
+      copyText: 'category=cli-not-found',
+      canRetry: true,
+      normalizedMessage: 'openspec cli unavailable',
+    };
+
+    function createDiagnosticDataManager(getDashboardData: () => Promise<any>) {
+      return {
+        onRefresh: vi.fn(() => ({ dispose: vi.fn() })),
+        getDashboardData,
+        getCliDiagnostic: vi.fn().mockReturnValue(diagnostic),
+        refresh: vi.fn(),
+      };
+    }
+
+    it('posts blocking diagnostic when initial data fails without cached data', async () => {
+      vi.useFakeTimers();
+      const dataManager = createDiagnosticDataManager(() => Promise.reject(new Error('OpenSpec CLI unavailable')));
+      const webview = {
+        options: undefined,
+        html: '',
+        cspSource: 'vscode-resource',
+        asWebviewUri: vi.fn((uri) => `vscode-resource:${uri.fsPath}`),
+        postMessage: vi.fn(),
+        onDidReceiveMessage: vi.fn(),
+      };
+      const webviewView = { webview, onDidDispose: vi.fn(), show: vi.fn() };
+
+      const provider = new DashboardViewProvider(dataManager as any, '/ext');
+      provider.resolveWebviewView(webviewView as any, {} as any, {} as any);
+      await vi.runAllTimersAsync();
+
+      expect(webview.postMessage).toHaveBeenCalledWith({
+        type: 'cliActivationDiagnostic',
+        diagnostic,
+        mode: 'blocking',
+      });
+    });
+
+    it('posts warning diagnostic alongside cached data on refresh', async () => {
+      const dataManager = createDiagnosticDataManager(() => Promise.resolve({ changes: [], specs: [], lastRefresh: 1 }));
+      const webview = {
+        options: undefined,
+        html: '',
+        cspSource: 'vscode-resource',
+        asWebviewUri: vi.fn((uri) => `vscode-resource:${uri.fsPath}`),
+        postMessage: vi.fn(),
+        onDidReceiveMessage: vi.fn(),
+      };
+      const webviewView = { webview, onDidDispose: vi.fn(), show: vi.fn() };
+
+      const provider = new DashboardViewProvider(dataManager as any, '/ext');
+      provider.resolveWebviewView(webviewView as any, {} as any, {} as any);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // Trigger the onRefresh callback to simulate a refresh with diagnostic present
+      const onRefreshCallback = vi.mocked(dataManager.onRefresh).mock.calls[0]?.[0];
+      onRefreshCallback?.({ changes: [], specs: [], lastRefresh: 2 });
+
+      expect(webview.postMessage).toHaveBeenCalledWith({
+        type: 'cliActivationDiagnostic',
+        diagnostic,
+        mode: 'warning',
+      });
+    });
+
+    it('opens cliPath settings when requested', async () => {
+      const vscode = await import('vscode');
+      const dataManager = createDiagnosticDataManager(() => Promise.resolve({ changes: [], specs: [], lastRefresh: 1 }));
+      const webview = {
+        options: undefined,
+        html: '',
+        cspSource: 'vscode-resource',
+        asWebviewUri: vi.fn((uri) => `vscode-resource:${uri.fsPath}`),
+        postMessage: vi.fn(),
+        onDidReceiveMessage: vi.fn(),
+      };
+      const webviewView = { webview, onDidDispose: vi.fn(), show: vi.fn() };
+
+      const provider = new DashboardViewProvider(dataManager as any, '/ext');
+      provider.resolveWebviewView(webviewView as any, {} as any, {} as any);
+
+      const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+      await handler?.({ type: 'openCliPathSettings' });
+
+      expect(vscode.commands.executeCommand).toHaveBeenCalledWith('workbench.action.openSettings', 'openspec.cliPath');
+    });
+
+    it('copies diagnostic text when requested', async () => {
+      const vscode = await import('vscode');
+      const dataManager = createDiagnosticDataManager(() => Promise.resolve({ changes: [], specs: [], lastRefresh: 1 }));
+      const webview = {
+        options: undefined,
+        html: '',
+        cspSource: 'vscode-resource',
+        asWebviewUri: vi.fn((uri) => `vscode-resource:${uri.fsPath}`),
+        postMessage: vi.fn(),
+        onDidReceiveMessage: vi.fn(),
+      };
+      const webviewView = { webview, onDidDispose: vi.fn(), show: vi.fn() };
+
+      const provider = new DashboardViewProvider(dataManager as any, '/ext');
+      provider.resolveWebviewView(webviewView as any, {} as any, {} as any);
+
+      const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+      await handler?.({ type: 'copyCliDiagnostic' });
+
+      expect(vscode.env.clipboard.writeText).toHaveBeenCalledWith(diagnostic.copyText);
+    });
+
+    it('opens install docs when requested', async () => {
+      const vscode = await import('vscode');
+      const dataManager = createDiagnosticDataManager(() => Promise.resolve({ changes: [], specs: [], lastRefresh: 1 }));
+      const webview = {
+        options: undefined,
+        html: '',
+        cspSource: 'vscode-resource',
+        asWebviewUri: vi.fn((uri) => `vscode-resource:${uri.fsPath}`),
+        postMessage: vi.fn(),
+        onDidReceiveMessage: vi.fn(),
+      };
+      const webviewView = { webview, onDidDispose: vi.fn(), show: vi.fn() };
+
+      const provider = new DashboardViewProvider(dataManager as any, '/ext');
+      provider.resolveWebviewView(webviewView as any, {} as any, {} as any);
+
+      const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+      await handler?.({ type: 'openCliInstallDocs' });
+
+      expect(vscode.env.openExternal).toHaveBeenCalled();
+    });
+
+    it('refreshes dashboard data when retry succeeds', async () => {
+      const refreshedData = { changes: [], specs: [], lastRefresh: 2 };
+      const dataManager = {
+        onRefresh: vi.fn(() => ({ dispose: vi.fn() })),
+        getDashboardData: vi.fn(),
+        getCliDiagnostic: vi.fn().mockReturnValue(diagnostic),
+        refresh: vi.fn().mockResolvedValue(refreshedData),
+      };
+      const webview = {
+        options: undefined,
+        html: '',
+        cspSource: 'vscode-resource',
+        asWebviewUri: vi.fn((uri) => `vscode-resource:${uri.fsPath}`),
+        postMessage: vi.fn(),
+        onDidReceiveMessage: vi.fn(),
+      };
+      const webviewView = { webview, onDidDispose: vi.fn(), show: vi.fn() };
+
+      const provider = new DashboardViewProvider(dataManager as any, '/ext');
+      provider.resolveWebviewView(webviewView as any, {} as any, {} as any);
+
+      const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+      await handler?.({ type: 'retryCliDetection' });
+
+      expect(dataManager.refresh).toHaveBeenCalled();
+      expect(webview.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'dashboardData', data: refreshedData }));
     });
   });
 });

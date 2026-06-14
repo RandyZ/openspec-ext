@@ -4,6 +4,7 @@ import { logger } from '../utils/logger';
 import { DataManager, type DashboardData } from '../services/dataManager';
 import { InteractiveAgentTerminalManager } from '../services/interactiveAgentTerminalManager';
 import { ChangeDetailPanelManager } from './changeDetailPanelManager';
+import type { CliActivationDiagnosticView } from '../../webview/types/messages';
 import {
   handleWebviewMessage,
   getWebviewContent,
@@ -63,16 +64,34 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     this.refreshSubscription = undefined;
   }
 
-  private postDashboardData(data: DashboardData): void {
-    if (!this._view) return;
+  private postDashboardData(data: DashboardData, targetWebview?: vscode.Webview): void {
+    const webview = targetWebview ?? this._view?.webview;
+    if (!webview) return;
     const debug = vscode.workspace.getConfiguration('openspec').get<boolean>('debug') ?? false;
-    this._view.webview.postMessage({ type: 'dashboardData', data, debug });
-    this.postWorkflowLaunchConfig();
+    webview.postMessage({ type: 'dashboardData', data, debug });
+    this.postCliActivationDiagnostic(webview, 'warning');
+    this.postWorkflowLaunchConfig(webview);
   }
 
-  public postWorkflowLaunchConfig(): void {
-    if (!this._view) return;
-    this._view.webview.postMessage(getWorkflowLaunchConfigMessage());
+  private postCliActivationDiagnostic(targetWebview: vscode.Webview, mode: 'blocking' | 'warning'): void {
+    const diagnostic = this.dataManager.getCliDiagnostic?.();
+    if (!diagnostic) return;
+    const viewDiagnostic: CliActivationDiagnosticView = {
+      category: diagnostic.category,
+      message: diagnostic.message,
+      recoveryActions: diagnostic.recoveryActions,
+      safeDetails: diagnostic.safeDetails,
+      copyText: diagnostic.copyText,
+      canRetry: diagnostic.canRetry,
+      normalizedMessage: diagnostic.normalizedMessage,
+    };
+    targetWebview.postMessage({ type: 'cliActivationDiagnostic', diagnostic: viewDiagnostic, mode });
+  }
+
+  public postWorkflowLaunchConfig(targetWebview?: vscode.Webview): void {
+    const webview = targetWebview ?? this._view?.webview;
+    if (!webview) return;
+    webview.postMessage(getWorkflowLaunchConfigMessage());
   }
 
   public openInEditor(): void {
@@ -108,12 +127,15 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       this.dataManager.getDashboardData()
         .then((data) => {
           logger.info('Posting initial dashboard data to webview');
-          const debug = vscode.workspace.getConfiguration('openspec').get<boolean>('debug') ?? false;
-          targetWebview.postMessage({ type: 'dashboardData', data, debug });
-          targetWebview.postMessage(getWorkflowLaunchConfigMessage());
+          this.postDashboardData(data, targetWebview);
         })
         .catch((err) => {
           logger.error('Failed to post initial dashboard data', err as Error);
+          const diagnostic = this.dataManager.getCliDiagnostic();
+          if (diagnostic) {
+            this.postCliActivationDiagnostic(targetWebview, 'blocking');
+            return;
+          }
           targetWebview.postMessage({
             type: 'error',
             message: (err as Error).message || 'Failed to load dashboard data',
@@ -165,6 +187,35 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       this.openSpecPanel(message.specId, message.requirementIndex);
       return;
     }
+
+    // CLI activation diagnostic recovery actions
+    if (message.type === 'openCliPathSettings') {
+      await vscode.commands.executeCommand('workbench.action.openSettings', 'openspec.cliPath');
+      return;
+    }
+    if (message.type === 'openCliInstallDocs') {
+      await vscode.env.openExternal(vscode.Uri.parse('https://github.com/Fission-AI/OpenSpec#quick-start'));
+      return;
+    }
+    if (message.type === 'copyCliDiagnostic') {
+      const diagnostic = this.dataManager.getCliDiagnostic();
+      if (diagnostic) {
+        await vscode.env.clipboard.writeText(diagnostic.copyText);
+      }
+      return;
+    }
+    if (message.type === 'retryCliDetection') {
+      try {
+        const data = await this.dataManager.refresh();
+        webview.postMessage({ type: 'dashboardData', data, debug: vscode.workspace.getConfiguration('openspec').get<boolean>('debug') ?? false });
+        this.postCliActivationDiagnostic(webview, 'warning');
+      } catch (err) {
+        logger.error('Retry CLI detection failed', err as Error);
+        this.postCliActivationDiagnostic(webview, 'blocking');
+      }
+      return;
+    }
+
     await handleWebviewMessage(
       message,
       webview,

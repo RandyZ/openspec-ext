@@ -574,6 +574,54 @@ export async function handleWebviewMessage(
       break;
     }
 
+    case 'retryCliDetection': {
+      try {
+        const data = await dataManager.refresh();
+        webview.postMessage({ type: 'dashboardData', data, debug: getDebug() });
+      } catch (err) {
+        const diagnostic = dataManager.getCliDiagnostic();
+        if (diagnostic) {
+          webview.postMessage({
+            type: 'cliActivationDiagnostic',
+            diagnostic: {
+              category: diagnostic.category,
+              message: diagnostic.message,
+              recoveryActions: diagnostic.recoveryActions,
+              safeDetails: diagnostic.safeDetails,
+              copyText: diagnostic.copyText,
+              canRetry: diagnostic.canRetry,
+              normalizedMessage: diagnostic.normalizedMessage,
+            },
+            mode: 'blocking',
+          });
+        } else {
+          webview.postMessage({
+            type: 'error',
+            message: (err as Error).message || 'Failed to refresh dashboard data',
+          });
+        }
+      }
+      break;
+    }
+
+    case 'openCliPathSettings': {
+      await vscode.commands.executeCommand('workbench.action.openSettings', 'openspec.cliPath');
+      break;
+    }
+
+    case 'copyCliDiagnostic': {
+      const diagnostic = dataManager.getCliDiagnostic();
+      if (diagnostic) {
+        await vscode.env.clipboard.writeText(diagnostic.copyText);
+      }
+      break;
+    }
+
+    case 'openCliInstallDocs': {
+      await vscode.env.openExternal(vscode.Uri.parse('https://github.com/Fission-AI/OpenSpec#quick-start'));
+      break;
+    }
+
     /**
      * Verify tab: run an IDE command for debugging. Only commands in the allowlist
      * are executed. For development/debug use only.

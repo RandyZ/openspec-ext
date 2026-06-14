@@ -13,14 +13,147 @@ import {
   OpenSpecCliError,
 } from './types';
 import { OpenSpecCliResolver, OpenSpecCliResolutionError } from './openspecCliResolver';
+import {
+  buildCliActivationDiagnostic,
+  type CliActivationDiagnostic,
+  type CliActivationDiagnosticCategory,
+} from './cliActivationDiagnostic';
+
+const MINIMUM_OPENSPEC_VERSION = '1.0.0';
 
 export class OpenSpecCliService {
   private workspaceRoot: string;
   private resolver: OpenSpecCliResolver;
+  private cliActivationDiagnostic: CliActivationDiagnostic | null = null;
+  private shownCliDiagnosticKeys = new Set<string>();
 
-  constructor(workspaceRoot: string) {
+  constructor(workspaceRoot: string, resolver?: OpenSpecCliResolver) {
     this.workspaceRoot = workspaceRoot;
-    this.resolver = new OpenSpecCliResolver(workspaceRoot);
+    this.resolver = resolver ?? new OpenSpecCliResolver(workspaceRoot);
+  }
+
+  getCliActivationDiagnostic(): CliActivationDiagnostic | null {
+    return this.cliActivationDiagnostic;
+  }
+
+  clearCliActivationDiagnostic(): void {
+    this.cliActivationDiagnostic = null;
+  }
+
+  private classifyResolutionError(error: OpenSpecCliResolutionError): CliActivationDiagnosticCategory {
+    const details = error.diagnostics.join('\n').toLowerCase();
+    if (error.message.toLowerCase().includes('configured openspec cli path is invalid')) {
+      return 'configured-path-invalid';
+    }
+    if (details.includes('permission denied') || details.includes('eacces') || details.includes('eperm')) {
+      return 'permission-denied';
+    }
+    const shellDetail = error.diagnostics.find((d) => d.toLowerCase().startsWith('login shell path:'));
+    if (shellDetail) {
+      const shellLower = shellDetail.toLowerCase();
+      if (
+        shellLower.includes('timed out') ||
+        shellLower.includes('skipped') ||
+        shellLower.includes('<empty>')
+      ) {
+        return 'shell-resolution-failed';
+      }
+    }
+    if (details.includes('--version') && details.includes('failed')) {
+      return 'version-check-failed';
+    }
+    return 'cli-not-found';
+  }
+
+  private classifySpawnError(error: Error): CliActivationDiagnosticCategory {
+    const message = error.message.toLowerCase();
+    if (message.includes('eacces') || message.includes('eperm') || message.includes('permission denied')) {
+      return 'permission-denied';
+    }
+    if (message.includes('spawn')) {
+      return 'spawn-failed';
+    }
+    return 'unknown';
+  }
+
+  private warnIfVersionUnsupported(version: string): void {
+    if (this.compareSemver(version, MINIMUM_OPENSPEC_VERSION) >= 0) return;
+    void vscode.window.showWarningMessage(
+      t('cli.versionUnsupported', { version, minimum: MINIMUM_OPENSPEC_VERSION }),
+      t('cli.installInstructions')
+    ).then((selection) => {
+      if (selection === t('cli.installInstructions')) {
+        vscode.env.openExternal(vscode.Uri.parse('https://github.com/Fission-AI/OpenSpec#quick-start'));
+      }
+    });
+  }
+
+  private compareSemver(actual: string, minimum: string): number {
+    const parse = (value: string) => value.match(/\d+(?:\.\d+){0,2}/)?.[0]
+      .split('.')
+      .map((part) => Number(part)) ?? [0];
+    const a = parse(actual);
+    const b = parse(minimum);
+    for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+      const av = a[i] ?? 0;
+      const bv = b[i] ?? 0;
+      if (av !== bv) return av > bv ? 1 : -1;
+    }
+    return 0;
+  }
+
+  private showCliActivationDiagnosticError(diagnostic: CliActivationDiagnostic): void {
+    const key = `${diagnostic.category}:${diagnostic.normalizedMessage}`;
+    if (this.shownCliDiagnosticKeys.has(key)) return;
+    this.shownCliDiagnosticKeys.add(key);
+
+    const labels = diagnostic.recoveryActions.slice(0, 3).map((action) => this.getRecoveryActionLabel(action));
+    vscode.window.showErrorMessage(diagnostic.message, ...labels).then((selection) => {
+      void this.handleRecoveryActionSelection(selection, diagnostic);
+    });
+  }
+
+  private getRecoveryActionLabel(action: string): string {
+    switch (action) {
+      case 'open-settings': return t('cli.openSettings');
+      case 'retry': return t('cli.retry');
+      case 'copy-diagnostics': return t('cli.copyDiagnostics');
+      case 'open-docs': return t('cli.installInstructions');
+      default: return action;
+    }
+  }
+
+  private async handleRecoveryActionSelection(
+    selection: string | undefined,
+    diagnostic: CliActivationDiagnostic
+  ): Promise<void> {
+    if (selection === t('cli.openSettings')) {
+      await vscode.commands.executeCommand('workbench.action.openSettings', 'openspec.cliPath');
+    } else if (selection === t('cli.retry')) {
+      await vscode.commands.executeCommand('workbench.action.reloadWindow');
+    } else if (selection === t('cli.copyDiagnostics')) {
+      await vscode.env.clipboard.writeText(diagnostic.copyText);
+    } else if (selection === t('cli.installInstructions')) {
+      await vscode.env.openExternal(vscode.Uri.parse('https://github.com/Fission-AI/OpenSpec#quick-start'));
+    }
+  }
+
+  private setCliActivationDiagnostic(
+    category: CliActivationDiagnosticCategory,
+    error: Error,
+    rawDetails: string[] = []
+  ): CliActivationDiagnostic {
+    const diagnostic = buildCliActivationDiagnostic({
+      category,
+      message: error.message,
+      rawDetails,
+      platform: process.platform,
+      arch: process.arch,
+      workspaceName: this.workspaceRoot.split(/[\\/]/).filter(Boolean).pop() ?? '<workspace>',
+      configuredCliPath: vscode.workspace.getConfiguration('openspec').get<string>('cliPath') ?? '',
+    });
+    this.cliActivationDiagnostic = diagnostic;
+    return diagnostic;
   }
 
   /**
@@ -28,7 +161,9 @@ export class OpenSpecCliService {
    */
   async checkAvailability(notifyCliNotFound = true): Promise<boolean> {
     try {
-      await this.execOpenSpec(['--version'], 1, { notifyCliNotFound });
+      const version = (await this.execOpenSpec(['--version'], 1, { notifyCliNotFound })).trim();
+      this.clearCliActivationDiagnostic();
+      this.warnIfVersionUnsupported(version);
       return true;
     } catch (error) {
       logger.error('OpenSpec CLI not available', error as Error);
@@ -312,13 +447,23 @@ export class OpenSpecCliService {
       } catch (error) {
         lastError = error as Error;
 
-        if (error instanceof OpenSpecCliError && error.exitCode === 127) {
-          if (notifyCliNotFound) this.showCliNotFoundError();
+        if (error instanceof OpenSpecCliResolutionError) {
+          const category = this.classifyResolutionError(error);
+          const diagnostic = this.setCliActivationDiagnostic(category, error, error.diagnostics);
+          if (notifyCliNotFound) this.showCliActivationDiagnosticError(diagnostic);
           throw error;
         }
 
-        if (error instanceof OpenSpecCliResolutionError) {
-          if (notifyCliNotFound) this.showCliNotFoundError(error);
+        if (error instanceof OpenSpecCliError && error.exitCode === 127) {
+          const diagnostic = this.setCliActivationDiagnostic('cli-not-found', error);
+          if (notifyCliNotFound) this.showCliActivationDiagnosticError(diagnostic);
+          throw error;
+        }
+
+        if (this.isSpawnError(error as Error)) {
+          const category = this.classifySpawnError(error as Error);
+          const diagnostic = this.setCliActivationDiagnostic(category, error as Error);
+          if (notifyCliNotFound) this.showCliActivationDiagnosticError(diagnostic);
           throw error;
         }
 
@@ -330,16 +475,18 @@ export class OpenSpecCliService {
       }
     }
 
-    if (notifyCliNotFound && lastError && this.isCliNotFoundError(lastError)) {
-      this.showCliNotFoundError(lastError);
+    if (notifyCliNotFound && lastError && this.isSpawnError(lastError)) {
+      const category = this.classifySpawnError(lastError);
+      const diagnostic = this.setCliActivationDiagnostic(category, lastError);
+      this.showCliActivationDiagnosticError(diagnostic);
     }
     throw lastError;
   }
 
-  /** True when the error indicates openspec binary was not found (e.g. spawn ENOENT). */
-  private isCliNotFoundError(err: Error): boolean {
+  /** True when the error indicates a spawn-level failure after resolution. */
+  private isSpawnError(err: Error): boolean {
     const msg = err.message.toLowerCase();
-    return msg.includes('spawn') && (msg.includes('enoent') || msg.includes('not found'));
+    return msg.includes('failed to spawn openspec');
   }
 
   /**
@@ -451,9 +598,16 @@ export class OpenSpecCliService {
   }
 
   /**
-   * Show user-friendly error notification
+   * Show user-friendly error notification. Prefer diagnostic-aware toast when a
+   * CLI activation diagnostic is available; fall back to the generic message otherwise.
    */
   showCliNotFoundError(error?: Error): void {
+    const diagnostic = this.cliActivationDiagnostic;
+    if (diagnostic) {
+      this.showCliActivationDiagnosticError(diagnostic);
+      return;
+    }
+
     if (error instanceof OpenSpecCliResolutionError) {
       logger.error(`OpenSpec CLI resolution failed. ${error.diagnostics.join(' | ')}`);
     }

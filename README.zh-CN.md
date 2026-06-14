@@ -108,3 +108,6 @@ Change 详情页提供工作流操作、artifact tabs、任务执行入口，以
 - **扩展未激活**：确认打开的文件夹包含（或准备包含）OpenSpec workspace：`openspec/config.yaml`。
 - **提示 OpenSpec CLI not found**：安装 [OpenSpec CLI](https://github.com/Fission-AI/OpenSpec#quick-start)，并确保它在 PATH 中；如果终端可用但扩展不可用，请配置 `openspec.cliPath`。
 - **Dashboard 为空**：执行 **OpenSpec: Refresh Data**，并检查 Output 面板中的 **OpenSpec** 日志。
+- **Dashboard 显示 CLI 诊断卡片**：当 VS Code/Cursor Extension Host 无法启动 OpenSpec CLI 时，Dashboard 会显示诊断卡片和恢复动作。修复 PATH 或 `openspec.cliPath` 后点击 **重试**；需要手动指定路径时点击 **打开设置**；反馈问题时使用 **复制诊断**。复制内容会隐藏完整 PATH、用户目录和密钥信息。
+- **Windows `.cmd` 或 shim 启动失败**：如果诊断中出现 `spawn-failed` 或 `ENOENT`，请把 `openspec.cliPath` 设置为 OpenSpec 可执行文件或 shim 的绝对路径，然后点击 **重试**。
+- **重试不会修改你的配置**：**重试** 按钮仅重新运行 CLI 检测。它不会安装 CLI、修改你的 shell 配置或更改 `openspec.cliPath`。

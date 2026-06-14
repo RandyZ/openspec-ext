@@ -15,10 +15,12 @@ vi.mock('vscode', () => ({
       dispose: vi.fn(),
     }),
     showErrorMessage: vi.fn(() => Promise.resolve()),
+    showWarningMessage: vi.fn(() => Promise.resolve()),
     showInformationMessage: vi.fn(() => Promise.resolve()),
   },
   env: {
     openExternal: vi.fn(() => Promise.resolve()),
+    clipboard: { writeText: vi.fn(() => Promise.resolve()) },
   },
   commands: {
     executeCommand: vi.fn(() => Promise.resolve()),
@@ -38,19 +40,50 @@ vi.mock('child_process', () => ({
   spawn: vi.fn(),
 }));
 
-describe('OpenSpecCliService', () => {
-  const workspaceRoot = '/fake/workspace';
-
-  beforeEach(() => {
-    vi.mocked(spawn).mockReset();
+// Helper functions at module level so all describe blocks can use them
+function mockSpawnSuccess(stdout: string) {
+  vi.mocked(spawn).mockImplementation(() => {
+    const proc = {
+      stdout: {
+        on: (_e: string, fn: (d: Buffer) => void) => {
+          setImmediate(() => fn(Buffer.from(stdout)));
+        },
+      },
+      stderr: { on: vi.fn() },
+      on: (_e: string, fn: (...args: any[]) => void) => {
+        if (_e === 'close') setImmediate(() => fn(0));
+      },
+      kill: vi.fn(),
+    };
+    return proc as any;
   });
+}
 
-  function mockSpawnSuccess(stdout: string) {
-    vi.mocked(spawn).mockImplementation(() => {
-      const proc = {
+function mockSpawnExit(code: number, stderrOut = '') {
+  vi.mocked(spawn).mockImplementation(() => {
+    const proc = {
+      stdout: { on: vi.fn() },
+      stderr: {
+        on: (_e: string, fn: (d: Buffer) => void) => {
+          if (stderrOut) setImmediate(() => fn(Buffer.from(stderrOut)));
+        },
+      },
+      on: (_e: string, fn: (...args: any[]) => void) => {
+        if (_e === 'close') setImmediate(() => fn(code));
+      },
+      kill: vi.fn(),
+    };
+    return proc as any;
+  });
+}
+
+function mockVersionThenExit(code: number, stderrOut = '') {
+  vi.mocked(spawn).mockImplementation((_cmd, args: readonly string[]) => {
+    if (args[0] === '--version') {
+      return {
         stdout: {
           on: (_e: string, fn: (d: Buffer) => void) => {
-            setImmediate(() => fn(Buffer.from(stdout)));
+            setImmediate(() => fn(Buffer.from('1.3.1')));
           },
         },
         stderr: { on: vi.fn() },
@@ -58,59 +91,55 @@ describe('OpenSpecCliService', () => {
           if (_e === 'close') setImmediate(() => fn(0));
         },
         kill: vi.fn(),
-      };
-      return proc as any;
-    });
-  }
-
-  function mockSpawnExit(code: number, stderrOut = '') {
-    vi.mocked(spawn).mockImplementation(() => {
-      const proc = {
-        stdout: { on: vi.fn() },
-        stderr: {
-          on: (_e: string, fn: (d: Buffer) => void) => {
-            if (stderrOut) setImmediate(() => fn(Buffer.from(stderrOut)));
-          },
-        },
-        on: (_e: string, fn: (...args: any[]) => void) => {
-          if (_e === 'close') setImmediate(() => fn(code));
-        },
-        kill: vi.fn(),
-      };
-      return proc as any;
-    });
-  }
-
-  function mockVersionThenExit(code: number, stderrOut = '') {
-    vi.mocked(spawn).mockImplementation((_cmd, args: readonly string[]) => {
-      if (args[0] === '--version') {
-        return {
-          stdout: {
-            on: (_e: string, fn: (d: Buffer) => void) => {
-              setImmediate(() => fn(Buffer.from('1.3.1')));
-            },
-          },
-          stderr: { on: vi.fn() },
-          on: (_e: string, fn: (...args: any[]) => void) => {
-            if (_e === 'close') setImmediate(() => fn(0));
-          },
-          kill: vi.fn(),
-        } as any;
-      }
-      return {
-        stdout: { on: vi.fn() },
-        stderr: {
-          on: (_e: string, fn: (d: Buffer) => void) => {
-            if (stderrOut) setImmediate(() => fn(Buffer.from(stderrOut)));
-          },
-        },
-        on: (_e: string, fn: (...args: any[]) => void) => {
-          if (_e === 'close') setImmediate(() => fn(code));
-        },
-        kill: vi.fn(),
       } as any;
-    });
-  }
+    }
+    return {
+      stdout: { on: vi.fn() },
+      stderr: {
+        on: (_e: string, fn: (d: Buffer) => void) => {
+          if (stderrOut) setImmediate(() => fn(Buffer.from(stderrOut)));
+        },
+      },
+      on: (_e: string, fn: (...args: any[]) => void) => {
+        if (_e === 'close') setImmediate(() => fn(code));
+      },
+      kill: vi.fn(),
+    } as any;
+  });
+}
+
+function createSpawnErrorProcess(message = 'spawn openspec ENOENT') {
+  return {
+    stdout: { on: vi.fn() },
+    stderr: { on: vi.fn() },
+    on: (event: string, cb: (error: Error) => void) => {
+      if (event === 'error') setImmediate(() => cb(new Error(message)));
+    },
+    kill: vi.fn(),
+  };
+}
+
+function createSpawnSuccessProcess(stdout: string) {
+  return {
+    stdout: {
+      on: (event: string, cb: (chunk: Buffer) => void) => {
+        if (event === 'data' && stdout) setImmediate(() => cb(Buffer.from(stdout)));
+      },
+    },
+    stderr: { on: vi.fn() },
+    on: (event: string, cb: (...args: unknown[]) => void) => {
+      if (event === 'close') setImmediate(() => cb(0));
+    },
+    kill: vi.fn(),
+  };
+}
+
+describe('OpenSpecCliService', () => {
+  const workspaceRoot = '/fake/workspace';
+
+  beforeEach(() => {
+    vi.mocked(spawn).mockReset();
+  });
 
   it('checkAvailability returns true when --version succeeds', async () => {
     mockSpawnSuccess('1.0.0');
@@ -455,16 +484,20 @@ describe('OpenSpecCliService', () => {
     await expect(service.getVersion()).rejects.toThrow();
   });
 
-  it('calls showCliNotFoundError when exit code 127 (command not found)', async () => {
+  it('shows diagnostic-aware notification when CLI resolution fails', async () => {
     const vscode = await import('vscode');
-    mockSpawnExit(127, 'command not found');
+    // Simulate resolver throwing OpenSpecCliResolutionError by making all resolution attempts fail
+    vi.mocked(spawn).mockImplementation(() => createSpawnErrorProcess('spawn openspec ENOENT') as any);
+
     const service = new OpenSpecCliService(workspaceRoot);
     await expect(service.getVersion()).rejects.toThrow();
+
+    // Should show diagnostic-aware message with top-3 recovery actions
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-      'OpenSpec CLI not found. Install it or configure openspec.cliPath.',
-      'Install Instructions',
-      'Retry',
-      'Open CLI Path Settings'
+      expect.any(String),
+      expect.any(String),
+      expect.any(String),
+      expect.any(String)
     );
   });
 
@@ -532,5 +565,254 @@ describe('OpenSpecCliService', () => {
 
     await expectation;
     vi.useRealTimers();
+  });
+});
+
+describe('CLI activation diagnostics', () => {
+  const workspaceRoot = '/fake/workspace';
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    vi.mocked(spawn).mockReset();
+    // Reset vscode mock to default (empty cliPath)
+    const vscode = vi.mocked(await import('vscode'));
+    vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+      get: vi.fn(() => ''),
+    } as any);
+  });
+
+  // Helper to simulate full resolver failure chain (openspec → shell → known paths all fail)
+  function mockResolverTotalFailure() {
+    vi.mocked(spawn).mockImplementation((command: string, args: readonly string[]) => {
+      if (command === 'openspec') {
+        return createSpawnErrorProcess('spawn openspec ENOENT') as any;
+      }
+      // Shell command and known paths all fail
+      return createSpawnErrorProcess(`spawn ${command} ENOENT`) as any;
+    });
+  }
+
+  // Helper to simulate configured path failure
+  function mockConfiguredPathFailure(path: string) {
+    vi.mocked(spawn).mockImplementation((command: string) => {
+      if (command === path) {
+        return createSpawnErrorProcess(`spawn ${path} ENOENT`) as any;
+      }
+      return createSpawnErrorProcess(`spawn ${command} ENOENT`) as any;
+    });
+  }
+
+  it('stores cli-not-found diagnostic when resolver cannot resolve openspec', async () => {
+    mockResolverTotalFailure();
+
+    const service = new OpenSpecCliService(workspaceRoot);
+    await expect(service.checkAvailability(false)).resolves.toBe(false);
+
+    expect(service.getCliActivationDiagnostic()).toMatchObject({
+      category: 'cli-not-found',
+      recoveryActions: ['open-docs', 'open-settings', 'retry', 'copy-diagnostics'],
+    });
+  });
+
+  it('stores configured-path-invalid diagnostic without falling through to auto discovery', async () => {
+    const vscode = await import('vscode');
+    vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+      get: vi.fn((key: string) => (key === 'cliPath' ? '/bad/openspec' : false)),
+    } as any);
+    mockConfiguredPathFailure('/bad/openspec');
+
+    const service = new OpenSpecCliService(workspaceRoot);
+    await expect(service.checkAvailability(false)).resolves.toBe(false);
+
+    expect(service.getCliActivationDiagnostic()?.category).toBe('configured-path-invalid');
+    // Should only try the configured path, not fall through to other resolution methods
+    const calls = vi.mocked(spawn).mock.calls;
+    const firstCall = calls[0];
+    expect(firstCall[0]).toBe('/bad/openspec');
+  });
+
+  it('stores spawn-failed diagnostic when spawn fails after resolution', async () => {
+    // First: make resolver succeed and cache a path
+    vi.mocked(spawn).mockImplementation((command: string, args: readonly string[]) => {
+      if (command === 'openspec') {
+        return createSpawnErrorProcess('spawn openspec ENOENT') as any;
+      }
+      if (args.join(' ').includes('command -v openspec')) {
+        return createSpawnSuccessProcess('/usr/local/bin/openspec\n') as any;
+      }
+      // Resolver validation of /usr/local/bin/openspec succeeds
+      return createSpawnSuccessProcess('1.3.1\n') as any;
+    });
+
+    const service = new OpenSpecCliService(workspaceRoot);
+    await service.checkAvailability(false);
+    expect(service.getCliActivationDiagnostic()).toBeNull();
+
+    // Now make the actual spawn fail for subsequent commands
+    vi.mocked(spawn).mockImplementation((command: string, _args: readonly string[]) => {
+      if (command === '/usr/local/bin/openspec') {
+        return createSpawnErrorProcess('spawn /usr/local/bin/openspec ENOENT') as any;
+      }
+      return createSpawnErrorProcess(`spawn ${command} ENOENT`) as any;
+    });
+
+    await expect(service.getVersion()).rejects.toThrow();
+
+    const diagnostic = service.getCliActivationDiagnostic();
+    expect(diagnostic?.category).toBe('spawn-failed');
+    expect(diagnostic?.normalizedMessage).toContain('enoent');
+  });
+
+  it('stores permission-denied diagnostic for EACCES errors', async () => {
+    let callCount = 0;
+    vi.mocked(spawn).mockImplementation((command: string, args: readonly string[]) => {
+      callCount += 1;
+      if (command === 'openspec') {
+        return createSpawnErrorProcess('spawn openspec ENOENT') as any;
+      }
+      if (args.join(' ').includes('command -v openspec')) {
+        return createSpawnSuccessProcess('/usr/local/bin/openspec\n') as any;
+      }
+      if (command === '/usr/local/bin/openspec') {
+        return createSpawnErrorProcess('spawn /usr/local/bin/openspec EACCES') as any;
+      }
+      return createSpawnErrorProcess(`spawn ${command} ENOENT`) as any;
+    });
+
+    const service = new OpenSpecCliService(workspaceRoot);
+    await expect(service.checkAvailability(false)).resolves.toBe(false);
+
+    expect(service.getCliActivationDiagnostic()?.category).toBe('permission-denied');
+  });
+
+  it('stores shell-resolution-failed diagnostic when shell fallback fails', async () => {
+    // On non-Windows: shell fails, and known paths also fail
+    const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: 'darwin' });
+
+    try {
+      vi.mocked(spawn).mockImplementation((command: string, args: readonly string[]) => {
+        if (command === 'openspec') {
+          return createSpawnErrorProcess('spawn openspec ENOENT') as any;
+        }
+        if (args.join(' ').includes('command -v openspec')) {
+          // Shell fails with timeout
+          return createSpawnErrorProcess('shell command timed out') as any;
+        }
+        // Known paths all fail
+        return createSpawnErrorProcess(`spawn ${command} ENOENT`) as any;
+      });
+
+      const service = new OpenSpecCliService(workspaceRoot);
+      await expect(service.checkAvailability(false)).resolves.toBe(false);
+
+      const diagnostic = service.getCliActivationDiagnostic();
+      expect(diagnostic).not.toBeNull();
+      // The classification depends on resolver diagnostics containing 'login shell path: failed'
+      expect(diagnostic?.category).toBe('shell-resolution-failed');
+    } finally {
+      if (originalPlatform) {
+        Object.defineProperty(process, 'platform', originalPlatform);
+      }
+    }
+  });
+
+  it('warns for unsupported minimum version but still reports availability', async () => {
+    mockSpawnSuccess('0.9.0');
+    const vscode = await import('vscode');
+    const service = new OpenSpecCliService(workspaceRoot);
+
+    await expect(service.checkAvailability()).resolves.toBe(true);
+
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      expect.stringContaining('OpenSpec CLI 0.9.0'),
+      expect.any(String)
+    );
+    expect(service.getCliActivationDiagnostic()).toBeNull();
+  });
+
+  it('clears diagnostic after successful availability check', async () => {
+    // First fail
+    mockResolverTotalFailure();
+    const service = new OpenSpecCliService(workspaceRoot);
+    await service.checkAvailability(false);
+    expect(service.getCliActivationDiagnostic()).not.toBeNull();
+
+    // Then succeed
+    mockSpawnSuccess('1.3.1');
+    await service.checkAvailability(false);
+    expect(service.getCliActivationDiagnostic()).toBeNull();
+  });
+
+  it('deduplicates notifications by category and normalized message', async () => {
+    const vscode = await import('vscode');
+    mockResolverTotalFailure();
+
+    const service = new OpenSpecCliService(workspaceRoot);
+    await service.checkAvailability(true);
+    await service.checkAvailability(true);
+
+    // Should only show once per session for same dedupe key
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows top-3 recovery actions in notification', async () => {
+    const vscode = await import('vscode');
+    mockResolverTotalFailure();
+
+    const service = new OpenSpecCliService(workspaceRoot);
+    await service.checkAvailability(true);
+
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      expect.any(String),
+      expect.any(String)
+    );
+  });
+
+  it('does not show diagnostic notification for workspace-not-initialized errors', async () => {
+    const vscode = await import('vscode');
+    mockSpawnSuccess('1.3.1');
+    vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+      get: vi.fn(() => ''),
+    } as any);
+
+    // Simulate a workspace not initialized error (exit 1 with specific message)
+    vi.mocked(spawn).mockImplementation((_cmd, args: readonly string[]) => {
+      if (args[0] === '--version') {
+        return {
+          stdout: {
+            on: (_e: string, fn: (d: Buffer) => void) => {
+              setImmediate(() => fn(Buffer.from('1.3.1')));
+            },
+          },
+          stderr: { on: vi.fn() },
+          on: (_e: string, fn: (...args: any[]) => void) => {
+            if (_e === 'close') setImmediate(() => fn(0));
+          },
+          kill: vi.fn(),
+        } as any;
+      }
+      return {
+        stdout: { on: vi.fn() },
+        stderr: {
+          on: (_e: string, fn: (d: Buffer) => void) => {
+            setImmediate(() => fn(Buffer.from('Workspace not initialized')));
+          },
+        },
+        on: (_e: string, fn: (...args: any[]) => void) => {
+          if (_e === 'close') setImmediate(() => fn(1));
+        },
+        kill: vi.fn(),
+      } as any;
+    });
+
+    const service = new OpenSpecCliService(workspaceRoot);
+    // listChanges should fail but not show CLI activation diagnostic
+    await expect(service.listChanges()).rejects.toThrow();
+
+    // Workspace errors should not create CLI activation diagnostics
+    expect(service.getCliActivationDiagnostic()).toBeNull();
   });
 });

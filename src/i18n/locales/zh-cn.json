@@ -173,6 +173,14 @@
   "cli.initializeNow": "立即初始化",
   "cli.learnMore": "了解更多",
   "cli.runInit": "运行: openspec init",
+  "cli.copyDiagnostics": "复制诊断",
+  "cli.versionUnsupported": "OpenSpec CLI {version} 低于支持的最低版本 {minimum}。请升级；扩展仍会尝试继续运行。",
+
+  "cliDiagnostic.actionOpenSettings": "打开设置",
+  "cliDiagnostic.actionRetry": "重试",
+  "cliDiagnostic.actionCopyDiagnostics": "复制诊断",
+  "cliDiagnostic.actionOpenDocs": "打开文档",
+  "cliDiagnostic.staleWarning": "在 OpenSpec CLI 恢复可用前，当前展示的数据可能已经过时。",
 
   "noContent": "暂无内容",
   "loading": "加载中...",

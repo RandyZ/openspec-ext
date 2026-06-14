@@ -108,6 +108,9 @@ Open Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`):
 - **Extension doesn’t activate**: Open a folder that contains (or will contain) an OpenSpec workspace (`openspec/config.yaml`). The extension only activates in OpenSpec workspaces.
 - **"OpenSpec CLI not found"**: Install [OpenSpec CLI](https://github.com/Fission-AI/OpenSpec#quick-start) and ensure it’s on your PATH.
 - **Dashboard empty**: Run **OpenSpec: Refresh Data**; check the **OpenSpec** output channel for errors.
+- **CLI diagnostic card shown in Dashboard**: When the OpenSpec CLI cannot be launched from the VS Code/Cursor Extension Host, the Dashboard shows a diagnostic card with safe details and recovery actions. Use **Retry** after fixing PATH or `openspec.cliPath`, **Open Settings** to set the CLI path, and **Copy Diagnostics** when reporting an issue. The copied diagnostic omits full PATH values, home directory paths, and secrets.
+- **Windows `.cmd` or shim launch failures**: If the diagnostic mentions `spawn-failed` or `ENOENT`, set `openspec.cliPath` to the absolute OpenSpec executable or shim path, then click **Retry**.
+- **Retry does not modify your configuration**: The **Retry** button only re-runs CLI detection. It does not install the CLI, modify your shell configuration, or change `openspec.cliPath`.
 
 ---
 <!-- Below: development/contributing only; above: user-facing (packaged as extension README) -->
@@ -238,6 +241,12 @@ pnpm run build         # Build everything (future)
 
 - **OpenSpec CLI not found**  
   Install [OpenSpec CLI](https://github.com/Fission-AI/OpenSpec#quick-start) and ensure `openspec` is on PATH in the environment where VSCode is launched.
+
+- **CLI diagnostic card shown in Dashboard**  
+  When the OpenSpec CLI cannot be launched from the VS Code/Cursor Extension Host, the Dashboard shows a diagnostic card with safe details and recovery actions. Use **Retry** after fixing PATH or `openspec.cliPath`, **Open Settings** to set the CLI path, and **Copy Diagnostics** when reporting an issue. The copied diagnostic omits full PATH values, home directory paths, and secrets.
+
+- **Windows `.cmd` or shim launch failures**  
+  If the diagnostic mentions `spawn-failed` or `ENOENT`, set `openspec.cliPath` to the absolute OpenSpec executable or shim path, then click **Retry**.
 
 - **Tasks don’t update on disk**  
   Ensure the workspace has write access to `openspec/changes/<name>/tasks.md`. Check Output → OpenSpec for errors.

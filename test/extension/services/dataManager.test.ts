@@ -42,6 +42,7 @@ function createManager() {
       getVersion: vi.fn().mockResolvedValue('1.0.0'),
       showCliNotFoundError: vi.fn(),
       createChange: vi.fn().mockResolvedValue(undefined),
+      getCliActivationDiagnostic: vi.fn().mockReturnValue(null),
     },
     fileWatcher: {
       start: vi.fn(),
@@ -276,5 +277,102 @@ describe('DataManager dashboard data loading', () => {
       lastModified: expect.any(String),
     });
     expect(changes[0].createdAt).toBeUndefined();
+  });
+});
+
+describe('DataManager CLI activation diagnostic', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('stores cli activation diagnostic when initialization detects unavailable CLI', async () => {
+    const manager = new DataManager('/workspace');
+    const diagnostic = {
+      category: 'cli-not-found' as const,
+      message: 'OpenSpec CLI executable could not be resolved',
+      recoveryActions: ['open-docs', 'open-settings', 'retry', 'copy-diagnostics'] as string[],
+      safeDetails: ['extension host PATH: failed ENOENT'],
+      copyText: 'category=cli-not-found',
+      canRetry: true,
+      normalizedMessage: 'openspec cli executable could not be resolved',
+    };
+
+    vi.spyOn((manager as any).cliService, 'checkAvailability').mockResolvedValue(false);
+    vi.spyOn((manager as any).cliService, 'getCliActivationDiagnostic').mockReturnValue(diagnostic);
+    vi.spyOn(manager as any, 'migrateExecutionStateFromGlobalFile').mockResolvedValue(undefined);
+    vi.spyOn(manager as any, 'warmDashboardData').mockImplementation(() => undefined);
+    (manager as any).fileWatcher = { start: vi.fn(), stop: vi.fn() };
+
+    await manager.initialize();
+
+    expect(manager.getCliDiagnostic()).toEqual(diagnostic);
+  });
+
+  it('clears cli activation diagnostic after successful refresh', async () => {
+    const manager = new DataManager('/workspace');
+    (manager as any).cliDiagnostic = {
+      category: 'cli-not-found',
+      message: 'missing',
+      recoveryActions: [],
+      safeDetails: [],
+      copyText: 'missing',
+      canRetry: true,
+      normalizedMessage: 'missing',
+    };
+    vi.spyOn(manager as any, 'listChangesWithFallback').mockResolvedValue([]);
+    vi.spyOn((manager as any).stateReader, 'listSpecs').mockResolvedValue([]);
+
+    await manager.refresh();
+
+    expect(manager.getCliDiagnostic()).toBeNull();
+  });
+
+  it('throws blocking cli diagnostic instead of returning filesystem fallback when there is no cached data', async () => {
+    const manager = new DataManager('/workspace');
+    const diagnostic = {
+      category: 'cli-not-found' as const,
+      message: 'missing',
+      recoveryActions: ['open-docs', 'open-settings', 'retry', 'copy-diagnostics'] as string[],
+      safeDetails: ['extension host PATH: failed ENOENT'],
+      copyText: 'category=cli-not-found',
+      canRetry: true,
+      normalizedMessage: 'missing',
+    };
+
+    vi.spyOn((manager as any).stateReader, 'listChanges').mockRejectedValue(new Error('missing cli'));
+    vi.spyOn((manager as any).stateReader, 'listSpecs').mockResolvedValue([]);
+    vi.spyOn((manager as any).cliService, 'getCliActivationDiagnostic').mockReturnValue(diagnostic);
+    vi.spyOn(manager as any, 'listChangesFromFilesystem').mockResolvedValue([
+      { name: 'from-files', completedTasks: 0, totalTasks: 0, lastModified: 'now', status: 'draft' },
+    ]);
+    (manager as any).cliAvailable = true;
+
+    await expect(manager.refresh()).rejects.toThrow('missing cli');
+    expect(manager.getCliDiagnostic()).toEqual(diagnostic);
+    expect((manager as any).listChangesFromFilesystem).not.toHaveBeenCalled();
+  });
+
+  it('keeps cached data and records warning diagnostic when refresh fails later', async () => {
+    const manager = new DataManager('/workspace');
+    const cached = { changes: [], specs: [], lastRefresh: 123 };
+    const diagnostic = {
+      category: 'cli-not-found' as const,
+      message: 'missing',
+      recoveryActions: ['open-docs', 'open-settings', 'retry', 'copy-diagnostics'] as string[],
+      safeDetails: ['extension host PATH: failed ENOENT'],
+      copyText: 'category=cli-not-found',
+      canRetry: true,
+      normalizedMessage: 'missing',
+    };
+    (manager as any).cachedData = cached;
+    vi.spyOn((manager as any).stateReader, 'listChanges').mockRejectedValue(new Error('missing cli'));
+    vi.spyOn((manager as any).stateReader, 'listSpecs').mockResolvedValue([]);
+    vi.spyOn((manager as any).cliService, 'getCliActivationDiagnostic').mockReturnValue(diagnostic);
+    vi.spyOn(manager as any, 'listChangesFromFilesystem').mockResolvedValue([]);
+    (manager as any).cliAvailable = true;
+
+    await expect(manager.refresh()).resolves.toBe(cached);
+    expect(manager.getCliDiagnostic()).toEqual(diagnostic);
+    expect((manager as any).listChangesFromFilesystem).not.toHaveBeenCalled();
   });
 });

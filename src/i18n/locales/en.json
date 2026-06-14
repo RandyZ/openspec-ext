@@ -173,6 +173,14 @@
   "cli.initializeNow": "Initialize Now",
   "cli.learnMore": "Learn More",
   "cli.runInit": "Run: openspec init",
+  "cli.copyDiagnostics": "Copy Diagnostics",
+  "cli.versionUnsupported": "OpenSpec CLI {version} is older than the supported minimum {minimum}. Please upgrade; the extension will still try to continue.",
+
+  "cliDiagnostic.actionOpenSettings": "Open Settings",
+  "cliDiagnostic.actionRetry": "Retry",
+  "cliDiagnostic.actionCopyDiagnostics": "Copy Diagnostics",
+  "cliDiagnostic.actionOpenDocs": "Open Docs",
+  "cliDiagnostic.staleWarning": "Displayed data may be stale until OpenSpec CLI is available again.",
 
   "noContent": "No content",
   "loading": "Loading...",

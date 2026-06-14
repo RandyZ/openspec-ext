@@ -6,6 +6,7 @@ import type { ArchivedChangeInfo, SpecInfo } from '../types/messages';
 import { Header } from './Header';
 import { ChangesSection } from './ChangesSection';
 import { SpecsSection } from './SpecsSection';
+import { CliActivationDiagnosticCard } from './CliActivationDiagnosticCard';
 import { t } from '../../i18n';
 import {
   buildWorkflowCommand,
@@ -39,6 +40,11 @@ export const Dashboard: React.FC = () => {
         }
       } else if (message.type === 'error') {
         dispatch({ type: 'SET_ERROR', payload: message.message });
+      } else if (message.type === 'cliActivationDiagnostic') {
+        dispatch({
+          type: 'SET_CLI_DIAGNOSTIC',
+          payload: { diagnostic: message.diagnostic, mode: message.mode },
+        });
       } else if (message.type === 'specRequirements') {
         setSpecRequirements((prev) => ({
           ...prev,
@@ -114,6 +120,13 @@ export const Dashboard: React.FC = () => {
     postMessage(sendMessage.openSpecInEditor(spec.id, requirementIndex));
   };
 
+  const handleCliDiagnosticAction = (action: string) => {
+    if (action === 'open-settings') postMessage(sendMessage.openCliPathSettings());
+    if (action === 'retry') postMessage(sendMessage.retryCliDetection());
+    if (action === 'copy-diagnostics') postMessage(sendMessage.copyCliDiagnostic());
+    if (action === 'open-docs') postMessage(sendMessage.openCliInstallDocs());
+  };
+
   const { data, loading, error } = state;
 
   return (
@@ -138,6 +151,14 @@ export const Dashboard: React.FC = () => {
           >
             ⚠️ {error}
           </div>
+        )}
+
+        {state.cliDiagnostic && (
+          <CliActivationDiagnosticCard
+            diagnostic={state.cliDiagnostic.diagnostic}
+            mode={state.cliDiagnostic.mode}
+            onAction={handleCliDiagnosticAction}
+          />
         )}
 
         {data ? (

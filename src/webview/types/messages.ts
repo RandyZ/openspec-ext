@@ -46,7 +46,11 @@ export type WebviewMessage =
   | { type: 'revealInteractiveWorkflow'; changeName: string; action: InteractiveWorkflowAction }
   | { type: 'stopInteractiveWorkflow'; changeName: string; action: InteractiveWorkflowAction }
   | { type: 'clearInteractiveWorkflow'; changeName: string; action: InteractiveWorkflowAction }
-  | { type: 'getInteractiveWorkflowState'; changeName: string };
+  | { type: 'getInteractiveWorkflowState'; changeName: string }
+  | { type: 'retryCliDetection' }
+  | { type: 'openCliPathSettings' }
+  | { type: 'copyCliDiagnostic' }
+  | { type: 'openCliInstallDocs' };
 
 // Message types from extension to webview
 export type ExtensionMessage =
@@ -76,9 +80,20 @@ export type ExtensionMessage =
   | { type: 'specContentError'; specId: string; message: string }
   | { type: 'specRequirements'; specId: string; requirements: string[] }
   | { type: 'artifactInvalidated'; changeName: string; artifactTypes: string[] }
-  | { type: 'interactiveWorkflowState'; changeName: string; state: InteractiveWorkflowState };
+  | { type: 'interactiveWorkflowState'; changeName: string; state: InteractiveWorkflowState }
+  | { type: 'cliActivationDiagnostic'; diagnostic: CliActivationDiagnosticView; mode: 'blocking' | 'warning' };
 
 // Data types
+export interface CliActivationDiagnosticView {
+  category: string;
+  message: string;
+  recoveryActions: string[];
+  safeDetails: string[];
+  copyText: string;
+  canRetry: boolean;
+  normalizedMessage: string;
+}
+
 export interface DashboardData {
   changes: ChangeInfo[];
   specs: SpecInfo[];
@@ -301,5 +316,21 @@ export const sendMessage = {
   getInteractiveWorkflowState: (changeName: string): WebviewMessage => ({
     type: 'getInteractiveWorkflowState',
     changeName,
+  }),
+
+  retryCliDetection: (): WebviewMessage => ({
+    type: 'retryCliDetection',
+  }),
+
+  openCliPathSettings: (): WebviewMessage => ({
+    type: 'openCliPathSettings',
+  }),
+
+  copyCliDiagnostic: (): WebviewMessage => ({
+    type: 'copyCliDiagnostic',
+  }),
+
+  openCliInstallDocs: (): WebviewMessage => ({
+    type: 'openCliInstallDocs',
   }),
 };
