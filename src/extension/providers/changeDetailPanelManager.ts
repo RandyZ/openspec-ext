@@ -2,11 +2,13 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { logger } from '../utils/logger';
 import { DataManager } from '../services/dataManager';
+import { InteractiveAgentTerminalManager } from '../services/interactiveAgentTerminalManager';
 import {
   handleWebviewMessage,
   getWebviewContent,
   getWorkflowLaunchConfigMessage,
 } from './webviewMessageHandler';
+import type { ChangeDetailTabId, InteractiveWorkflowAction } from '../../shared/interactiveWorkflow';
 
 /** Delay (ms) before sending initial setContext so the webview is ready to receive it. */
 const INITIAL_SET_CONTEXT_DELAY_MS = 150;
@@ -22,6 +24,7 @@ export class ChangeDetailPanelManager {
   constructor(
     private dataManager: DataManager,
     private extensionPath: string,
+    private interactiveTerminalManager: InteractiveAgentTerminalManager,
     private onAfterOpen?: () => void,
     private onRevealSidebar?: () => void
   ) {}
@@ -32,6 +35,26 @@ export class ChangeDetailPanelManager {
     changeName: string;
     existingArtifactIds?: string[];
     debug?: boolean;
+    initialTab?: ChangeDetailTabId;
+    interactiveAction?: InteractiveWorkflowAction;
+  }> {
+    return this.buildSetContextPayloadWithOptions(changeName);
+  }
+
+  private async buildSetContextPayloadWithOptions(
+    changeName: string,
+    options?: {
+      initialTab?: ChangeDetailTabId;
+      interactiveAction?: InteractiveWorkflowAction;
+    }
+  ): Promise<{
+    type: 'setContext';
+    view: 'changeDetail';
+    changeName: string;
+    existingArtifactIds?: string[];
+    debug?: boolean;
+    initialTab?: ChangeDetailTabId;
+    interactiveAction?: InteractiveWorkflowAction;
   }> {
     const debug = vscode.workspace.getConfiguration('openspec').get<boolean>('debug') ?? false;
     try {
@@ -39,17 +62,38 @@ export class ChangeDetailPanelManager {
       const change = data.changes.find((c) => c.name === changeName);
       const existingArtifactIds =
         change?.artifacts?.filter((a) => a.status === 'done').map((a) => a.id) ?? [];
-      return { type: 'setContext', view: 'changeDetail', changeName, existingArtifactIds, debug };
+      return {
+        type: 'setContext',
+        view: 'changeDetail',
+        changeName,
+        existingArtifactIds,
+        debug,
+        ...(options?.initialTab !== undefined ? { initialTab: options.initialTab } : {}),
+        ...(options?.interactiveAction !== undefined ? { interactiveAction: options.interactiveAction } : {}),
+      };
     } catch {
-      return { type: 'setContext', view: 'changeDetail', changeName, debug };
+      return {
+        type: 'setContext',
+        view: 'changeDetail',
+        changeName,
+        debug,
+        ...(options?.initialTab !== undefined ? { initialTab: options.initialTab } : {}),
+        ...(options?.interactiveAction !== undefined ? { interactiveAction: options.interactiveAction } : {}),
+      };
     }
   }
 
-  public open(changeName: string): void {
+  public open(
+    changeName: string,
+    options?: {
+      initialTab?: ChangeDetailTabId;
+      interactiveAction?: InteractiveWorkflowAction;
+    }
+  ): void {
     const existing = this.panels.get(changeName);
     if (existing) {
       existing.reveal(vscode.ViewColumn.One);
-      this.buildSetContextPayload(changeName).then((payload) =>
+      this.buildSetContextPayloadWithOptions(changeName, options).then((payload) =>
         existing.webview.postMessage(payload)
       );
       if (this.onAfterOpen) {
@@ -81,7 +125,7 @@ export class ChangeDetailPanelManager {
 
     // Proactively send setContext so webview can show ChangeDetail without waiting for first message
     setTimeout(() => {
-      this.buildSetContextPayload(changeName).then((payload) =>
+      this.buildSetContextPayloadWithOptions(changeName, options).then((payload) =>
         panel.webview.postMessage(payload)
       );
     }, INITIAL_SET_CONTEXT_DELAY_MS);
@@ -101,7 +145,12 @@ export class ChangeDetailPanelManager {
           );
         }
         try {
-          await handleWebviewMessage(message, panel.webview, this.dataManager);
+          await handleWebviewMessage(
+            message,
+            panel.webview,
+            this.dataManager,
+            this.interactiveTerminalManager
+          );
         } catch (error) {
           logger.error('Error handling panel webview message', error as Error);
         }

@@ -5,6 +5,7 @@ import { DataManager } from './services/dataManager';
 import { CommandManager } from './commands/commandManager';
 import { DashboardViewProvider } from './providers/dashboardViewProvider';
 import { ChangeDetailPanelManager } from './providers/changeDetailPanelManager';
+import { InteractiveAgentTerminalManager } from './services/interactiveAgentTerminalManager';
 import { setLocale, t } from '../i18n';
 
 let dataManager: DataManager | null = null;
@@ -37,10 +38,13 @@ export async function activate(context: vscode.ExtensionContext) {
     const onRevealSidebar = (): void => {
       dashboardViewProviderRef?.reveal();
     };
+    const interactiveTerminalManager = new InteractiveAgentTerminalManager();
+    context.subscriptions.push(interactiveTerminalManager);
 
     const changeDetailPanelManager = new ChangeDetailPanelManager(
       dataManager,
       context.extensionPath,
+      interactiveTerminalManager,
       onAfterOpenChangeDetail,
       onRevealSidebar
     );
@@ -49,7 +53,8 @@ export async function activate(context: vscode.ExtensionContext) {
     const dashboardViewProvider = new DashboardViewProvider(
       dataManager,
       context.extensionPath,
-      changeDetailPanelManager
+      changeDetailPanelManager,
+      interactiveTerminalManager
     );
     dashboardViewProviderRef = dashboardViewProvider;
     logger.info(`Registering dashboard webview provider: ${DashboardViewProvider.viewType}`);

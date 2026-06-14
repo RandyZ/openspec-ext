@@ -9,10 +9,17 @@ import { t } from '../../i18n';
 import { buildWorkflowLaunchPayload } from '../../shared/workflowCommand';
 import { getWorkflowLaunchConfig } from '../services/workflowLaunchConfig';
 import {
+  InteractiveAgentTerminalManager,
+} from '../services/interactiveAgentTerminalManager';
+import {
   getEffectiveWorkflowAdapterId,
   shouldForceCursorWorkflowRoute,
   toWorkflowLaunchConfigView,
 } from '../../shared/workflowLaunchConfig';
+import type {
+  InteractiveWorkflowAction,
+  InteractiveWorkflowState,
+} from '../../shared/interactiveWorkflow';
 
 /** Returns true if resolvedPath is under workspaceRoot (no .. escape). */
 function isPathUnderWorkspace(resolvedPath: string, workspaceRoot: string): boolean {
@@ -28,7 +35,8 @@ function isPathUnderWorkspace(resolvedPath: string, workspaceRoot: string): bool
 export async function handleWebviewMessage(
   message: WebviewMessage,
   webview: vscode.Webview,
-  dataManager: DataManager
+  dataManager: DataManager,
+  interactiveTerminalManager?: InteractiveAgentTerminalManager
 ): Promise<void> {
   if (message == null || typeof message !== 'object' || !('type' in message)) {
     logger.warn('Invalid webview message: missing or invalid object with type');
@@ -37,6 +45,7 @@ export async function handleWebviewMessage(
   logger.debug(`Received message: ${message.type}`);
 
   const getDebug = () => vscode.workspace.getConfiguration('openspec').get<boolean>('debug') ?? false;
+  const workspaceRoot = dataManager.getWorkspaceRoot();
 
   switch (message.type) {
     case 'getDashboardData': {
@@ -483,6 +492,88 @@ export async function handleWebviewMessage(
       break;
     }
 
+    case 'runInteractiveWorkflow': {
+      const { changeName, action } = message;
+      if (typeof changeName !== 'string' || !changeName.trim()) break;
+      postInteractiveWorkflowState(
+        webview,
+        changeName,
+        await handleInteractiveWorkflowAction({
+          kind: 'run',
+          changeName,
+          action,
+          workspaceRoot,
+          interactiveTerminalManager,
+        })
+      );
+      break;
+    }
+
+    case 'revealInteractiveWorkflow': {
+      const { changeName, action } = message;
+      if (typeof changeName !== 'string' || !changeName.trim()) break;
+      postInteractiveWorkflowState(
+        webview,
+        changeName,
+        handleInteractiveWorkflowAction({
+          kind: 'reveal',
+          changeName,
+          action,
+          workspaceRoot,
+          interactiveTerminalManager,
+        })
+      );
+      break;
+    }
+
+    case 'stopInteractiveWorkflow': {
+      const { changeName, action } = message;
+      if (typeof changeName !== 'string' || !changeName.trim()) break;
+      postInteractiveWorkflowState(
+        webview,
+        changeName,
+        handleInteractiveWorkflowAction({
+          kind: 'stop',
+          changeName,
+          action,
+          workspaceRoot,
+          interactiveTerminalManager,
+        })
+      );
+      break;
+    }
+
+    case 'clearInteractiveWorkflow': {
+      const { changeName, action } = message;
+      if (typeof changeName !== 'string' || !changeName.trim()) break;
+      postInteractiveWorkflowState(
+        webview,
+        changeName,
+        handleInteractiveWorkflowAction({
+          kind: 'clear',
+          changeName,
+          action,
+          workspaceRoot,
+          interactiveTerminalManager,
+        })
+      );
+      break;
+    }
+
+    case 'getInteractiveWorkflowState': {
+      const { changeName } = message;
+      if (typeof changeName !== 'string' || !changeName.trim()) break;
+      const state = interactiveTerminalManager
+        ? interactiveTerminalManager.getState(workspaceRoot, changeName)
+        : buildInteractiveWorkflowErrorState(
+          changeName,
+          'verify',
+          'Interactive Agent terminal is unavailable.'
+        );
+      postInteractiveWorkflowState(webview, changeName, state);
+      break;
+    }
+
     /**
      * Verify tab: run an IDE command for debugging. Only commands in the allowlist
      * are executed. For development/debug use only.
@@ -542,6 +633,110 @@ export function getWorkflowLaunchConfigMessage() {
     type: 'workflowLaunchConfig' as const,
     config: toWorkflowLaunchConfigView(config),
   };
+}
+
+function postInteractiveWorkflowState(
+  webview: vscode.Webview,
+  changeName: string,
+  state: InteractiveWorkflowState
+): void {
+  webview.postMessage({
+    type: 'interactiveWorkflowState',
+    changeName,
+    state,
+  });
+}
+
+function isInteractiveWorkflowAction(value: unknown): value is InteractiveWorkflowAction {
+  return value === 'verify' || value === 'archive';
+}
+
+function buildInteractiveWorkflowErrorState(
+  changeName: string,
+  action: InteractiveWorkflowAction,
+  message: string
+): InteractiveWorkflowState {
+  return {
+    changeName,
+    sessions: {
+      [action]: {
+        action,
+        status: 'error',
+        message,
+      },
+    },
+  };
+}
+
+function handleInteractiveWorkflowAction(params: {
+  kind: 'reveal' | 'stop' | 'clear';
+  changeName: string;
+  action: unknown;
+  workspaceRoot: string;
+  interactiveTerminalManager?: InteractiveAgentTerminalManager;
+}): InteractiveWorkflowState;
+async function handleInteractiveWorkflowAction(params: {
+  kind: 'run';
+  changeName: string;
+  action: unknown;
+  workspaceRoot: string;
+  interactiveTerminalManager?: InteractiveAgentTerminalManager;
+}): Promise<InteractiveWorkflowState>;
+function handleInteractiveWorkflowAction(params: {
+  kind: 'run' | 'reveal' | 'stop' | 'clear';
+  changeName: string;
+  action: unknown;
+  workspaceRoot: string;
+  interactiveTerminalManager?: InteractiveAgentTerminalManager;
+}): InteractiveWorkflowState | Promise<InteractiveWorkflowState> {
+  if (!isInteractiveWorkflowAction(params.action)) {
+    return buildInteractiveWorkflowErrorState(
+      params.changeName,
+      'verify',
+      `Invalid interactive workflow action: ${String(params.action)}`
+    );
+  }
+  if (!params.interactiveTerminalManager) {
+    return buildInteractiveWorkflowErrorState(
+      params.changeName,
+      params.action,
+      'Interactive Agent terminal is unavailable.'
+    );
+  }
+  if (params.changeName.startsWith('archive:') && params.action === 'archive') {
+    return buildInteractiveWorkflowErrorState(
+      params.changeName,
+      'archive',
+      'Archived changes are read-only. Archive cannot run again.'
+    );
+  }
+
+  switch (params.kind) {
+    case 'run':
+      return params.interactiveTerminalManager.start({
+        workspaceRoot: params.workspaceRoot,
+        changeName: params.changeName,
+        action: params.action,
+      });
+    case 'reveal':
+      return params.interactiveTerminalManager.reveal(
+        params.workspaceRoot,
+        params.changeName,
+        params.action
+      );
+    case 'stop':
+      return params.interactiveTerminalManager.stop(
+        params.workspaceRoot,
+        params.changeName,
+        params.action
+      );
+    case 'clear':
+      return params.interactiveTerminalManager.clear(
+        params.workspaceRoot,
+        params.changeName,
+        params.action
+      );
+  }
 }
 
 /**

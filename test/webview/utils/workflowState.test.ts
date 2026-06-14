@@ -78,25 +78,15 @@ describe('deriveWorkflowState', () => {
     expect(state.currentStep).toBe('apply');
     expect(state.nextAction?.label).toBe('Apply');
     expect(state.nextAction?.command).toBe('/opsx:apply test-change');
-    expect(state.secondaryActions.some((a) => a.label === 'Verify')).toBe(true);
+    expect(state.secondaryActions.some((a) => a.label === 'Verify')).toBe(false);
+    expect(state.secondaryActions.some((a) => a.label === 'Archive')).toBe(false);
   });
 
   it('all tasks done: current=verify', () => {
     const state = deriveWorkflowState(name, ['proposal', 'specs', 'design', 'tasks'], 5, 5, false, false);
     expect(state.currentStep).toBe('verify');
-    expect(state.nextAction?.label).toBe('Verify');
-    expect(state.nextAction?.command).toBe('/opsx:verify test-change');
-    expect(state.secondaryActions.some((a) => a.label === 'Archive')).toBe(true);
-  });
-
-  it('exposes archive as a workflow command action', () => {
-    const state = deriveWorkflowState(name, ['proposal', 'specs', 'design', 'tasks'], 5, 5, false, false);
-    const archive = state.secondaryActions.find((a) => a.label === 'Archive');
-    expect(archive).toMatchObject({
-      action: 'archive',
-      command: '/opsx:archive test-change',
-      variant: 'secondary',
-    });
+    expect(state.nextAction).toBeNull();
+    expect(state.secondaryActions.some((a) => a.label === 'Archive')).toBe(false);
   });
 
   it('hasDeltaSpecs adds Sync Specs secondary action', () => {

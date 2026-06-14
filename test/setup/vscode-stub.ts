@@ -12,12 +12,25 @@ export const window = {
     show: noop,
     dispose: noop,
   }),
+  createTerminal: () => ({
+    name: 'terminal',
+    show: noop,
+    sendText: noop,
+    dispose: noop,
+  }),
+  onDidCloseTerminal: () => ({
+    dispose: noop,
+  }),
   showErrorMessage: noopAsync,
   showInformationMessage: noopAsync,
+};
+
+export const TerminalLocation = {
+  Editor: 'editor',
 };
 
 export const env = {
   openExternal: noopAsync,
 };
 
-export default { window, env };
+export default { window, env, TerminalLocation };

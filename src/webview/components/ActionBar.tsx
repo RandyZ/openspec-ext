@@ -29,12 +29,6 @@ const secondaryStyle: React.CSSProperties = {
   color: 'var(--vscode-button-secondaryForeground)',
 };
 
-const warningStyle: React.CSSProperties = {
-  ...buttonBase,
-  background: 'var(--vscode-inputValidation-warningBackground)',
-  color: 'var(--vscode-editor-foreground)',
-};
-
 export interface ActionBarProps {
   changeName: string;
   isArchived: boolean;
@@ -44,9 +38,6 @@ export interface ActionBarProps {
   onAction?: (action: WorkflowCommandAction, changeName: string) => void;
   onCopyFf: (changeName: string) => void;
   onCopyApply: (changeName: string) => void;
-  onOpenInEditor: () => void;
-  onArchive: (changeName: string) => void;
-  onRefresh: () => void;
 }
 
 export const ActionBar: React.FC<ActionBarProps> = ({
@@ -57,9 +48,6 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   onAction,
   onCopyFf,
   onCopyApply,
-  onOpenInEditor,
-  onArchive,
-  onRefresh,
 }) => {
   if (!workflowState || !onAction) {
     return (
@@ -68,9 +56,6 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         isArchived={isArchived}
         onCopyFf={onCopyFf}
         onCopyApply={onCopyApply}
-        onOpenInEditor={onOpenInEditor}
-        onArchive={onArchive}
-        onRefresh={onRefresh}
       />
     );
   }
@@ -79,7 +64,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
     <div
       className="flex flex-wrap items-center gap-2"
       style={{
-        padding: '8px 12px',
+        padding: '10px 16px',
         borderBottom: '1px solid var(--vscode-panel-border)',
         background: 'var(--vscode-editor-background)',
       }}
@@ -109,14 +94,6 @@ export const ActionBar: React.FC<ActionBarProps> = ({
             {getWorkflowActionButtonLabel(action.label, workflowLaunchConfig)}
           </button>
         )}
-
-      <button type="button" style={secondaryStyle} onClick={onOpenInEditor}>
-        {t('action.openInEditor')}
-      </button>
-
-      <button type="button" style={secondaryStyle} onClick={onRefresh}>
-        {t('action.refresh')}
-      </button>
     </div>
   );
 };
@@ -126,14 +103,11 @@ const LegacyActionBar: React.FC<{
   isArchived: boolean;
   onCopyFf: (changeName: string) => void;
   onCopyApply: (changeName: string) => void;
-  onOpenInEditor: () => void;
-  onArchive: (changeName: string) => void;
-  onRefresh: () => void;
-}> = ({ changeName, isArchived, onCopyFf, onCopyApply, onOpenInEditor, onArchive, onRefresh }) => (
+}> = ({ changeName, onCopyFf, onCopyApply }) => (
   <div
     className="flex flex-wrap items-center gap-2"
     style={{
-      padding: '8px 12px',
+      padding: '10px 16px',
       borderBottom: '1px solid var(--vscode-panel-border)',
       background: 'var(--vscode-editor-background)',
     }}
@@ -143,17 +117,6 @@ const LegacyActionBar: React.FC<{
     </button>
     <button type="button" style={secondaryStyle} onClick={() => onCopyApply(changeName)}>
       Copy /opsx:apply
-    </button>
-    <button type="button" style={secondaryStyle} onClick={onOpenInEditor}>
-      {t('action.openInEditor')}
-    </button>
-    {!isArchived && (
-      <button type="button" style={warningStyle} onClick={() => onArchive(changeName)}>
-        {t('action.archiveChange')}
-      </button>
-    )}
-    <button type="button" style={secondaryStyle} onClick={onRefresh}>
-      {t('action.refresh')}
     </button>
   </div>
 );

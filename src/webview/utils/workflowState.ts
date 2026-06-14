@@ -123,30 +123,7 @@ export function deriveWorkflowState(
   }
 
   if (allArtifactsDone && !allTasksDone) {
-    secondaryActions.push({
-      label: 'Verify',
-      action: 'verify',
-      command: buildWorkflowCommand({ action: 'verify', changeName, target: 'clipboard' }),
-      variant: 'secondary',
-    });
-  }
-
-  if (allTasksDone) {
-    secondaryActions.push({
-      label: 'Archive',
-      action: 'archive',
-      command: buildWorkflowCommand({ action: 'archive', changeName, target: 'clipboard' }),
-      variant: 'secondary',
-    });
-  }
-
-  if (hasAnyTaskDone && !allTasksDone) {
-    secondaryActions.push({
-      label: 'Archive',
-      action: 'archive',
-      command: buildWorkflowCommand({ action: 'archive', changeName, target: 'clipboard' }),
-      variant: 'secondary',
-    });
+    // Verify and Archive are high-impact flows and now live in the dedicated tab.
   }
 
   if (hasDeltaSpecs) {
@@ -199,12 +176,7 @@ function buildPrimaryAction(changeName: string, currentStep: WorkflowStep): Work
         variant: 'primary',
       };
     case 'verify':
-      return {
-        label: 'Verify',
-        action: 'verify',
-        command: buildWorkflowCommand({ action: 'verify', changeName, target: 'clipboard' }),
-        variant: 'primary',
-      };
+      return null;
     default:
       return null;
   }

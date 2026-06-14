@@ -96,6 +96,10 @@ export const Dashboard: React.FC = () => {
   };
 
   const handleLaunchWorkflow = (action: WorkflowAction, changeName: string) => {
+    if (action === 'verify' || action === 'archive') {
+      postMessage(sendMessage.openChangeDetailInEditor(changeName, 'verifyArchive', action));
+      return;
+    }
     postMessage(sendMessage.launchWorkflowAction(action, changeName));
   };
 

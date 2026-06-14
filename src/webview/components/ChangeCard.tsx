@@ -7,6 +7,7 @@ import {
   getWorkflowActionTitle,
   type WorkflowLaunchConfigView,
 } from '../utils/workflowLaunchLabels';
+import { formatDateLabel, formatRelativeDateLabel } from '../utils/dateLabels';
 
 const ArtifactBadge: React.FC<{ id: string; status: 'done' | 'ready' | 'blocked' }> = ({ id, status }) => {
   const colors = {
@@ -24,32 +25,6 @@ const ArtifactBadge: React.FC<{ id: string; status: 'done' | 'ready' | 'blocked'
     </span>
   );
 };
-
-function formatLastModified(iso: string): string {
-  try {
-    const d = new Date(iso);
-    const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
-    const diffDays = Math.floor(diffMs / (24 * 60 * 60 * 1000));
-    if (diffDays === 0) return t('time.today');
-    if (diffDays === 1) return t('time.yesterday');
-    if (diffDays < 7) return t('time.daysAgo', { days: diffDays });
-    if (diffDays < 30) return t('time.weeksAgo', { weeks: Math.floor(diffDays / 7) });
-    return d.toLocaleDateString();
-  } catch {
-    return '';
-  }
-}
-
-export interface ChangeCardProps {
-  change: ChangeInfo;
-  onClick?: (changeName: string) => void;
-  onCopyFf?: (changeName: string) => void;
-  onCopyApply?: (changeName: string) => void;
-  onArchive?: (changeName: string) => void;
-  onLaunchWorkflow?: (action: WorkflowAction, changeName: string) => void;
-  workflowLaunchConfig?: WorkflowLaunchConfigView | null;
-}
 
 function getSmartActions(change: ChangeInfo): { label: string; action: WorkflowAction }[] {
   const hasAllArtifacts = change.artifacts?.every((a) => a.status === 'done') ?? false;
@@ -72,6 +47,16 @@ function getSmartActions(change: ChangeInfo): { label: string; action: WorkflowA
   ];
 }
 
+export interface ChangeCardProps {
+  change: ChangeInfo;
+  onClick?: (changeName: string) => void;
+  onCopyFf?: (changeName: string) => void;
+  onCopyApply?: (changeName: string) => void;
+  onArchive?: (changeName: string) => void;
+  onLaunchWorkflow?: (action: WorkflowAction, changeName: string) => void;
+  workflowLaunchConfig?: WorkflowLaunchConfigView | null;
+}
+
 export const ChangeCard: React.FC<ChangeCardProps> = ({
   change,
   onClick,
@@ -82,17 +67,25 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
   workflowLaunchConfig,
 }) => {
   const [hover, setHover] = React.useState(false);
+  const [focusWithin, setFocusWithin] = React.useState(false);
+  const showActions = hover || focusWithin;
 
   const handleCardClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('[data-action]')) return;
     onClick?.(change.name);
   };
 
+  const createdLabel = change.createdAt ? formatDateLabel(change.createdAt) : '';
+  const updatedLabel = change.lastModified ? formatRelativeDateLabel(change.lastModified) : '';
+  const progressPercent = change.totalTasks > 0
+    ? Math.round((change.completedTasks / change.totalTasks) * 100)
+    : 0;
+
   return (
     <div
       role="button"
       tabIndex={0}
-      className="p-3 rounded cursor-pointer transition-opacity focus:outline-none focus:ring-1 relative"
+      className="p-3 rounded cursor-pointer transition-colors focus:outline-none focus:ring-1 relative"
       title={change.proposalWhyFullText || change.proposalWhySummary}
       style={{
         background: 'var(--vscode-input-background)',
@@ -101,6 +94,12 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
       onClick={handleCardClick}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
+      onFocus={() => setFocusWithin(true)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+          setFocusWithin(false);
+        }
+      }}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
@@ -108,8 +107,10 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
         }
       }}
     >
+      {/* 1. Change name */}
       <div className="font-medium text-sm mb-2">{change.name}</div>
 
+      {/* 2. Proposal Why summary */}
       {change.proposalWhySummary && (
         <div
           className="text-xs mb-2 leading-relaxed"
@@ -120,6 +121,7 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
         </div>
       )}
 
+      {/* 3. Artifact badges */}
       {change.artifacts && change.artifacts.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
           {change.artifacts.map((a) => (
@@ -128,45 +130,36 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
         </div>
       )}
 
-      <div
-        className="text-xs flex items-center gap-2 flex-wrap"
-        style={{ color: 'var(--vscode-descriptionForeground)' }}
-      >
-        <span>
-          {change.completedTasks} / {change.totalTasks} tasks
-        </span>
-        {change.totalTasks > 0 && (
-          <>
-            <span>•</span>
-            <span>{Math.round((change.completedTasks / change.totalTasks) * 100)}%</span>
-          </>
-        )}
-        {change.lastModified && (
-          <>
-            <span>•</span>
-            <span>{formatLastModified(change.lastModified)}</span>
-          </>
-        )}
+      {/* 4. Created / Updated row */}
+      <div className="text-xs flex flex-wrap items-center gap-x-2 gap-y-1 mb-2" style={{ color: 'var(--vscode-descriptionForeground)' }}>
+        {createdLabel && <span>{t('change.created', { date: createdLabel })}</span>}
+        {createdLabel && updatedLabel && <span aria-hidden="true">•</span>}
+        {updatedLabel && <span>{t('change.updated', { date: updatedLabel })}</span>}
       </div>
 
+      {/* 5. Task progress block */}
       {change.totalTasks > 0 && (
-        <div
-          className="mt-2 h-1 rounded-full overflow-hidden"
-          style={{ background: 'var(--vscode-input-border)' }}
-        >
-          <div
-            className="h-full transition-all"
-            style={{
-              width: `${(change.completedTasks / change.totalTasks) * 100}%`,
-              background: 'var(--vscode-progressBar-background)',
-            }}
-          />
+        <div className="mt-2">
+          <div className="flex items-center justify-between gap-2 text-xs" style={{ color: 'var(--vscode-descriptionForeground)' }}>
+            <span>{change.completedTasks} / {change.totalTasks} tasks</span>
+            <span>{progressPercent}%</span>
+          </div>
+          <div className="mt-1 h-1 rounded-full overflow-hidden" style={{ background: 'var(--vscode-input-border)' }}>
+            <div
+              className="h-full transition-[width] duration-150 ease-out"
+              style={{
+                width: `${progressPercent}%`,
+                background: 'var(--vscode-progressBar-background)',
+              }}
+            />
+          </div>
         </div>
       )}
 
-      {hover && (onLaunchWorkflow || onCopyFf || onCopyApply || onArchive) && (
+      {/* 6. hover/focus workflow actions */}
+      {showActions && (onLaunchWorkflow || onCopyFf || onCopyApply || onArchive) && (
         <div
-          className="flex flex-wrap gap-1 mt-2 pt-2 border-t"
+          className="flex flex-wrap gap-1 mt-2 pt-2 border-t transition-opacity duration-150"
           style={{ borderColor: 'var(--vscode-panel-border)' }}
           data-action
         >
@@ -176,8 +169,16 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
               type="button"
               data-action
               className="px-2 py-0.5 text-xs rounded cursor-pointer border-none"
-              title={getWorkflowActionTitle(action.label, workflowLaunchConfig)}
-              aria-label={getWorkflowActionTitle(action.label, workflowLaunchConfig)}
+              title={
+                action.action === 'verify' || action.action === 'archive'
+                  ? action.label
+                  : getWorkflowActionTitle(action.label, workflowLaunchConfig)
+              }
+              aria-label={
+                action.action === 'verify' || action.action === 'archive'
+                  ? action.label
+                  : getWorkflowActionTitle(action.label, workflowLaunchConfig)
+              }
               style={{
                 background: 'var(--vscode-button-background)',
                 color: 'var(--vscode-button-foreground)',
@@ -187,7 +188,9 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
                 onLaunchWorkflow(action.action, change.name);
               }}
             >
-              {getWorkflowActionButtonLabel(action.label, workflowLaunchConfig)}
+              {action.action === 'verify' || action.action === 'archive'
+                ? action.label
+                : getWorkflowActionButtonLabel(action.label, workflowLaunchConfig)}
             </button>
           ))}
           {onArchive && !onLaunchWorkflow && change.totalTasks > 0 && change.completedTasks === change.totalTasks && (

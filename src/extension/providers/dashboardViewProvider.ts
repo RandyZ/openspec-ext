@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { logger } from '../utils/logger';
 import { DataManager, type DashboardData } from '../services/dataManager';
+import { InteractiveAgentTerminalManager } from '../services/interactiveAgentTerminalManager';
 import { ChangeDetailPanelManager } from './changeDetailPanelManager';
 import {
   handleWebviewMessage,
@@ -20,7 +21,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   constructor(
     private dataManager: DataManager,
     private extensionPath: string,
-    private panelManager?: ChangeDetailPanelManager
+    private panelManager?: ChangeDetailPanelManager,
+    private interactiveTerminalManager?: InteractiveAgentTerminalManager
   ) {
     this.refreshSubscription = this.dataManager.onRefresh((data) => {
       this.postDashboardData(data);
@@ -153,14 +155,22 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
    */
   private async handleMessage(message: any, webview: vscode.Webview): Promise<void> {
     if (message.type === 'openChangeDetailInEditor' && message.changeName && this.panelManager) {
-      this.panelManager.open(message.changeName);
+      this.panelManager.open(message.changeName, {
+        initialTab: message.initialTab,
+        interactiveAction: message.interactiveAction,
+      });
       return;
     }
     if (message.type === 'openSpecInEditor' && message.specId) {
       this.openSpecPanel(message.specId, message.requirementIndex);
       return;
     }
-    await handleWebviewMessage(message, webview, this.dataManager);
+    await handleWebviewMessage(
+      message,
+      webview,
+      this.dataManager,
+      this.interactiveTerminalManager
+    );
   }
 
   private async openSpecPanel(specId: string, _requirementIndex?: number): Promise<void> {

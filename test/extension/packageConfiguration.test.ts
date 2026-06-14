@@ -38,6 +38,7 @@ describe('OpenSpec package configuration', () => {
       default: 'clipboard',
     });
     expect(properties['openspec.cursorLaunchMode'].enumDescriptions).toHaveLength(4);
+    expect(properties['openspec.cursorLaunchMode'].description).toContain('headless');
     expect(properties['openspec.cursorLaunchMode'].markdownDescription).toContain('`deeplink`');
     expect(properties['openspec.cursorLaunchMode'].markdownDescription).toContain('`agentCli`');
     expect(properties['openspec.cursorAgentModel']).toMatchObject({

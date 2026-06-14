@@ -11,7 +11,7 @@ OpenSpec 扩展为 [OpenSpec](https://github.com/Fission-AI/OpenSpec) 提供可�
 ### 功能特性
 
 - **可视化 Dashboard**：按状态分组展示 changes，支持进度条、Proposal Why 摘要和搜索
-- **Change 详情**：Proposal、Specs、Design、Tasks、Verify 标签页；Markdown 渲染；任务执行入口
+- **Change 详情**：Proposal、Specs、Design、Tasks、Verify & Archive 标签页；Markdown 渲染；任务执行入口
 - **CLI 集成**：集成 OpenSpec CLI（list、status、new、archive），支持重试、超时和 `openspec.cliPath` 兜底
 - **快捷操作**：Continue、FF、Apply、Verify、Archive、Open in Editor、Refresh
 - **命令面板**：Open Dashboard、Refresh Data、Create New Change、Archive Change
@@ -45,8 +45,9 @@ Change 详情页提供工作流操作、artifact tabs、任务执行入口，以
 1. 打开包含 `openspec/config.yaml` 的工作区。
 2. 打开命令面板（macOS: `Cmd+Shift+P`；Windows/Linux: `Ctrl+Shift+P`）。
 3. 执行 **OpenSpec: Open Dashboard**。
-4. 选择一个 change，查看 Proposal、Specs、Design、Tasks、Verify 标签页。
-5. 使用 action bar 或 change card 的快捷操作复制/填充 `/opsx:continue`、`/opsx:ff`、`/opsx:apply`、`/opsx:verify` 命令。
+4. 选择一个 change，查看 Proposal、Specs、Design、Tasks、Verify & Archive 标签页。
+5. 使用 action bar 或 change card 的快捷操作复制/填充 `/opsx:continue`、`/opsx:ff`、`/opsx:apply` 命令。
+6. 在 `Verify & Archive` 标签页中打开交互式 VS Code 终端执行 `/opsx-verify` 或 `/opsx-archive`，这样 Agent 中途反问时可以继续输入。
 
 ### 命令
 
@@ -74,7 +75,7 @@ Change 详情页提供工作流操作、artifact tabs、任务执行入口，以
 | `openspec.taskExecutionMode` | `fillChat` | 点击任务执行时的模式：`auto` 通过 adapter 执行；`fillChat` 填充 chat 或复制到剪贴板 |
 | `openspec.workflowLaunchMode` | `clipboard` | workflow 按钮行为：`clipboard` 只复制命令；`adapter` 按首选 adapter 路由 |
 | `openspec.preferredAgentAdapter` | `clipboard` | `workflowLaunchMode=adapter` 时使用的首选执行适配器：`clipboard`、`cursor`、`vscode-copilot`、`claude-code` 或 `opencode` |
-| `openspec.cursorLaunchMode` | `clipboard` | Cursor adapter 的启动方式：`clipboard` 仅复制；`deeplink` 打开 Cursor prompt 并复制兜底；`chatCommand` 尝试 Cursor Chat query 并复制兜底；`agentCli` 运行 Cursor Agent CLI |
+| `openspec.cursorLaunchMode` | `clipboard` | 非交互 workflow 动作的 Cursor adapter 启动方式：`clipboard` 仅复制；`deeplink` 打开 Cursor prompt 并复制兜底；`chatCommand` 尝试 Cursor Chat query 并复制兜底；`agentCli` 以 headless 模式运行 Cursor Agent CLI |
 | `openspec.taskDependencyPolicy` | `block` | 前置任务未完成时的策略：`block` 阻止执行；`warn` 提示后允许继续 |
 | `openspec.cursorAgentModel` | `auto` | 显式 Cursor Agent CLI 执行时使用的模型；`auto` 表示由 Cursor 选择 |
 | `openspec.agentModel` | `auto` | 旧版 Cursor Agent CLI 模型配置；建议改用 `openspec.cursorAgentModel` |
@@ -83,15 +84,16 @@ Change 详情页提供工作流操作、artifact tabs、任务执行入口，以
 ### 任务执行与适配器
 
 - **Clipboard** (`clipboard`)：始终可用，也是默认 workflow 启动方式，只复制生成的 `/opsx:*` 命令。
-- **Cursor** (`cursor`)：在 Cursor 中可复制命令并打开官方 prompt deeplink、尝试 Chat query、仅复制，或在用户显式配置时启动 Agent CLI。
+- **Cursor** (`cursor`)：在 Cursor 中可复制命令并打开官方 prompt deeplink、尝试 Chat query、仅复制，或在用户显式配置时启动 headless Agent CLI。
 - **OpenCode** (`opencode`)：通过 adapter 路由时使用 `/opsx-<action>` 命令格式。
-- workflow 动作默认使用 `workflowLaunchMode=clipboard`。当你希望按钮打开所选 adapter 时，设置 `openspec.workflowLaunchMode=adapter` 并选择 `openspec.preferredAgentAdapter`。在 Cursor 中，显式设置 `openspec.cursorLaunchMode` 为 `deeplink`、`chatCommand` 或 `agentCli` 也会让 workflow 按钮走 Cursor 路由。
+- workflow 动作默认使用 `workflowLaunchMode=clipboard`。当你希望按钮打开所选 adapter 时，设置 `openspec.workflowLaunchMode=adapter` 并选择 `openspec.preferredAgentAdapter`。在 Cursor 中，显式设置 `openspec.cursorLaunchMode` 为 `deeplink`、`chatCommand` 或 `agentCli` 也会让非交互 workflow 按钮走 Cursor 路由。
+- Verify 和 Archive 是刻意分开的：它们会进入专用 `Verify & Archive` 标签页，并在 VS Code 官方终端编辑器中运行，而不是走 headless `agentCli`。
 
 ### Dashboard
 
 - 按 change 名称、状态、artifact 或 Proposal Why 文本搜索。
 - 在侧边栏查看进度、状态、artifact badges 和 Proposal Why 摘要。
-- 打开 change 详情页查看 Proposal / Specs / Design / Tasks / Verify。
+- 打开 change 详情页查看 Proposal / Specs / Design / Tasks / Verify & Archive。
 - 通过选定 adapter 执行任务，或将工作流命令填充/复制到 chat。
 - 修改任务完成状态前会先显示 webview 确认框。
 

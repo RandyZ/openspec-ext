@@ -5,6 +5,7 @@ import { Dashboard } from './components/Dashboard';
 import { ChangeDetail } from './components/ChangeDetail';
 import { SpecViewer } from './components/SpecViewer';
 import { setLocale } from '../i18n';
+import type { ChangeDetailTabId, InteractiveWorkflowAction } from '../shared/interactiveWorkflow';
 
 function idsEqual(a: string[] | undefined, b: string[] | undefined): boolean {
   if (a === b) return true;
@@ -25,6 +26,8 @@ function AppContent() {
   const { onMessage } = useVscode();
   const [panelChangeName, setPanelChangeName] = useState<string | null>(null);
   const [existingArtifactIds, setExistingArtifactIds] = useState<string[] | undefined>(undefined);
+  const [initialTab, setInitialTab] = useState<ChangeDetailTabId | undefined>(undefined);
+  const [interactiveAction, setInteractiveAction] = useState<InteractiveWorkflowAction | undefined>(undefined);
   const [panelSpecId, setPanelSpecId] = useState<string | null>(null);
   const [panelSpecContent, setPanelSpecContent] = useState<string | null>(null);
 
@@ -36,6 +39,13 @@ function AppContent() {
       if (msg.type === 'setContext' && msg.view === 'changeDetail' && msg.changeName) {
         setPanelChangeName(msg.changeName);
         setPanelSpecId(null);
+        setInitialTab(msg.initialTab);
+        if (msg.interactiveAction) {
+          setInteractiveAction(undefined);
+          setTimeout(() => setInteractiveAction(msg.interactiveAction), 0);
+        } else {
+          setInteractiveAction(undefined);
+        }
         setExistingArtifactIds((prev) => {
           const next = msg.existingArtifactIds as string[] | undefined;
           if (idsEqual(prev, next)) return prev;
@@ -55,12 +65,14 @@ function AppContent() {
 
   if (panelChangeName) {
     return (
-      <ChangeDetail
-        changeName={panelChangeName}
-        existingArtifactIds={existingArtifactIds}
-        debug={state.debug}
-      />
-    );
+        <ChangeDetail
+          changeName={panelChangeName}
+          existingArtifactIds={existingArtifactIds}
+          debug={state.debug}
+          initialTab={initialTab}
+          interactiveAction={interactiveAction}
+        />
+      );
   }
   if (panelSpecId) {
     return <SpecViewer specId={panelSpecId} initialContent={panelSpecContent ?? undefined} />;

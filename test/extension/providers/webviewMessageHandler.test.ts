@@ -207,4 +207,182 @@ describe('handleWebviewMessage toggleTask', () => {
       })
     );
   });
+
+  it('starts interactive verify workflow and posts session state', async () => {
+    const interactiveTerminalManager = {
+      start: vi.fn().mockResolvedValue({
+        changeName: 'demo-change',
+        sessions: {
+          verify: {
+            action: 'verify',
+            status: 'running',
+            terminalName: 'OpenSpec Verify: demo-change',
+          },
+        },
+      }),
+    };
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+    };
+    const webview = {
+      postMessage: vi.fn(),
+    };
+
+    await handleWebviewMessage(
+      { type: 'runInteractiveWorkflow', action: 'verify', changeName: 'demo-change' },
+      webview as any,
+      dataManager as any,
+      interactiveTerminalManager as any
+    );
+
+    expect(interactiveTerminalManager.start).toHaveBeenCalledWith({
+      workspaceRoot: '/workspace',
+      changeName: 'demo-change',
+      action: 'verify',
+    });
+    expect(webview.postMessage).toHaveBeenCalledWith({
+      type: 'interactiveWorkflowState',
+      changeName: 'demo-change',
+      state: {
+        changeName: 'demo-change',
+        sessions: {
+          verify: {
+            action: 'verify',
+            status: 'running',
+            terminalName: 'OpenSpec Verify: demo-change',
+          },
+        },
+      },
+    });
+  });
+
+  it('reveals, stops, clears, and gets interactive workflow state', async () => {
+    const state = {
+      changeName: 'demo-change',
+      sessions: {
+        archive: {
+          action: 'archive',
+          status: 'running',
+          terminalName: 'OpenSpec Archive: demo-change',
+        },
+      },
+    };
+    const interactiveTerminalManager = {
+      reveal: vi.fn().mockReturnValue(state),
+      stop: vi.fn().mockReturnValue({ changeName: 'demo-change', sessions: {} }),
+      clear: vi.fn().mockReturnValue({ changeName: 'demo-change', sessions: {} }),
+      getState: vi.fn().mockReturnValue(state),
+    };
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+    };
+    const webview = {
+      postMessage: vi.fn(),
+    };
+
+    await handleWebviewMessage(
+      { type: 'revealInteractiveWorkflow', action: 'archive', changeName: 'demo-change' },
+      webview as any,
+      dataManager as any,
+      interactiveTerminalManager as any
+    );
+    await handleWebviewMessage(
+      { type: 'stopInteractiveWorkflow', action: 'archive', changeName: 'demo-change' },
+      webview as any,
+      dataManager as any,
+      interactiveTerminalManager as any
+    );
+    await handleWebviewMessage(
+      { type: 'clearInteractiveWorkflow', action: 'archive', changeName: 'demo-change' },
+      webview as any,
+      dataManager as any,
+      interactiveTerminalManager as any
+    );
+    await handleWebviewMessage(
+      { type: 'getInteractiveWorkflowState', changeName: 'demo-change' },
+      webview as any,
+      dataManager as any,
+      interactiveTerminalManager as any
+    );
+
+    expect(interactiveTerminalManager.reveal).toHaveBeenCalledWith('/workspace', 'demo-change', 'archive');
+    expect(interactiveTerminalManager.stop).toHaveBeenCalledWith('/workspace', 'demo-change', 'archive');
+    expect(interactiveTerminalManager.clear).toHaveBeenCalledWith('/workspace', 'demo-change', 'archive');
+    expect(interactiveTerminalManager.getState).toHaveBeenCalledWith('/workspace', 'demo-change');
+    expect(webview.postMessage).toHaveBeenNthCalledWith(4, {
+      type: 'interactiveWorkflowState',
+      changeName: 'demo-change',
+      state,
+    });
+  });
+
+  it('rejects archive runs for archived changes', async () => {
+    const interactiveTerminalManager = {
+      start: vi.fn(),
+    };
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+    };
+    const webview = {
+      postMessage: vi.fn(),
+    };
+
+    await handleWebviewMessage(
+      { type: 'runInteractiveWorkflow', action: 'archive', changeName: 'archive:2026-05-25-demo-change' },
+      webview as any,
+      dataManager as any,
+      interactiveTerminalManager as any
+    );
+
+    expect(interactiveTerminalManager.start).not.toHaveBeenCalled();
+    expect(webview.postMessage).toHaveBeenCalledWith({
+      type: 'interactiveWorkflowState',
+      changeName: 'archive:2026-05-25-demo-change',
+      state: {
+        changeName: 'archive:2026-05-25-demo-change',
+        sessions: {
+          archive: {
+            action: 'archive',
+            status: 'error',
+            message: 'Archived changes are read-only. Archive cannot run again.',
+          },
+        },
+      },
+    });
+  });
+
+  it('rejects invalid interactive actions with an error state', async () => {
+    const interactiveTerminalManager = {
+      start: vi.fn(),
+    };
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+    };
+    const webview = {
+      postMessage: vi.fn(),
+    };
+
+    await handleWebviewMessage(
+      { type: 'runInteractiveWorkflow', action: 'oops', changeName: 'demo-change' } as any,
+      webview as any,
+      dataManager as any,
+      interactiveTerminalManager as any
+    );
+
+    expect(interactiveTerminalManager.start).not.toHaveBeenCalled();
+    expect(webview.postMessage).toHaveBeenCalledWith({
+      type: 'interactiveWorkflowState',
+      changeName: 'demo-change',
+      state: {
+        changeName: 'demo-change',
+        sessions: {
+          verify: {
+            action: 'verify',
+            status: 'error',
+            message: 'Invalid interactive workflow action: oops',
+          },
+        },
+      },
+    });
+  });
 });

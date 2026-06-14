@@ -8,14 +8,7 @@ const workflowState: WorkflowState = {
   steps: [],
   currentStep: 'verify',
   nextAction: null,
-  secondaryActions: [
-    {
-      label: 'Archive',
-      action: 'archive',
-      command: '/opsx:archive demo-change',
-      variant: 'secondary',
-    },
-  ],
+  secondaryActions: [],
 };
 
 const launchConfig: WorkflowLaunchConfigView = {
@@ -51,9 +44,8 @@ function findButtonByText(node: React.ReactNode, text: string): React.ReactEleme
 }
 
 describe('ActionBar', () => {
-  it('routes Archive through workflow action handling', () => {
+  it('does not render verify/archive top actions once the dedicated tab owns them', () => {
     const onAction = vi.fn();
-    const onArchive = vi.fn();
 
     const tree = ActionBar({
       changeName: 'demo-change',
@@ -64,14 +56,41 @@ describe('ActionBar', () => {
       onCopyFf: vi.fn(),
       onCopyApply: vi.fn(),
       onOpenInEditor: vi.fn(),
-      onArchive,
+      onArchive: vi.fn(),
       onRefresh: vi.fn(),
     });
 
-    const archiveButton = findButtonByText(tree, 'Copy Archive');
-    archiveButton.props.onClick();
+    expect(() => findButtonByText(tree, 'Copy Archive')).toThrow();
+    expect(() => findButtonByText(tree, 'Run Agent Archive')).toThrow();
+    expect(onAction).not.toHaveBeenCalled();
+  });
 
-    expect(onAction).toHaveBeenCalledWith('archive', 'demo-change');
-    expect(onArchive).not.toHaveBeenCalled();
+  it('does not render workspace utilities in the workflow action bar', () => {
+    const tree = ActionBar({
+      changeName: 'demo-change',
+      isArchived: false,
+      workflowState: {
+        steps: [],
+        currentStep: 'apply',
+        nextAction: {
+          label: 'Apply',
+          action: 'apply',
+          command: '/opsx:apply demo-change',
+          variant: 'primary',
+        },
+        secondaryActions: [],
+      },
+      workflowLaunchConfig: launchConfig,
+      onAction: vi.fn(),
+      onCopyFf: vi.fn(),
+      onCopyApply: vi.fn(),
+      onOpenInEditor: vi.fn(),
+      onArchive: vi.fn(),
+      onRefresh: vi.fn(),
+    });
+
+    expect(() => findButtonByText(tree, 'Open in Editor')).toThrow();
+    expect(() => findButtonByText(tree, 'Refresh')).toThrow();
+    expect(findButtonByText(tree, 'Copy Apply')).toBeTruthy();
   });
 });

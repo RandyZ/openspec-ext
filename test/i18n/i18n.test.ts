@@ -47,6 +47,8 @@ describe('i18n', () => {
       expect(t('verify.completeness')).toContain('Completeness');
       expect(t('verify.correctness')).toContain('Correctness');
       expect(t('verify.coherence')).toContain('Coherence');
+      expect(t('verifyArchive.runVerify')).toBe('Run Verify');
+      expect(t('verifyArchive.clearSession')).toBe('Clear Session');
     });
 
     it('supports parameter substitution', () => {
@@ -76,6 +78,8 @@ describe('i18n', () => {
       expect(t('verify.completeness')).toContain('完整性');
       expect(t('verify.correctness')).toContain('正确性');
       expect(t('verify.coherence')).toContain('一致性');
+      expect(t('verifyArchive.runVerify')).toBe('Run Verify');
+      expect(t('verifyArchive.clearSession')).toBe('Clear Session');
     });
 
     it('supports parameter substitution in Chinese', () => {

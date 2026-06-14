@@ -125,4 +125,43 @@ describe('DashboardViewProvider', () => {
       debug: false,
     });
   });
+
+  it('forwards initialTab and interactiveAction when opening change detail from the dashboard', async () => {
+    const dataManager = {
+      onRefresh: vi.fn(() => ({ dispose: vi.fn() })),
+      getDashboardData: vi.fn().mockResolvedValue({ changes: [], specs: [], lastRefresh: 1 }),
+    };
+    const panelManager = {
+      open: vi.fn(),
+    };
+    const webview = {
+      options: undefined,
+      html: '',
+      cspSource: 'vscode-resource',
+      asWebviewUri: vi.fn((uri) => `vscode-resource:${uri.fsPath}`),
+      postMessage: vi.fn(),
+      onDidReceiveMessage: vi.fn(),
+    };
+    const webviewView = {
+      webview,
+      onDidDispose: vi.fn(),
+      show: vi.fn(),
+    };
+
+    const provider = new DashboardViewProvider(dataManager as any, '/ext', panelManager as any);
+    provider.resolveWebviewView(webviewView as any, {} as any, {} as any);
+
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+    await handler?.({
+      type: 'openChangeDetailInEditor',
+      changeName: 'demo-change',
+      initialTab: 'verifyArchive',
+      interactiveAction: 'archive',
+    });
+
+    expect(panelManager.open).toHaveBeenCalledWith('demo-change', {
+      initialTab: 'verifyArchive',
+      interactiveAction: 'archive',
+    });
+  });
 });
