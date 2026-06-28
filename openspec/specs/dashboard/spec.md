@@ -5,75 +5,81 @@
 The Dashboard is the main entry point for the OpenSpec VSCode extension, providing a visual overview of all changes and their status.
 ## Requirements
 ### Requirement: Change List Display
-The system SHALL display all active changes grouped by status, with searchable contextual information for each change.
+系统 SHALL 按状态分组展示所有 change，并在每张卡片上提供可扫描的摘要、时间与进度信息。
 
 #### Scenario: Changes grouped by status
-- GIVEN a workspace with multiple changes at different stages
-- WHEN the user opens the dashboard
-- THEN changes MUST be grouped into three sections:
-  - Draft: changes with no tasks defined
-  - Active: changes with incomplete tasks
-  - Completed: changes with all tasks marked done
-- AND each section MUST show a count in the header
+- **GIVEN** 工作区中存在处于不同阶段的多个 change
+- **WHEN** 用户打开 dashboard
+- **THEN** change MUST 被分为 Draft、Active、Completed 三个分组展示
+- **AND** 每个分组头部 MUST 显示该分组内的数量
 
 #### Scenario: Empty state
-- GIVEN a workspace with no changes
-- WHEN the user opens the dashboard
-- THEN an empty state message MUST be displayed
-- AND a "Create New Change" button SHOULD be shown
+- **GIVEN** 工作区中没有任何 change
+- **WHEN** 用户打开 dashboard
+- **THEN** 系统 MUST 展示空状态提示
+- **AND** 系统 SHOULD 展示创建新 change 的入口
 
-#### Scenario: Change progress display
-- GIVEN a change with tasks
-- WHEN displayed in the dashboard
-- THEN it MUST show:
-  - Change name
-  - Task progress (e.g., "3/5 tasks")
-  - Last modified time (relative, e.g., "2h ago")
-  - Visual progress indicator (progress bar or percentage)
+#### Scenario: Change card shows created and updated metadata
+- **GIVEN** 某个 change 同时具有可解析的创建时间、更新时间和任务数据
+- **WHEN** 该 change 显示在 dashboard 中
+- **THEN** 卡片 MUST 按以下层级展示信息：change 名称、Proposal Why 摘要、artifact 状态、时间信息、任务进度
+- **AND** 时间信息 MUST 单独成行展示 `Created` 与 `Updated`
+- **AND** 任务进度 MUST 以任务文本摘要和可视进度指示共同呈现
+
+#### Scenario: Missing created time falls back gracefully
+- **GIVEN** 某个 change 没有可用的 `createdAt`
+- **WHEN** 该 change 显示在 dashboard 中
+- **THEN** 卡片 MUST 继续正常展示
+- **AND** 系统 MUST 隐藏 `Created` 展示而不是显示错误占位
+- **AND** 如果存在可解析的更新时间，系统 MUST 继续展示 `Updated`
 
 #### Scenario: Proposal Why summary display
-- GIVEN a change has a `proposal.md` file with a `## Why` section
-- WHEN the change is displayed in the dashboard
-- THEN the change card MUST show a summary of the Proposal Why content below the title
-- AND the visible summary MUST be limited to 150 characters
-- AND content longer than 150 characters MUST be truncated with `...`
-- AND hovering the summary or card MUST expose the full Why text through a native tooltip or equivalent accessible hint
+- **GIVEN** 某个 change 的 `proposal.md` 中存在 `## Why` 内容
+- **WHEN** 该 change 显示在 dashboard 中
+- **THEN** 卡片 MUST 在标题下方展示 Proposal Why 摘要
+- **AND** 可见摘要 MUST 限制为适合卡片阅读的简短文本
+- **AND** 当摘要被截断时，系统 MUST 通过 tooltip 或等价的可访问提示暴露完整内容
 
 #### Scenario: Missing Proposal Why summary
-- GIVEN a change has no proposal or no parseable `## Why` section
-- WHEN the change is displayed in the dashboard
-- THEN the change card MUST remain visible
-- AND no summary extraction error MUST be shown to the user
+- **GIVEN** 某个 change 没有 proposal 或没有可解析的 `## Why` 内容
+- **WHEN** 该 change 显示在 dashboard 中
+- **THEN** 卡片 MUST 继续可见
+- **AND** 系统 MUST 不向用户暴露摘要提取错误
 
 #### Scenario: Search changes by loaded metadata
-- GIVEN the dashboard has loaded changes
-- WHEN the user enters a search query in the change list search input
-- THEN the displayed changes MUST be filtered locally
-- AND matching MUST include change name, status, artifact id, artifact status, Proposal Why summary, and Proposal Why full text
-- AND the filtered list MUST preserve status grouping
+- **GIVEN** dashboard 已加载 change 列表
+- **WHEN** 用户在搜索框中输入查询
+- **THEN** 系统 MUST 基于已加载元数据在本地过滤 change
+- **AND** 匹配范围 MUST 包含 change 名称、状态、artifact 标识、artifact 状态、Proposal Why 摘要与完整文本
+- **AND** 过滤结果 MUST 保持原有状态分组
 
 #### Scenario: Search empty result
-- GIVEN the dashboard has loaded changes
-- WHEN the user enters a query that matches no loaded change metadata
-- THEN the dashboard MUST show an empty search result message
-- AND it MUST NOT trigger an OpenSpec CLI refresh for each typed character
+- **GIVEN** dashboard 已加载 change 列表
+- **WHEN** 用户输入的查询没有匹配任何已加载 change
+- **THEN** 系统 MUST 展示空搜索结果提示
+- **AND** 系统 MUST NOT 因每次键入而触发新的 OpenSpec CLI 刷新
 
 ### Requirement: Change Navigation
-The system SHALL allow navigation to change details.
+系统 SHALL 允许用户从 dashboard 进入 change 详情，并在卡片的 hover 与 focus 状态下提供不会干扰主导航的 workflow 快捷操作。
 
 #### Scenario: Click to open change
-- GIVEN a change displayed in the dashboard
-- WHEN the user clicks on the change card
-- THEN the change detail view MUST open
-- AND the view MUST display all artifacts for that change
+- **GIVEN** dashboard 中展示了某个 change
+- **WHEN** 用户点击卡片的非操作区域
+- **THEN** 系统 MUST 打开该 change 的 detail 视图
+- **AND** detail 视图 MUST 展示该 change 的所有 artifact
 
-#### Scenario: Quick actions on hover
-- GIVEN a change card in the dashboard
-- WHEN the user hovers over the card
-- THEN quick action buttons SHOULD appear:
-  - "Open" (navigate to detail view)
-  - "Copy /opsx:apply" (copy command to clipboard)
-  - "Archive" (if all tasks complete)
+#### Scenario: Hover and focus reveal workflow actions
+- **GIVEN** 某张 change 卡片具有可用的 workflow 操作
+- **WHEN** 用户将鼠标悬停在卡片上或通过键盘将焦点移入卡片
+- **THEN** 系统 MUST 展示该卡片的快捷操作区
+- **AND** 这些操作 MUST 可通过键盘聚焦与触发
+- **AND** 未进入 hover 或 focus 状态时，快捷操作区 MUST 不干扰卡片主体信息的阅读
+
+#### Scenario: Quick actions do not steal card navigation
+- **GIVEN** 卡片上展示了 workflow 快捷操作
+- **WHEN** 用户点击某个快捷操作按钮
+- **THEN** 系统 MUST 执行对应操作
+- **AND** 系统 MUST NOT 同时触发"打开 change 详情"的卡片点击行为
 
 ### Requirement: Real-time Updates
 The system SHALL reflect file system changes and extension-triggered state changes without requiring manual refresh.
@@ -109,7 +115,7 @@ The system SHALL reflect file system changes and extension-triggered state chang
 - AND it MUST NOT perform an additional full OpenSpec scan solely because of the click
 
 ### Requirement: Dashboard Actions
-The system SHALL provide quick actions for common operations, and workflow-oriented quick actions SHALL route through the shared OpenSpec workflow command routing capability.
+The system SHALL provide quick actions for common operations, workflow-oriented quick actions SHALL route through shared OpenSpec workflow command routing, and Verify/Archive quick actions SHALL be able to open the interactive `Verify & Archive` workflow.
 
 #### Scenario: Create new change
 - GIVEN the dashboard is open
@@ -135,19 +141,11 @@ The system SHALL provide quick actions for common operations, and workflow-orien
 
 #### Scenario: Open workflow command from quick action through launch settings
 - GIVEN a change in the dashboard
-- WHEN the user clicks a workflow quick action such as Continue, FF, Apply, Verify, Archive, or Sync
+- WHEN the user clicks a workflow quick action such as Continue, FF, Apply, or Sync
 - THEN the action MUST route through the shared workflow launch settings
 - AND `openspec.workflowLaunchMode=clipboard` MUST copy the generated command and show a non-modal notification
 - AND `openspec.workflowLaunchMode=adapter` MUST route through the selected adapter's configured launch behavior
 - AND the dashboard quick action MUST NOT directly modify OpenSpec change files
-
-#### Scenario: Archive quick action uses workflow routing
-- GIVEN a completed change is shown in the dashboard or change detail action bar
-- WHEN the user clicks the Archive workflow action
-- THEN the action MUST send the shared `archive` workflow action through launch settings
-- AND the default command MUST be `/opsx:archive <change>`
-- AND Cursor adapter routing MUST use `/opsx-archive <change>`
-- AND the action MUST NOT send the direct `archiveChange` message
 
 #### Scenario: Cursor quick action uses hyphen command when adapter launch is selected
 - GIVEN `openspec.workflowLaunchMode` is `adapter`
@@ -157,9 +155,25 @@ The system SHALL provide quick actions for common operations, and workflow-orien
 
 #### Scenario: Default dashboard quick action is clipboard safe
 - GIVEN the extension uses default settings
-- WHEN the user clicks a workflow quick action in the dashboard
+- WHEN the user clicks a workflow quick action other than interactive Verify or Archive in the dashboard
 - THEN the generated command MUST be copied to the clipboard
 - AND no Agent window, deeplink, or CLI process MUST start automatically
+
+#### Scenario: Dashboard Verify quick action opens interactive workflow
+- **GIVEN** a change card displays a Verify quick action
+- **WHEN** the user clicks that action
+- **THEN** the extension MUST open the change detail view
+- **AND** the change detail view MUST switch to `Verify & Archive`
+- **AND** the Verify terminal workflow MAY start immediately
+- **AND** the quick action MUST NOT use headless `agentCli`
+
+#### Scenario: Dashboard Archive quick action opens interactive workflow
+- **GIVEN** a change card displays an Archive quick action
+- **WHEN** the user clicks that action
+- **THEN** the extension MUST open the change detail view
+- **AND** the change detail view MUST switch to `Verify & Archive`
+- **AND** the Archive terminal workflow MAY start immediately
+- **AND** the quick action MUST NOT call direct `archiveChange`
 
 ### Requirement: CLI Activation Failure State
 The Dashboard SHALL display actionable CLI activation diagnostics when OpenSpec CLI is unavailable, without introducing a new file-system fallback data source.
@@ -268,19 +282,26 @@ The system SHALL provide access to archived changes.
 - AND it MUST list all archived changes with metadata
 
 ### Requirement: Performance
-The system SHALL load and update efficiently.
+系统 SHALL 在保持 dashboard 响应性的同时，通过克制的过渡反馈帮助用户感知状态变化。
 
 #### Scenario: Initial load time
-- GIVEN a workspace with up to 50 changes
-- WHEN the dashboard is opened
-- THEN it MUST load within 2 seconds
-- AND show a loading indicator if data takes > 500ms
+- **GIVEN** 工作区内最多存在 50 个 change
+- **WHEN** 用户打开 dashboard
+- **THEN** dashboard MUST 在合理时间内完成首屏加载
+- **AND** 当加载时间超过短暂阈值时，系统 MUST 展示加载反馈
 
 #### Scenario: Update responsiveness
-- GIVEN the dashboard is open
-- WHEN a file change is detected
-- THEN the UI MUST update within 1 second
-- AND updates SHOULD be animated for user feedback
+- **GIVEN** dashboard 当前处于打开状态
+- **WHEN** 任务进度、workflow 状态或卡片可见元数据发生刷新
+- **THEN** UI MUST 及时更新
+- **AND** 系统 MAY 使用轻量级过渡反馈帮助用户感知变化
+- **AND** 这些过渡 MUST 不造成布局跳动或影响连续操作
+
+#### Scenario: Reduced motion preference disables non-essential motion
+- **GIVEN** 用户环境声明了减少动态效果偏好
+- **WHEN** dashboard 展示卡片 hover、快捷操作显隐或进度刷新反馈
+- **THEN** 系统 MUST 禁用非必要的位移或动画效果
+- **AND** 系统 MUST 保留即时且可感知的状态变化
 
 ## Design Constraints
 

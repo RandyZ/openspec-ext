@@ -1,8 +1,10 @@
-> 参考 Superpowers 设计文档：[Interactive Verify & Archive Terminal 设计](../../../../../docs/superpowers/specs/2026-05-25-interactive-verify-archive-terminal-design.md)
->
-> 参考 Superpowers 实现计划：[Interactive Verify & Archive Terminal Implementation Plan](../../../../../docs/superpowers/plans/2026-05-25-interactive-verify-archive-terminal-plan.md)
+# Interactive Agent Terminal Specification
 
-## ADDED Requirements
+## Purpose
+
+Provide interactive VS Code Integrated Terminal sessions for Verify and Archive workflows, enabling users to respond to Agent prompts during verification and archival.
+
+## Requirements
 
 ### Requirement: Interactive Agent terminal sessions
 The extension SHALL provide interactive terminal sessions for Verify and Archive workflows.

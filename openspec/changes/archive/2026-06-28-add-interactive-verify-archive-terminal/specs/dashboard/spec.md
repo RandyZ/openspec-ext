@@ -1,6 +1,6 @@
-> 参考 Superpowers 设计文档：[Interactive Verify & Archive Terminal 设计](../../../../../docs/superpowers/specs/2026-05-25-interactive-verify-archive-terminal-design.md)
+> 参考 Superpowers 设计文档：[Interactive Verify & Archive Terminal 设计](../../superpowers/design/2026-05-25-interactive-verify-archive-terminal-design.md)
 >
-> 参考 Superpowers 实现计划：[Interactive Verify & Archive Terminal Implementation Plan](../../../../../docs/superpowers/plans/2026-05-25-interactive-verify-archive-terminal-plan.md)
+> 参考 Superpowers 实现计划：[Interactive Verify & Archive Terminal Implementation Plan](../../superpowers/plan/2026-05-25-interactive-verify-archive-terminal-plan.md)
 
 ## MODIFIED Requirements
 

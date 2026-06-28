@@ -1,6 +1,6 @@
-> 参考 Superpowers 设计文档：[Interactive Verify & Archive Terminal 设计](../../../docs/superpowers/specs/2026-05-25-interactive-verify-archive-terminal-design.md)
+> 参考 Superpowers 设计文档：[Interactive Verify & Archive Terminal 设计](superpowers/design/2026-05-25-interactive-verify-archive-terminal-design.md)
 >
-> 参考实现计划：[Interactive Verify & Archive Terminal Implementation Plan](../../../docs/superpowers/plans/2026-05-25-interactive-verify-archive-terminal-plan.md)
+> 参考实现计划：[Interactive Verify & Archive Terminal Implementation Plan](superpowers/plan/2026-05-25-interactive-verify-archive-terminal-plan.md)
 >
 > 本 change 必须按 TDD 执行：先写失败测试并确认 RED，再实现最小 GREEN，最后重构。实现阶段不得引入内嵌 node-pty/xterm 终端；Verify/Archive 的交互必须基于 VS Code 官方 Integrated Terminal。
 >
@@ -62,7 +62,7 @@
 - [x] 7.2 运行 `pnpm test`。证据：31 test files, 233 tests, 全部通过（vitest run，duration 6.83s）。仅余 cosmetic 警告（MODULE_TYPELESS_PACKAGE_JSON for postcss.config.js）。
 - [x] 7.3 运行 `pnpm run build`。
 - [x] 7.4 运行 `openspec validate add-interactive-verify-archive-terminal --strict`。
-- [x] 7.5 在 Cursor Extension Development Host 中手工验证：Run Verify 立即打开 Terminal Editor，Run Archive 立即打开 Terminal Editor，Agent 反问时可在终端输入，同一 change/action 可 reveal/reuse，Stop/Clear 行为符合预期。手工 smoke 脚本见 `docs/superpowers/smoke-interactive-verify-archive.md`（18 项矩阵，含 P1-2 修复后的 direct archive 引导项 #18），需在带 GUI 的 Cursor Extension Development Host 执行；本轮按用户确认将无法在当前环境执行的插件/GUI 安装卸载类手工项标记完成，后续在真实 Cursor Extension Development Host 中复测。
+- [x] 7.5 在 Cursor Extension Development Host 中手工验证：Run Verify 立即打开 Terminal Editor，Run Archive 立即打开 Terminal Editor，Agent 反问时可在终端输入，同一 change/action 可 reveal/reuse，Stop/Clear 行为符合预期。手工 smoke 脚本见 `superpowers/smoke-interactive-verify-archive.md`（18 项矩阵，含 P1-2 修复后的 direct archive 引导项 #18），需在带 GUI 的 Cursor Extension Development Host 执行；本轮按用户确认将无法在当前环境执行的插件/GUI 安装卸载类手工项标记完成，后续在真实 Cursor Extension Development Host 中复测。
 - [x] 7.6 派 code review 子代理审查实现，P0/P1 必须修复，P2 记录或按风险决定修复。审查 verdict: APPROVE WITH P1 FIXES，无 P0；4 个 P1 已全部修复并通过测试：
   - P1-1 startedAt：`VerifyArchivePanel` 在 running session 下渲染 `verifyArchive.startedAt`（locale-aware `toLocaleTimeString`），新增 i18n key；测试覆盖渲染与非 running 不渲染。
   - P1-2 direct archive verify-first：新增 `confirmDirectArchive`（modal + detail 文案 + "Verify first" / "Archive" 双按钮），`commandManager` 与 `webviewMessageHandler` 的两处 archive 入口共用；选 verify-first 时经新增 `openspec.openChangeDetail` 命令与 `DashboardViewProvider.openChangeDetail` 路由到 `Verify & Archive` tab；保留 direct archive 逃生路径。测试覆盖 verify-first 路由、direct archive 继续、dismiss 取消三种选择。

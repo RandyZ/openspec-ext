@@ -1,6 +1,6 @@
 ## Context
 
-参考 Superpowers 设计文档：[Interactive Verify & Archive Terminal 设计](../../../docs/superpowers/specs/2026-05-25-interactive-verify-archive-terminal-design.md)。
+参考 Superpowers 设计文档：[Interactive Verify & Archive Terminal 设计](superpowers/design/2026-05-25-interactive-verify-archive-terminal-design.md)。
 
 `improve-cursor-native-interaction` 已经提供 workflow command builder 和 Cursor launch 配置。新的问题是 Verify/Archive 会进入多轮交互，而当前 `agentCli` headless 路径无法接收用户输入。因此本 change 新增一个专门的交互式 terminal runner，并重整 Change Detail 页面结构。
 

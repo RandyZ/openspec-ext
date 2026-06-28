@@ -4,7 +4,7 @@
 
 同时 Change Detail 页面在 tab 上方堆叠 workflow stepper、Apply、Verify、Archive、Open in Editor、Refresh 等按钮，视觉层级混乱。需要把高影响 workflow 收敛到明确的 `Verify & Archive` 入口，并使用 VS Code 官方 Integrated Terminal 承载真实交互。
 
-参考 Superpowers 设计文档：[Interactive Verify & Archive Terminal 设计](../../../docs/superpowers/specs/2026-05-25-interactive-verify-archive-terminal-design.md)。
+参考 Superpowers 设计文档：[Interactive Verify & Archive Terminal 设计](superpowers/design/2026-05-25-interactive-verify-archive-terminal-design.md)。
 
 ## What Changes
 

@@ -12,3 +12,4 @@ build/
 pnpm-workspace.yaml
 .omc/
 .superpowers/
+openspec/schemas/

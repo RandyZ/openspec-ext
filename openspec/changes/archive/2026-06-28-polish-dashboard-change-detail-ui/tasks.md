@@ -1,7 +1,7 @@
 ## 0. 来源与执行计划
 
-- Superpowers 实施计划：`docs/superpowers/plans/2026-06-10-polish-dashboard-change-detail-ui.md`
-- 设计依据：`docs/superpowers/specs/2026-06-10-polish-dashboard-change-detail-ui-design.md`
+- Superpowers 实施计划：`superpowers/plan/2026-06-10-polish-dashboard-change-detail-ui.md`
+- 设计依据：`superpowers/design/2026-06-10-polish-dashboard-change-detail-ui-design.md`
 - OpenSpec 设计：`openspec/changes/polish-dashboard-change-detail-ui/design.md`
 - 执行要求：实施时以 Superpowers plan 为任务拆分与验证顺序，保持本文件 checkbox 与计划进度同步。
 
@@ -54,6 +54,6 @@
 - [x] 5.4 运行 `rtk zsh -c 'source ~/.zshrc && pnpm test'`，确认全部 vitest 通过；若失败，先修复与本 change 相关的失败，不借机改动无关测试。
 - [x] 5.5 运行 `rtk zsh -c 'source ~/.zshrc && pnpm run build'`，确认 extension host esbuild 与 webview Vite 构建均通过。
 - [x] 5.6 运行 `rtk zsh -c 'source ~/.zshrc && openspec validate polish-dashboard-change-detail-ui --strict'`，确认 change artifact 严格校验通过。
-- [ ] 5.7 在 VS Code Extension Development Host 中执行 smoke：打开 Dashboard，确认卡片 Created/Updated、信息层级、hover/focus actions、深浅主题、复制名称、Open/Refresh 和 ActionBar 分组均符合设计。
-- [ ] 5.8 在 Cursor 中执行兼容 smoke：确认 extension 激活、Dashboard webview、theme token、Codicons、copy/open/refresh、workflow 按钮路由和窄宽度布局无明显回归。
-- [ ] 5.9 记录验证结果和任何未解决风险；若 VS Code/Cursor smoke 需要临时启动服务或占用端口，验证完成后停止对应进程并释放端口。
+- [x] 5.7 在 VS Code Extension Development Host 中执行 smoke：打开 Dashboard，确认卡片 Created/Updated、信息层级、hover/focus actions、深浅主题、复制名称、Open/Refresh 和 ActionBar 分组均符合设计。
+- [x] 5.8 在 Cursor 中执行兼容 smoke：确认 extension 激活、Dashboard webview、theme token、Codicons、copy/open/refresh、workflow 按钮路由和窄宽度布局无明显回归。
+- [x] 5.9 记录验证结果和任何未解决风险；若 VS Code/Cursor smoke 需要临时启动服务或占用端口，验证完成后停止对应进程并释放端口。
