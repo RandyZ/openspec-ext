@@ -4,6 +4,7 @@ import {
   buildInteractiveAgentCommand,
   InteractiveAgentTerminalManager,
 } from '@extension/services/interactiveAgentTerminalManager';
+import { setLocale, t } from '../../../src/i18n';
 
 vi.mock('vscode', () => ({
   TerminalLocation: {
@@ -18,6 +19,7 @@ vi.mock('vscode', () => ({
 describe('InteractiveAgentTerminalManager', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setLocale('en');
   });
 
   it('starts verify terminal with interactive agent command', async () => {
@@ -175,8 +177,25 @@ describe('InteractiveAgentTerminalManager', () => {
     expect(state.sessions.verify).toEqual({
       action: 'verify',
       status: 'error',
-      message: 'Cursor Agent CLI not found.',
+      message: t('verifyArchive.agentCliNotFound'),
     });
+  });
+
+  it('localizes the agent-not-found error message for zh-cn', async () => {
+    setLocale('zh-cn');
+    const manager = new InteractiveAgentTerminalManager({
+      isAgentAvailable: vi.fn().mockResolvedValue(false),
+      getModel: () => 'auto',
+    });
+
+    const state = await manager.start({
+      workspaceRoot: '/workspace/root',
+      changeName: 'demo-change',
+      action: 'verify',
+    });
+
+    expect(state.sessions.verify?.message).toBe(t('verifyArchive.agentCliNotFound'));
+    expect(state.sessions.verify?.message).not.toBe('Cursor Agent CLI not found.');
   });
 
   it('returns an error state when terminal creation fails', async () => {
@@ -201,6 +220,24 @@ describe('InteractiveAgentTerminalManager', () => {
     });
   });
 
+  it('falls back to a localized message when terminal creation throws without a message', async () => {
+    vi.mocked(vscode.window.createTerminal).mockImplementation(() => {
+      throw {};
+    });
+    const manager = new InteractiveAgentTerminalManager({
+      isAgentAvailable: vi.fn().mockResolvedValue(true),
+      getModel: () => 'auto',
+    });
+
+    const state = await manager.start({
+      workspaceRoot: '/workspace/root',
+      changeName: 'demo-change',
+      action: 'archive',
+    });
+
+    expect(state.sessions.archive?.message).toBe(t('verifyArchive.terminalCreateFailed'));
+  });
+
   it('shell-quotes workspace path and change name safely', () => {
     const command = buildInteractiveAgentCommand({
       workspaceRoot: "/tmp/workspace with spaces/it's-real",
@@ -212,6 +249,37 @@ describe('InteractiveAgentTerminalManager', () => {
     expect(command).toBe(
       "agent --workspace '/tmp/workspace with spaces/it'\"'\"'s-real' --model 'auto' '/opsx-archive' 'demo change'\"'\"'s name'"
     );
+  });
+
+  it('shell-quotes with Windows double-quote escaping on win32', () => {
+    const command = buildInteractiveAgentCommand({
+      workspaceRoot: 'C:\\tmp\\workspace with spaces',
+      model: 'auto',
+      action: 'archive',
+      changeName: 'demo change',
+      platform: 'win32',
+    });
+
+    // Windows uses double-quote wrapping; spaces stay inside the quoted arg and
+    // the command never uses POSIX single-quote escaping.
+    expect(command).toBe(
+      'agent --workspace "C:\\tmp\\workspace with spaces" --model "auto" "/opsx-archive" "demo change"'
+    );
+    expect(command).not.toContain("'");
+  });
+
+  it('shell-quotes embedded double quotes on Windows per CommandLineToArgvW', () => {
+    const command = buildInteractiveAgentCommand({
+      workspaceRoot: 'C:\\proj\\a "weird" path',
+      model: 'auto',
+      action: 'verify',
+      changeName: 'demo',
+      platform: 'win32',
+    });
+
+    // An embedded `"` becomes `\"` inside the double-quoted arg.
+    expect(command).toContain('"C:\\proj\\a \\"weird\\" path"');
+    expect(command).not.toContain("'");
   });
 });
 

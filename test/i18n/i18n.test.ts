@@ -134,5 +134,22 @@ describe('i18n', () => {
         expect(zhCn[key as keyof typeof zhCn]).toBeTruthy();
       }
     });
+
+    it('contains interactive Verify & Archive error/state keys in both locales', () => {
+      const requiredKeys = [
+        'verifyArchive.agentCliNotFound',
+        'verifyArchive.terminalCreateFailed',
+        'verifyArchive.managerUnavailable',
+        'verifyArchive.archivedArchiveRejected',
+        'verifyArchive.startedAt',
+        'command.archiveVerifyFirst',
+        'command.archiveVerifySuggest',
+      ];
+
+      for (const key of requiredKeys) {
+        expect(en[key as keyof typeof en]).toBeTruthy();
+        expect(zhCn[key as keyof typeof zhCn]).toBeTruthy();
+      }
+    });
   });
 });

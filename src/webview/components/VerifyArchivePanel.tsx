@@ -48,6 +48,18 @@ const mutedTextStyle: React.CSSProperties = {
   lineHeight: 1.5,
 };
 
+/**
+ * Format a session start timestamp (ms since epoch) as a locale-aware time.
+ * Falls back to a raw string if the platform cannot format it.
+ */
+function formatStartTime(startedAt: number): string {
+  try {
+    return new Date(startedAt).toLocaleTimeString();
+  } catch {
+    return new Date(startedAt).toISOString();
+  }
+}
+
 export const VerifyArchivePanel: React.FC<VerifyArchivePanelProps> = ({
   isArchived,
   sessions,
@@ -111,6 +123,11 @@ export const WorkflowActionCard: React.FC<{
   const title = isVerify ? t('verifyArchive.verifyTitle') : t('verifyArchive.archiveTitle');
   const runLabel = isVerify ? t('verifyArchive.runVerify') : t('verifyArchive.runArchive');
 
+  const startedAtLabel =
+    session?.status === 'running' && typeof session.startedAt === 'number'
+      ? t('verifyArchive.startedAt', { time: formatStartTime(session.startedAt) })
+      : undefined;
+
   return (
     <section style={cardStyle}>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -121,6 +138,7 @@ export const WorkflowActionCard: React.FC<{
               ? session.terminalName ?? t('verifyArchive.running')
               : disabledMessage ?? t('verifyArchive.ready')}
           </div>
+          {startedAtLabel && <div style={mutedTextStyle}>{startedAtLabel}</div>}
         </div>
         <button
           type="button"

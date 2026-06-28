@@ -75,23 +75,25 @@ export class DashboardProvider {
     logger.debug(`Received message: ${message.type}`);
 
     switch (message.type) {
-      case 'getDashboardData':
+      case 'getDashboardData': {
         const data = await this.dataManager.getDashboardData();
         webview.postMessage({
           type: 'dashboardData',
           data,
         });
         break;
+      }
 
-      case 'refresh':
+      case 'refresh': {
         const refreshedData = await this.dataManager.refresh();
         webview.postMessage({
           type: 'dashboardData',
           data: refreshedData,
         });
         break;
+      }
 
-      case 'toggleTask':
+      case 'toggleTask': {
         await this.dataManager.toggleTask(message.changeName, message.taskIndex);
         const updatedData = await this.dataManager.getDashboardData();
         webview.postMessage({
@@ -99,6 +101,7 @@ export class DashboardProvider {
           data: updatedData,
         });
         break;
+      }
 
       case 'openArtifact':
         // TODO: Open artifact in editor

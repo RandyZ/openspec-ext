@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
+import process from 'node:process';
 import { getCursorAgentModel } from './workflowLaunchConfig';
+import { t } from '../../i18n';
 import type {
   InteractiveWorkflowAction,
   InteractiveWorkflowSessionState,
@@ -40,14 +42,38 @@ function getSessionKey(
   return `${workspaceRoot}::${changeName}::${action}`;
 }
 
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'\"'\"'`)}'`;
+function isWindowsPlatform(platform: string = process.platform): boolean {
+  return platform === 'win32';
+}
+
+/**
+ * POSIX single-quote escaping. Safe for bash/zsh/dash: wraps the value in
+ * single quotes and escapes any embedded single quote via the `'"'"'` idiom.
+ */
+function posixQuote(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+/**
+ * Windows quoting for cmd.exe / PowerShell. Wraps the value in double quotes
+ * and escapes embedded double quotes and backslashes per the standard
+ * `CommandLineToArgvW` rules so a path/name with spaces stays a single arg.
+ */
+function windowsQuote(value: string): string {
+  let escaped = value.replace(/(\\*)"/g, '$1$1\\"');
+  escaped = escaped.replace(/(\\*)$/, '$1$1');
+  return `"${escaped}"`;
+}
+
+function shellQuote(value: string, platform: string = process.platform): string {
+  return isWindowsPlatform(platform) ? windowsQuote(value) : posixQuote(value);
 }
 
 async function defaultIsAgentAvailable(): Promise<boolean> {
   const { spawn } = await import('child_process');
+  const lookupCmd = isWindowsPlatform() ? 'where' : 'which';
   return new Promise((resolve) => {
-    const proc = spawn('which', ['agent'], { shell: true });
+    const proc = spawn(lookupCmd, ['agent'], { shell: true });
     let out = '';
     proc.stdout?.on('data', (chunk) => {
       out += chunk.toString();
@@ -62,15 +88,18 @@ export function buildInteractiveAgentCommand(params: {
   model: string;
   action: InteractiveWorkflowAction;
   changeName: string;
+  platform?: string;
 }): string {
+  const platform = params.platform ?? process.platform;
+  const q = (value: string) => shellQuote(value, platform);
   return [
     'agent',
     '--workspace',
-    shellQuote(params.workspaceRoot),
+    q(params.workspaceRoot),
     '--model',
-    shellQuote(params.model),
-    shellQuote(`/opsx-${params.action}`),
-    shellQuote(params.changeName),
+    q(params.model),
+    q(`/opsx-${params.action}`),
+    q(params.changeName),
   ].join(' ');
 }
 
@@ -124,7 +153,7 @@ export class InteractiveAgentTerminalManager implements vscode.Disposable {
         state: {
           action: request.action,
           status: 'error',
-          message: 'Cursor Agent CLI not found.',
+          message: t('verifyArchive.agentCliNotFound'),
         },
       });
       return this.getState(request.workspaceRoot, request.changeName);
@@ -170,7 +199,7 @@ export class InteractiveAgentTerminalManager implements vscode.Disposable {
         state: {
           action: request.action,
           status: 'error',
-          message: (error as Error).message || 'Failed to create interactive terminal.',
+          message: (error as Error).message || t('verifyArchive.terminalCreateFailed'),
         },
       });
     }

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import * as vscode from 'vscode';
 import { handleWebviewMessage } from '@extension/providers/webviewMessageHandler';
+import { setLocale, t } from '../../../src/i18n';
 
 const adapterFillChat = vi.hoisted(() => vi.fn());
 const cursorAdapterMock = vi.hoisted(() => ({
@@ -51,6 +52,7 @@ vi.mock('@extension/utils/logger', () => ({
 describe('handleWebviewMessage toggleTask', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setLocale('en');
     adapterFillChat.mockResolvedValue({ success: true, adapterId: 'cursor' });
   });
 
@@ -344,7 +346,7 @@ describe('handleWebviewMessage toggleTask', () => {
           archive: {
             action: 'archive',
             status: 'error',
-            message: 'Archived changes are read-only. Archive cannot run again.',
+            message: t('verifyArchive.archivedArchiveRejected'),
           },
         },
       },
@@ -384,5 +386,144 @@ describe('handleWebviewMessage toggleTask', () => {
         },
       },
     });
+  });
+
+  it('returns a localized error state when the interactive terminal manager is unavailable', async () => {
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+    };
+    const webview = {
+      postMessage: vi.fn(),
+    };
+
+    await handleWebviewMessage(
+      { type: 'getInteractiveWorkflowState', changeName: 'demo-change' },
+      webview as any,
+      dataManager as any,
+      undefined
+    );
+
+    expect(webview.postMessage).toHaveBeenCalledWith({
+      type: 'interactiveWorkflowState',
+      changeName: 'demo-change',
+      state: {
+        changeName: 'demo-change',
+        sessions: {
+          verify: {
+            action: 'verify',
+            status: 'error',
+            message: t('verifyArchive.managerUnavailable'),
+          },
+        },
+      },
+    });
+  });
+
+  it('returns a localized error state when running without an interactive terminal manager', async () => {
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+    };
+    const webview = {
+      postMessage: vi.fn(),
+    };
+
+    await handleWebviewMessage(
+      { type: 'runInteractiveWorkflow', changeName: 'demo-change', action: 'archive' },
+      webview as any,
+      dataManager as any,
+      undefined
+    );
+
+    expect(webview.postMessage).toHaveBeenCalledWith({
+      type: 'interactiveWorkflowState',
+      changeName: 'demo-change',
+      state: {
+        changeName: 'demo-change',
+        sessions: {
+          archive: {
+            action: 'archive',
+            status: 'error',
+            message: t('verifyArchive.managerUnavailable'),
+          },
+        },
+      },
+    });
+  });
+
+  it('archiveChange with verify-first choice routes to the Verify & Archive tab without archiving', async () => {
+    vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce(
+      t('command.archiveVerifyFirst') as any
+    );
+    const archiveChange = vi.fn();
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      archiveChange,
+      getDashboardData: vi.fn(),
+    };
+    const webview = {
+      postMessage: vi.fn(),
+    };
+
+    await handleWebviewMessage(
+      { type: 'archiveChange', name: 'demo-change' },
+      webview as any,
+      dataManager as any,
+      undefined
+    );
+
+    expect(archiveChange).not.toHaveBeenCalled();
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
+      'openspec.openChangeDetail',
+      'demo-change',
+      'verifyArchive',
+      'verify'
+    );
+  });
+
+  it('archiveChange with archive choice proceeds with direct archive', async () => {
+    vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce(
+      t('command.archive') as any
+    );
+    const archiveChange = vi.fn().mockResolvedValue(undefined);
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      archiveChange,
+      getDashboardData: vi.fn().mockResolvedValue({ changes: [], specs: [], lastRefresh: 1 }),
+    };
+    const webview = {
+      postMessage: vi.fn(),
+    };
+
+    await handleWebviewMessage(
+      { type: 'archiveChange', name: 'demo-change' },
+      webview as any,
+      dataManager as any,
+      undefined
+    );
+
+    expect(archiveChange).toHaveBeenCalledWith('demo-change');
+  });
+
+  it('archiveChange with dismiss (cancel) does not archive or open detail', async () => {
+    vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce(undefined as any);
+    const archiveChange = vi.fn();
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      archiveChange,
+      getDashboardData: vi.fn(),
+    };
+    const webview = {
+      postMessage: vi.fn(),
+    };
+
+    await handleWebviewMessage(
+      { type: 'archiveChange', name: 'demo-change' },
+      webview as any,
+      dataManager as any,
+      undefined
+    );
+
+    expect(archiveChange).not.toHaveBeenCalled();
+    expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
   });
 });

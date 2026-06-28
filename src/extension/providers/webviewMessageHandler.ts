@@ -11,6 +11,7 @@ import { getWorkflowLaunchConfig } from '../services/workflowLaunchConfig';
 import {
   InteractiveAgentTerminalManager,
 } from '../services/interactiveAgentTerminalManager';
+import { confirmDirectArchive } from '../commands/archiveConfirm';
 import {
   getEffectiveWorkflowAdapterId,
   shouldForceCursorWorkflowRoute,
@@ -190,12 +191,18 @@ export async function handleWebviewMessage(
     case 'archiveChange': {
       const name = message.name;
       if (!name) break;
-      const confirm = await vscode.window.showWarningMessage(
-        t('command.archiveConfirm', { name }),
-        { modal: true },
-        t('command.archive')
-      );
-      if (confirm === t('command.archive')) {
+      const confirm = await confirmDirectArchive(name);
+      if (confirm === 'verifyFirst') {
+        // Route into the interactive Verify & Archive tab (recommended path).
+        await vscode.commands.executeCommand(
+          'openspec.openChangeDetail',
+          name,
+          'verifyArchive',
+          'verify'
+        );
+        break;
+      }
+      if (confirm === 'archive') {
         await dataManager.archiveChange(name);
         vscode.window.showInformationMessage(t('command.archived', { name }));
         const afterArchive = await dataManager.getDashboardData();
@@ -515,7 +522,7 @@ export async function handleWebviewMessage(
       postInteractiveWorkflowState(
         webview,
         changeName,
-        handleInteractiveWorkflowAction({
+        await handleInteractiveWorkflowAction({
           kind: 'reveal',
           changeName,
           action,
@@ -532,7 +539,7 @@ export async function handleWebviewMessage(
       postInteractiveWorkflowState(
         webview,
         changeName,
-        handleInteractiveWorkflowAction({
+        await handleInteractiveWorkflowAction({
           kind: 'stop',
           changeName,
           action,
@@ -549,7 +556,7 @@ export async function handleWebviewMessage(
       postInteractiveWorkflowState(
         webview,
         changeName,
-        handleInteractiveWorkflowAction({
+        await handleInteractiveWorkflowAction({
           kind: 'clear',
           changeName,
           action,
@@ -568,7 +575,7 @@ export async function handleWebviewMessage(
         : buildInteractiveWorkflowErrorState(
           changeName,
           'verify',
-          'Interactive Agent terminal is unavailable.'
+          t('verifyArchive.managerUnavailable')
         );
       postInteractiveWorkflowState(webview, changeName, state);
       break;
@@ -716,27 +723,13 @@ function buildInteractiveWorkflowErrorState(
   };
 }
 
-function handleInteractiveWorkflowAction(params: {
-  kind: 'reveal' | 'stop' | 'clear';
-  changeName: string;
-  action: unknown;
-  workspaceRoot: string;
-  interactiveTerminalManager?: InteractiveAgentTerminalManager;
-}): InteractiveWorkflowState;
 async function handleInteractiveWorkflowAction(params: {
-  kind: 'run';
-  changeName: string;
-  action: unknown;
-  workspaceRoot: string;
-  interactiveTerminalManager?: InteractiveAgentTerminalManager;
-}): Promise<InteractiveWorkflowState>;
-function handleInteractiveWorkflowAction(params: {
   kind: 'run' | 'reveal' | 'stop' | 'clear';
   changeName: string;
   action: unknown;
   workspaceRoot: string;
   interactiveTerminalManager?: InteractiveAgentTerminalManager;
-}): InteractiveWorkflowState | Promise<InteractiveWorkflowState> {
+}): Promise<InteractiveWorkflowState> {
   if (!isInteractiveWorkflowAction(params.action)) {
     return buildInteractiveWorkflowErrorState(
       params.changeName,
@@ -748,14 +741,14 @@ function handleInteractiveWorkflowAction(params: {
     return buildInteractiveWorkflowErrorState(
       params.changeName,
       params.action,
-      'Interactive Agent terminal is unavailable.'
+      t('verifyArchive.managerUnavailable')
     );
   }
   if (params.changeName.startsWith('archive:') && params.action === 'archive') {
     return buildInteractiveWorkflowErrorState(
       params.changeName,
       'archive',
-      'Archived changes are read-only. Archive cannot run again.'
+      t('verifyArchive.archivedArchiveRejected')
     );
   }
 

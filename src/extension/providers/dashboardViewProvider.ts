@@ -4,6 +4,7 @@ import { logger } from '../utils/logger';
 import { DataManager, type DashboardData } from '../services/dataManager';
 import { InteractiveAgentTerminalManager } from '../services/interactiveAgentTerminalManager';
 import { ChangeDetailPanelManager } from './changeDetailPanelManager';
+import type { ChangeDetailTabId, InteractiveWorkflowAction } from '../../shared/interactiveWorkflow';
 import type { CliActivationDiagnosticView } from '../../webview/types/messages';
 import {
   handleWebviewMessage,
@@ -153,6 +154,19 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     if (this._view) {
       this._view.show?.(false);
     }
+  }
+
+  /**
+   * Open the Change Detail editor for a change, optionally at a specific tab
+   * and with an interactive workflow action to auto-start (e.g. verify).
+   * Used by direct-archive verify-first guidance and command-palette entry.
+   */
+  public openChangeDetail(
+    changeName: string,
+    options?: { initialTab?: ChangeDetailTabId; interactiveAction?: InteractiveWorkflowAction }
+  ): void {
+    if (!this.panelManager) return;
+    this.panelManager.open(changeName, options);
   }
 
   /**

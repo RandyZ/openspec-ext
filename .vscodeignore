@@ -5,6 +5,7 @@ src/
 build/
 .git/
 .codex/
+.codegraph/
 .gitignore
 *.md
 !README.md

@@ -4,6 +4,7 @@ import { DataManager } from '../services/dataManager';
 import { DashboardViewProvider } from '../providers/dashboardViewProvider';
 import { getAvailableAdapters, getCurrentAdapter } from '../adapters';
 import { t } from '../../i18n';
+import { confirmDirectArchive } from './archiveConfirm';
 
 export class CommandManager {
   constructor(
@@ -28,6 +29,11 @@ export class CommandManager {
       ),
       vscode.commands.registerCommand('openspec.archiveChange', (changeName?: string) =>
         this.handleArchiveChange(changeName)
+      ),
+      vscode.commands.registerCommand(
+        'openspec.openChangeDetail',
+        (changeName: string, initialTab?: string, interactiveAction?: string) =>
+          this.handleOpenChangeDetail(changeName, initialTab, interactiveAction)
       ),
       vscode.commands.registerCommand('openspec.selectAgentAdapter', () =>
         this.handleSelectAgentAdapter()
@@ -160,16 +166,22 @@ export class CommandManager {
         changeName = selected.label;
       }
 
-      // Confirm archive
-      const confirm = await vscode.window.showWarningMessage(
-        t('command.archiveConfirm', { name: changeName }),
-        { modal: true },
-        t('command.archive')
-      );
-
-      if (confirm !== t('command.archive')) {
+      // Confirm archive with verify-first guidance (workflow-control spec:
+      // "Direct archive keeps Verify guidance").
+      const confirm = await confirmDirectArchive(changeName!);
+      if (confirm === 'verifyFirst') {
+        // Route the user into the interactive Verify & Archive tab instead of
+        // archiving directly. This is the recommended path.
+        this.dashboardViewProvider.openChangeDetail(changeName!, {
+          initialTab: 'verifyArchive',
+          interactiveAction: 'verify',
+        });
         return;
       }
+      if (confirm !== 'archive') {
+        return;
+      }
+
 
       logger.info(`Archiving change: ${changeName}`);
 
@@ -189,6 +201,37 @@ export class CommandManager {
       logger.error('Failed to archive change', error as Error);
       vscode.window.showErrorMessage(t('command.archiveFailed'));
     }
+  }
+
+  /**
+   * Open the Change Detail editor, optionally at a specific tab with an
+   * interactive workflow action to auto-start. Invoked by the
+   * `openspec.openChangeDetail` command (used by the direct-archive
+   * verify-first guidance to route into the `Verify & Archive` tab).
+   *
+   * `initialTab` / `interactiveAction` are received as strings from the
+   * command API and narrowed here.
+   */
+  private handleOpenChangeDetail(
+    changeName: string,
+    initialTab?: string,
+    interactiveAction?: string
+  ): void {
+    if (typeof changeName !== 'string' || !changeName.trim()) return;
+    const validTabs = ['proposal', 'specs', 'design', 'tasks', 'verifyArchive'] as const;
+    const validActions = ['verify', 'archive'] as const;
+    const tab =
+      initialTab && (validTabs as readonly string[]).includes(initialTab)
+        ? (initialTab as (typeof validTabs)[number])
+        : undefined;
+    const action =
+      interactiveAction && (validActions as readonly string[]).includes(interactiveAction)
+        ? (interactiveAction as (typeof validActions)[number])
+        : undefined;
+    this.dashboardViewProvider.openChangeDetail(changeName, {
+      ...(tab !== undefined ? { initialTab: tab } : {}),
+      ...(action !== undefined ? { interactiveAction: action } : {}),
+    });
   }
 
   /**

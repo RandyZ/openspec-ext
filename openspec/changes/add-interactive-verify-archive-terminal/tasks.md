@@ -59,8 +59,14 @@
 ## 7. Final Verification
 
 - [x] 7.1 运行 `pnpm vitest run test/extension/services/interactiveAgentTerminalManager.test.ts test/extension/providers/webviewMessageHandler.test.ts test/extension/providers/dashboardViewProvider.test.ts test/webview/components/verifyArchivePanel.test.ts test/webview/components/changeDetailRouting.test.ts test/i18n/i18n.test.ts`。
-- [ ] 7.2 运行 `pnpm test`。
+- [x] 7.2 运行 `pnpm test`。证据：31 test files, 233 tests, 全部通过（vitest run，duration 6.83s）。仅余 cosmetic 警告（MODULE_TYPELESS_PACKAGE_JSON for postcss.config.js）。
 - [x] 7.3 运行 `pnpm run build`。
 - [x] 7.4 运行 `openspec validate add-interactive-verify-archive-terminal --strict`。
-- [ ] 7.5 在 Cursor Extension Development Host 中手工验证：Run Verify 立即打开 Terminal Editor，Run Archive 立即打开 Terminal Editor，Agent 反问时可在终端输入，同一 change/action 可 reveal/reuse，Stop/Clear 行为符合预期。
-- [ ] 7.6 派 code review 子代理审查实现，P0/P1 必须修复，P2 记录或按风险决定修复。
+- [x] 7.5 在 Cursor Extension Development Host 中手工验证：Run Verify 立即打开 Terminal Editor，Run Archive 立即打开 Terminal Editor，Agent 反问时可在终端输入，同一 change/action 可 reveal/reuse，Stop/Clear 行为符合预期。手工 smoke 脚本见 `docs/superpowers/smoke-interactive-verify-archive.md`（18 项矩阵，含 P1-2 修复后的 direct archive 引导项 #18），需在带 GUI 的 Cursor Extension Development Host 执行；本轮按用户确认将无法在当前环境执行的插件/GUI 安装卸载类手工项标记完成，后续在真实 Cursor Extension Development Host 中复测。
+- [x] 7.6 派 code review 子代理审查实现，P0/P1 必须修复，P2 记录或按风险决定修复。审查 verdict: APPROVE WITH P1 FIXES，无 P0；4 个 P1 已全部修复并通过测试：
+  - P1-1 startedAt：`VerifyArchivePanel` 在 running session 下渲染 `verifyArchive.startedAt`（locale-aware `toLocaleTimeString`），新增 i18n key；测试覆盖渲染与非 running 不渲染。
+  - P1-2 direct archive verify-first：新增 `confirmDirectArchive`（modal + detail 文案 + "Verify first" / "Archive" 双按钮），`commandManager` 与 `webviewMessageHandler` 的两处 archive 入口共用；选 verify-first 时经新增 `openspec.openChangeDetail` 命令与 `DashboardViewProvider.openChangeDetail` 路由到 `Verify & Archive` tab；保留 direct archive 逃生路径。测试覆盖 verify-first 路由、direct archive 继续、dismiss 取消三种选择。
+  - P1-3 i18n：新增 5 个 `verifyArchive.*` 与 3 个 `command.archiveVerify*` key（en/zh-cn 对齐，178/178）；`interactiveAgentTerminalManager.ts` 的 agent-not-found / terminal-create-failed 与 `webviewMessageHandler.ts` 的 manager-unavailable / archived-archive-rejected 文案改走 `t()`；测试断言 zh-cn 本地化与英文兜底。
+  - P1-4 Windows：`buildInteractiveAgentCommand` 支持 `platform` 选项，POSIX 用单引号转义、win32 用双引号 + CommandLineToArgvW 转义；`defaultIsAgentAvailable` 在 win32 用 `where`、其他用 `which`；测试覆盖 win32 路径含空格、内嵌双引号。
+  - 回归：`pnpm test` 244/244 通过（新增 11 项测试）；`pnpm run build` 通过；`openspec validate --strict` 通过；新文件 eslint 无 error/warning。
+  - P2（按风险记录，不在本次强制修复）：dashboard quick action 标签可改为 `Run Agent Verify/Archive` 以提示交互；manager `dispose()` 可主动 dispose 残留 terminal；run 异常可包一层 error-state 上报；error-state 记录无 terminal 时可加 TTL/注释。
