@@ -195,5 +195,18 @@
   "change.created": "Created {date}",
   "change.updated": "Updated {date}",
   "action.copyChangeName": "Copy change name",
-  "action.copiedChangeName": "Copied change name"
+  "action.copiedChangeName": "Copied change name",
+
+  "cli.runtime.installed": "Installed CLI",
+  "cli.runtime.localSource": "Local Source",
+  "cli.runtime.customPath": "Custom Path",
+  "scope.localRoot": "Local Root",
+  "scope.health.ok": "Healthy",
+  "scope.health.warning": "Issues",
+  "scope.health.unavailable": "Unavailable",
+  "references.title": "References",
+  "references.copyFetchCommand": "Copy fetch command",
+  "references.unresolvedFix": "Clone or register this store before using it as a reference",
+  "worksets.title": "Worksets",
+  "worksets.description": "Local personal views for opening folders together."
 }

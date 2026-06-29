@@ -816,3 +816,132 @@ describe('CLI activation diagnostics', () => {
     expect(service.getCliActivationDiagnostic()).toBeNull();
   });
 });
+
+describe('argsPrefix and scope support', () => {
+  const workspaceRoot = '/fake/workspace';
+
+  beforeEach(() => {
+    vi.mocked(spawn).mockReset();
+  });
+
+  function mockVersionThenCommand(commandStdout: string) {
+    let versionCalled = false;
+    vi.mocked(spawn).mockImplementation((_command: string, args: readonly string[], _options?: any) => {
+      if (args[0] === '--version' && !versionCalled) {
+        versionCalled = true;
+        return createSpawnSuccessProcess('1.3.1') as any;
+      }
+      return createSpawnSuccessProcess(commandStdout) as any;
+    });
+  }
+
+  function mockVersionThenCommandExit(code: number, stderrOut = '') {
+    let versionCalled = false;
+    vi.mocked(spawn).mockImplementation((_command: string, args: readonly string[], _options?: any) => {
+      if (args[0] === '--version' && !versionCalled) {
+        versionCalled = true;
+        return createSpawnSuccessProcess('1.3.1') as any;
+      }
+      return {
+        stdout: { on: vi.fn() },
+        stderr: {
+          on: (_e: string, fn: (d: Buffer) => void) => {
+            if (stderrOut) setImmediate(() => fn(Buffer.from(stderrOut)));
+          },
+        },
+        on: (_e: string, fn: (...args: any[]) => void) => {
+          if (_e === 'close') setImmediate(() => fn(code));
+        },
+        kill: vi.fn(),
+      } as any;
+    });
+  }
+
+  it('runJson spawns with argsPrefix from runtime (installed mode)', async () => {
+    // Simulate installed mode: resolver checks version, then runJson spawns the command
+    let spawnCalls: Array<{ command: string; args: readonly string[] }> = [];
+    vi.mocked(spawn).mockImplementation((command: string, args: readonly string[], _options?: any) => {
+      spawnCalls.push({ command, args });
+      if (args[0] === '--version') {
+        return createSpawnSuccessProcess('1.3.1') as any;
+      }
+      expect(command).toBe('openspec');
+      return createSpawnSuccessProcess(JSON.stringify({ changes: [{ name: 'test-change' }] })) as any;
+    });
+
+    const service = new OpenSpecCliService(workspaceRoot);
+    const result = await service.runJson(['list', '--json']);
+    expect(result).toEqual({ changes: [{ name: 'test-change' }] });
+    // Verify the second call has the correct args (first call is --version from resolver)
+    expect(spawnCalls.length).toBe(2);
+    expect(spawnCalls[1].command).toBe('openspec');
+    expect(spawnCalls[1].args).toEqual(['list', '--json']);
+  });
+
+  it('runJson prepends argsPrefix in local source mode', async () => {
+    // Simulate local source mode by mocking spawn to expect node + bin/openspec.js as prefix
+    let capturedCommand = '';
+    let capturedArgs: readonly string[] = [];
+    vi.mocked(spawn).mockImplementation((command: string, args: readonly string[], _options?: any) => {
+      capturedCommand = command;
+      capturedArgs = args;
+      return createSpawnSuccessProcess(JSON.stringify({ result: 'ok' })) as any;
+    });
+
+    const service = new OpenSpecCliService(workspaceRoot);
+
+    // Override the resolver's resolveRuntime to return local source mode
+    const originalResolveRuntime = (service as any).resolver.resolveRuntime.bind((service as any).resolver);
+    (service as any).resolver.resolveRuntime = vi.fn().mockResolvedValue({
+      command: process.execPath,
+      argsPrefix: ['/Users/test/openspec/bin/openspec.js'],
+      env: process.env,
+      version: '1.4.0',
+      source: 'localSource',
+      sourceLabel: 'local source (/Users/test/openspec)',
+      diagnostics: [],
+    });
+
+    try {
+      const result = await service.runJson(['status', '--json']);
+      expect(result).toEqual({ result: 'ok' });
+      expect(capturedCommand).toBe(process.execPath);
+      expect(capturedArgs).toEqual(['/Users/test/openspec/bin/openspec.js', 'status', '--json']);
+    } finally {
+      (service as any).resolver.resolveRuntime = originalResolveRuntime;
+    }
+  });
+
+  it('runJson throws when JSON parsing fails', async () => {
+    mockVersionThenCommand('not valid json');
+
+    const service = new OpenSpecCliService(workspaceRoot);
+    await expect(service.runJson(['list', '--json'])).rejects.toThrow();
+  });
+
+  it('runJson rejects when command exits non-zero', async () => {
+    mockVersionThenCommandExit(1, 'error output');
+
+    const service = new OpenSpecCliService(workspaceRoot);
+    await expect(service.runJson(['list', '--json'])).rejects.toThrow('Command failed with code 1');
+  });
+
+  it('withStoreFlag appends --store when storeId is set', () => {
+    const service = new OpenSpecCliService(workspaceRoot);
+    const result = (service as any).withStoreFlag(['list', '--json'], 'store-123');
+    expect(result).toEqual(['list', '--json', '--store', 'store-123']);
+  });
+
+  it('withStoreFlag returns args unchanged when storeId is undefined', () => {
+    const service = new OpenSpecCliService(workspaceRoot);
+    const result = (service as any).withStoreFlag(['list', '--json'], undefined);
+    expect(result).toEqual(['list', '--json']);
+  });
+
+  it('withStoreFlag returns args unchanged when storeId is empty string', () => {
+    const service = new OpenSpecCliService(workspaceRoot);
+    const result = (service as any).withStoreFlag(['list', '--json'], '');
+    // empty string is falsy, so no --store appended
+    expect(result).toEqual(['list', '--json']);
+  });
+});

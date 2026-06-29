@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useVscode } from '../hooks/useVscode';
 import { useAppState } from '../context/AppContext';
 import { sendMessage } from '../types/messages';
@@ -7,6 +7,9 @@ import { Header } from './Header';
 import { ChangesSection } from './ChangesSection';
 import { SpecsSection } from './SpecsSection';
 import { CliActivationDiagnosticCard } from './CliActivationDiagnosticCard';
+import { ScopeBar } from './ScopeBar';
+import { ReferencesPanel } from './ReferencesPanel';
+import { WorksetsPanel } from './WorksetsPanel';
 import { t } from '../../i18n';
 import {
   buildWorkflowCommand,
@@ -74,6 +77,10 @@ export const Dashboard: React.FC = () => {
       postMessage(sendMessage.getArchivedChanges());
     }
   };
+
+  const handleSelectScope = useCallback((scopeId: string) => {
+    postMessage(sendMessage.selectScope(scopeId));
+  }, [postMessage]);
 
   const handleOpenArchivedChange = (directoryName: string) => {
     postMessage(sendMessage.openChangeDetailInEditor(`archive:${directoryName}`));
@@ -163,6 +170,40 @@ export const Dashboard: React.FC = () => {
 
         {data ? (
           <>
+            {/* Scope Bar */}
+            <ScopeBar
+              scope={data.scope}
+              scopes={data.scopes}
+              health={
+                data.relationships?.health?.root
+                  ? {
+                      status: data.relationships.health.root.healthy ? ('ok' as const) : ('warning' as const),
+                      label: data.relationships.health.root.healthy ? 'Healthy' : 'Issues',
+                    }
+                  : undefined
+              }
+              loading={loading}
+              onSelectScope={handleSelectScope}
+            />
+
+            {/* References Panel */}
+            {data.relationships?.references && data.relationships.references.length > 0 && (
+              <ReferencesPanel
+                references={data.relationships.references}
+                onCopyFetch={(text) => {
+                  navigator.clipboard.writeText(text).catch(() => {});
+                }}
+              />
+            )}
+
+            {/* Worksets Panel */}
+            <WorksetsPanel
+              worksets={[]}
+              onOpenWorkset={(name) => {
+                postMessage(sendMessage.openWorkset(name));
+              }}
+            />
+
             <ChangesSection
               changes={data.changes}
               onOpenChange={handleOpenChange}

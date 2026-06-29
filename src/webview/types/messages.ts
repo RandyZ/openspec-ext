@@ -50,7 +50,9 @@ export type WebviewMessage =
   | { type: 'retryCliDetection' }
   | { type: 'openCliPathSettings' }
   | { type: 'copyCliDiagnostic' }
-  | { type: 'openCliInstallDocs' };
+  | { type: 'openCliInstallDocs' }
+  | { type: 'selectScope'; scopeId: string }
+  | { type: 'openWorkset'; name: string };
 
 // Message types from extension to webview
 export type ExtensionMessage =
@@ -69,6 +71,7 @@ export type ExtensionMessage =
     debug?: boolean;
     initialTab?: ChangeDetailTabId;
     interactiveAction?: InteractiveWorkflowAction;
+    scope?: OpenSpecScopeView;
   }
   | { type: 'archivedChanges'; items: ArchivedChangeInfo[] }
   | { type: 'agentAdapters'; available: { id: string; displayName: string }[]; currentId: string | null }
@@ -94,7 +97,38 @@ export interface CliActivationDiagnosticView {
   normalizedMessage: string;
 }
 
+export interface OpenSpecScopeView {
+  id: string;
+  label: string;
+  source: 'local' | 'store' | 'declared';
+  rootPath: string;
+  storeId?: string;
+  runtimeSource: 'installed' | 'customPath' | 'localSource';
+}
+
+export interface ReferenceIndexEntryView {
+  store_id: string;
+  specs?: { id: string; summary?: string }[];
+  fetch?: string;
+  status: { severity: string; code: string; message: string; fix?: string }[];
+}
+
+export interface RelationshipPanelData {
+  references: ReferenceIndexEntryView[];
+  health?: { root: { path: string; healthy: boolean; status: unknown[] } };
+}
+
+export interface FeatureDiagnosticView {
+  code: string;
+  message: string;
+  severity: 'info' | 'warning' | 'error';
+}
+
 export interface DashboardData {
+  scope?: OpenSpecScopeView;
+  scopes?: OpenSpecScopeView[];
+  relationships?: RelationshipPanelData;
+  featureDiagnostics?: FeatureDiagnosticView[];
   changes: ChangeInfo[];
   specs: SpecInfo[];
   lastRefresh: number;
@@ -332,5 +366,15 @@ export const sendMessage = {
 
   openCliInstallDocs: (): WebviewMessage => ({
     type: 'openCliInstallDocs',
+  }),
+
+  selectScope: (scopeId: string): WebviewMessage => ({
+    type: 'selectScope',
+    scopeId,
+  }),
+
+  openWorkset: (name: string): WebviewMessage => ({
+    type: 'openWorkset',
+    name,
   }),
 };

@@ -13,11 +13,21 @@ import { getAvailableAdapters, getCurrentAdapter } from '../adapters';
 import { ChangeInfo, ChangeDetails, SpecInfo, ArchivedChangeInfo } from './types';
 import { extractProposalWhy } from './proposalWhy';
 import type { CliActivationDiagnostic } from './cliActivationDiagnostic';
+import { OpenSpecScopeManager, type OpenSpecScope } from './openspecScope';
+import { detectOpenSpecFeatures, type OpenSpecCapabilities } from './openspecFeatures';
+
+export interface ScopeInfo {
+  id: string;
+  label: string;
+  source: string;
+  capabilities: OpenSpecCapabilities;
+}
 
 export interface DashboardData {
   changes: ChangeInfo[];
   specs: SpecInfo[];
   lastRefresh: number;
+  scope?: ScopeInfo;
 }
 
 export interface AgentAdapterInfo {
@@ -52,6 +62,11 @@ export class DataManager {
   private refreshCallbacks: Set<(data: DashboardData) => void> = new Set();
   private artifactChangedCallbacks: Set<(event: ArtifactChangedEvent) => void> = new Set();
 
+  // Scope-aware additions
+  private scopeManager?: OpenSpecScopeManager;
+  private capabilities?: OpenSpecCapabilities;
+  private scopedContentAccess = new Map<string, IOpenSpecContentAccess>();
+
   constructor(private workspaceRoot: string) {
     const openspecDir = path.join(workspaceRoot, 'openspec');
 
@@ -73,6 +88,47 @@ export class DataManager {
    */
   getCliDiagnostic(): CliActivationDiagnostic | null {
     return this.cliDiagnostic;
+  }
+
+  // ── Scope-aware additions ──────────────────────────────────────────────────
+
+  /** Initialize scope manager after CLI service is ready. Call from activate(). */
+  async initializeScopeManager(): Promise<void> {
+    this.capabilities = await detectOpenSpecFeatures(this.cliService);
+    this.scopeManager = new OpenSpecScopeManager(this.workspaceRoot, this.cliService, this.capabilities);
+    await this.scopeManager.loadScopeOptions();
+    this.scopeManager.onDidChangeScope(() => {
+      this.cachedData = null;
+      this.scopedContentAccess.clear();
+    });
+  }
+
+  getScopeManager(): OpenSpecScopeManager | undefined {
+    return this.scopeManager;
+  }
+
+  getSelectedScope(): OpenSpecScope | undefined {
+    return this.scopeManager?.getSelectedScope();
+  }
+
+  selectScope(scopeId: string): void {
+    this.scopeManager?.selectScope(scopeId);
+  }
+
+  getCapabilities(): OpenSpecCapabilities | undefined {
+    return this.capabilities;
+  }
+
+  private getContentAccessForScope(scope: OpenSpecScope): IOpenSpecContentAccess {
+    const cached = this.scopedContentAccess.get(scope.id);
+    if (cached) return cached;
+    const access = new FileManagerService(path.join(scope.rootPath, 'openspec'));
+    this.scopedContentAccess.set(scope.id, access);
+    return access;
+  }
+
+  async openWorkset(name: string): Promise<void> {
+    await this.cliService.runJson(['workset', 'open', name]);
   }
 
   /**
@@ -256,10 +312,21 @@ export class DataManager {
       ]);
       const changes = await this.enrichChangesWithProposalWhy(rawChanges);
 
+      const scope = this.getSelectedScope();
+      const scopeInfo: ScopeInfo | undefined = scope
+        ? {
+            id: scope.id,
+            label: scope.label,
+            source: scope.source,
+            capabilities: scope.capabilities,
+          }
+        : undefined;
+
       const data: DashboardData = {
         changes,
         specs,
         lastRefresh: Date.now(),
+        scope: scopeInfo,
       };
       this.cachedData = data;
       this.cliDiagnostic = null;
@@ -436,10 +503,11 @@ export class DataManager {
   }
 
   /**
-   * Read artifact content (Content Access)
+   * Read artifact content (Content Access), with optional scope override.
    */
-  async readArtifact(changeName: string, artifactType: string): Promise<string> {
-    return await this.contentAccess.readArtifact(changeName, artifactType);
+  async readArtifact(changeName: string, artifactType: string, scope?: OpenSpecScope): Promise<string> {
+    const access = scope ? this.getContentAccessForScope(scope) : this.contentAccess;
+    return await access.readArtifact(changeName, artifactType);
   }
 
   /**
@@ -482,11 +550,13 @@ export class DataManager {
   }
 
   /**
-   * Toggle task completion. 若子任务全部完成，会自动勾选父任务。
+   * Toggle task completion. If all subtasks are done, auto-completes the parent.
+   * Accepts optional scope override for store-scoped changes.
    */
-  async toggleTask(changeName: string, taskIndex: number): Promise<void> {
-    await this.contentAccess.toggleTask(changeName, taskIndex);
-    await this.contentAccess.autoCompleteParents(changeName);
+  async toggleTask(changeName: string, taskIndex: number, scope?: OpenSpecScope): Promise<void> {
+    const access = scope ? this.getContentAccessForScope(scope) : this.contentAccess;
+    await access.toggleTask(changeName, taskIndex);
+    await access.autoCompleteParents(changeName);
     await this.refresh();
   }
 

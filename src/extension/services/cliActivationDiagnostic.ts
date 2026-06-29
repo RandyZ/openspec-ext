@@ -5,6 +5,7 @@ export type CliActivationDiagnosticCategory =
   | 'spawn-failed'
   | 'shell-resolution-failed'
   | 'version-check-failed'
+  | 'local-source-invalid'
   | 'unknown';
 
 export type CliActivationRecoveryAction =
@@ -40,6 +41,7 @@ const RECOVERY_ACTIONS: Record<CliActivationDiagnosticCategory, CliActivationRec
   'spawn-failed': ['open-settings', 'copy-diagnostics', 'retry', 'open-docs'],
   'shell-resolution-failed': ['open-settings', 'open-docs', 'copy-diagnostics', 'retry'],
   'version-check-failed': ['open-docs', 'copy-diagnostics', 'retry'],
+  'local-source-invalid': ['open-settings', 'retry', 'copy-diagnostics', 'open-docs'],
   unknown: ['copy-diagnostics', 'retry', 'open-docs'],
 };
 

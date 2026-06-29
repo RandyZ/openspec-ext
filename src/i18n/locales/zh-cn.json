@@ -195,5 +195,18 @@
   "change.created": "创建于 {date}",
   "change.updated": "更新于 {date}",
   "action.copyChangeName": "复制 change 名称",
-  "action.copiedChangeName": "已复制 change 名称"
+  "action.copiedChangeName": "已复制 change 名称",
+
+  "cli.runtime.installed": "已安装 CLI",
+  "cli.runtime.localSource": "本地源码",
+  "cli.runtime.customPath": "自定义路径",
+  "scope.localRoot": "本地根目录",
+  "scope.health.ok": "正常",
+  "scope.health.warning": "异常",
+  "scope.health.unavailable": "不可用",
+  "references.title": "引用",
+  "references.copyFetchCommand": "复制获取命令",
+  "references.unresolvedFix": "使用此引用之前请先克隆或注册该存储",
+  "worksets.title": "工作集",
+  "worksets.description": "本地个人视图，用于同时打开多个文件夹。"
 }

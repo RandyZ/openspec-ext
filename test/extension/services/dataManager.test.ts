@@ -376,3 +376,196 @@ describe('DataManager CLI activation diagnostic', () => {
     expect((manager as any).listChangesFromFilesystem).not.toHaveBeenCalled();
   });
 });
+
+describe('DataManager scope-aware features', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function createManagerWithMockedCli() {
+    const manager = new DataManager('/tmp/openspec-ext-test-workspace');
+
+    Object.assign(manager as any, {
+      cliAvailable: true,
+      contentAccess: {
+        readArtifact: vi.fn().mockResolvedValue(''),
+        getChangeOpenspecYamlPath: vi.fn((name: string) => `/tmp/${name}/.openspec.yaml`),
+        toggleTask: vi.fn().mockResolvedValue(undefined),
+        autoCompleteParents: vi.fn().mockResolvedValue(undefined),
+      },
+      cliService: {
+        checkAvailability: vi.fn().mockResolvedValue(true),
+        getVersion: vi.fn().mockResolvedValue('1.0.0'),
+        showCliNotFoundError: vi.fn(),
+        createChange: vi.fn().mockResolvedValue(undefined),
+        getCliActivationDiagnostic: vi.fn().mockReturnValue(null),
+        runJson: vi.fn().mockResolvedValue({ stores: [] }),
+      },
+      fileWatcher: {
+        start: vi.fn(),
+        stop: vi.fn(),
+      },
+    });
+
+    return manager;
+  }
+
+  it('initializeScopeManager creates local scope and detects capabilities', async () => {
+    const manager = createManagerWithMockedCli();
+
+    await manager.initializeScopeManager();
+
+    expect(manager.getCapabilities()).toBeDefined();
+    // runJson mocked to return { stores: [] } for all probe calls, so all features are detected
+    expect(manager.getCapabilities()?.stores).toBe(true);
+
+    const scope = manager.getSelectedScope();
+    expect(scope).toBeDefined();
+    expect(scope?.source).toBe('local');
+    expect(scope?.label).toBe('Local Root');
+    expect(scope?.rootPath).toBe('/tmp/openspec-ext-test-workspace');
+  });
+
+  it('scopedContentAccess caches per scope and resolves to scoped FileManagerService', async () => {
+    const manager = createManagerWithMockedCli();
+
+    await manager.initializeScopeManager();
+
+    const scope = manager.getSelectedScope()!;
+    // Mock getContentAccessForScope to avoid real filesystem access
+    const mockScopedAccess = {
+      readArtifact: vi.fn().mockResolvedValue('scoped content'),
+    };
+    const getContentAccessSpy = vi
+      .spyOn(manager as any, 'getContentAccessForScope')
+      .mockReturnValue(mockScopedAccess);
+
+    // First call creates and caches
+    await manager.readArtifact('test-change', 'proposal', scope);
+    expect(getContentAccessSpy).toHaveBeenCalledWith(scope);
+
+    // Second call should also hit the method (spy intercepts, not real cache)
+    await manager.readArtifact('test-change', 'proposal', scope);
+    expect(getContentAccessSpy).toHaveBeenCalledTimes(2);
+
+    // Restore the real method and pre-populate the scopedContentAccess map
+    getContentAccessSpy.mockRestore();
+
+    // Pre-populate the cache with a mock entry
+    const mockCachedAccess = {
+      readArtifact: vi.fn().mockResolvedValue('cached content'),
+    };
+    const scopedMap = (manager as any).scopedContentAccess as Map<string, unknown>;
+    scopedMap.set(scope.id, mockCachedAccess);
+
+    // This call should use the cached entry without creating a new FileManagerService
+    const result = await manager.readArtifact('test-change', 'proposal', scope);
+    expect(result).toBe('cached content');
+    expect(mockCachedAccess.readArtifact).toHaveBeenCalledWith('test-change', 'proposal');
+  });
+
+  it('readArtifact without scope uses default contentAccess', async () => {
+    const manager = createManagerWithMockedCli();
+
+    await manager.initializeScopeManager();
+
+    const contentAccess = (manager as any).contentAccess;
+    await manager.readArtifact('test-change', 'proposal');
+    expect(contentAccess.readArtifact).toHaveBeenCalledWith('test-change', 'proposal');
+  });
+
+  it('readArtifact with scope uses scoped content access', async () => {
+    const manager = createManagerWithMockedCli();
+
+    await manager.initializeScopeManager();
+    const scope = manager.getSelectedScope()!;
+
+    // Replace the scoped content access to verify it is used
+    const scopedAccess = {
+      readArtifact: vi.fn().mockResolvedValue('scoped content'),
+    };
+    (manager as any).scopedContentAccess.set(scope.id, scopedAccess);
+
+    const result = await manager.readArtifact('test-change', 'proposal', scope);
+    expect(result).toBe('scoped content');
+    expect(scopedAccess.readArtifact).toHaveBeenCalledWith('test-change', 'proposal');
+    // Default contentAccess should NOT be called
+    expect((manager as any).contentAccess.readArtifact).not.toHaveBeenCalled();
+  });
+
+  it('toggleTask without scope uses default contentAccess', async () => {
+    const manager = createManagerWithMockedCli();
+
+    await manager.initializeScopeManager();
+
+    vi.spyOn(manager as any, 'refresh').mockResolvedValue(undefined);
+    const contentAccess = (manager as any).contentAccess;
+
+    await manager.toggleTask('test-change', 0);
+    expect(contentAccess.toggleTask).toHaveBeenCalledWith('test-change', 0);
+    expect(contentAccess.autoCompleteParents).toHaveBeenCalledWith('test-change');
+  });
+
+  it('toggleTask with scope uses scoped content access', async () => {
+    const manager = createManagerWithMockedCli();
+
+    await manager.initializeScopeManager();
+    const scope = manager.getSelectedScope()!;
+
+    vi.spyOn(manager as any, 'refresh').mockResolvedValue(undefined);
+
+    const scopedAccess = {
+      toggleTask: vi.fn().mockResolvedValue(undefined),
+      autoCompleteParents: vi.fn().mockResolvedValue(undefined),
+    };
+    (manager as any).scopedContentAccess.set(scope.id, scopedAccess);
+
+    await manager.toggleTask('test-change', 2, scope);
+    expect(scopedAccess.toggleTask).toHaveBeenCalledWith('test-change', 2);
+    expect(scopedAccess.autoCompleteParents).toHaveBeenCalledWith('test-change');
+    // Default contentAccess should NOT be called
+    expect((manager as any).contentAccess.toggleTask).not.toHaveBeenCalled();
+  });
+
+  it('getDashboardData includes scope info when scope manager is initialized', async () => {
+    const manager = createManagerWithMockedCli();
+
+    await manager.initializeScopeManager();
+
+    vi.spyOn(manager as any, 'stateReader', 'get').mockReturnValue({
+      listChanges: vi.fn().mockResolvedValue([]),
+      listSpecs: vi.fn().mockResolvedValue([]),
+    });
+    vi.spyOn(manager as any, 'enrichChangesWithProposalWhy').mockResolvedValue([]);
+
+    const data = await manager.refresh();
+
+    expect(data.scope).toBeDefined();
+    expect(data.scope?.id).toBe('local:/tmp/openspec-ext-test-workspace');
+    expect(data.scope?.source).toBe('local');
+    expect(data.scope?.label).toBe('Local Root');
+    expect(data.scope?.capabilities).toBeDefined();
+  });
+
+  it('selectScope changes selected scope and triggers change listener', async () => {
+    const manager = createManagerWithMockedCli();
+
+    await manager.initializeScopeManager();
+
+    // Mock stores being available
+    vi.spyOn((manager as any).cliService, 'runJson').mockResolvedValue({
+      stores: [{ id: 'my-store', root: '/tmp/store-root' }],
+    });
+
+    // Reload scope options to pick up store
+    await manager.getScopeManager()?.loadScopeOptions();
+
+    // Initially local
+    expect(manager.getSelectedScope()?.source).toBe('local');
+
+    // Select store scope
+    manager.selectScope('store:my-store');
+    expect(manager.getSelectedScope()?.source).toBe('store');
+    expect(manager.getSelectedScope()?.storeId).toBe('my-store');
+  });
+});

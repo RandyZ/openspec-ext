@@ -10,6 +10,18 @@ export interface ResolvedOpenSpecCli {
   diagnostics: string[];
 }
 
+export type OpenSpecRuntimeSource = 'installed' | 'customPath' | 'localSource';
+
+export interface ResolvedOpenSpecRuntime {
+  command: string;
+  argsPrefix: string[];
+  env: NodeJS.ProcessEnv;
+  version: string;
+  source: OpenSpecRuntimeSource;
+  sourceLabel: string;
+  diagnostics: string[];
+}
+
 export interface OpenSpecCliResolverOptions {
   timeoutMs?: number;
   knownPaths?: string[];
@@ -26,7 +38,8 @@ const DEFAULT_KNOWN_PATHS = [
 export class OpenSpecCliResolutionError extends Error {
   constructor(
     message: string,
-    public readonly diagnostics: string[]
+    public readonly diagnostics: string[],
+    public readonly category: string = 'unknown'
   ) {
     super(message);
     this.name = 'OpenSpecCliResolutionError';
@@ -82,6 +95,104 @@ export class OpenSpecCliResolver {
     }
 
     throw new OpenSpecCliResolutionError('OpenSpec CLI executable could not be resolved', diagnostics);
+  }
+
+  async resolveRuntime(): Promise<ResolvedOpenSpecRuntime> {
+    const config = vscode.workspace.getConfiguration('openspec');
+    const cliMode = (config.get<string>('cliMode') ?? 'auto').trim();
+    const diagnostics: string[] = [
+      `openspec.cliMode=${cliMode}`,
+    ];
+
+    if (cliMode === 'localSource') {
+      const sourcePath = (config.get<string>('localOpenSpecSourcePath') ?? '').trim();
+      diagnostics.push(`openspec.localOpenSpecSourcePath=${sourcePath || '<empty>'}`);
+
+      if (!sourcePath) {
+        diagnostics.push('localSource mode: source path is empty');
+        throw new OpenSpecCliResolutionError(
+          'OpenSpec local source path is not configured. Set openspec.localOpenSpecSourcePath.',
+          diagnostics,
+          'local-source-invalid'
+        );
+      }
+
+      const openspecBin = path.join(sourcePath, 'bin', 'openspec.js');
+      const command = process.execPath; // Node.js executable
+      const argsPrefix = [openspecBin];
+      const env = { ...process.env };
+
+      try {
+        const version = (await this.spawnAndCollect(
+          command,
+          [...argsPrefix, '--version'],
+          this.options.timeoutMs,
+          env
+        )).trim();
+        diagnostics.push(`localSource mode: ok (${command} ${openspecBin}) -> ${version}`);
+        return {
+          command,
+          argsPrefix,
+          env,
+          version,
+          source: 'localSource',
+          sourceLabel: `local source (${sourcePath})`,
+          diagnostics: [...diagnostics],
+        };
+      } catch (err) {
+        diagnostics.push(`localSource mode: failed (${command} ${openspecBin}) ${(err as Error).message}`);
+        throw new OpenSpecCliResolutionError(
+          `OpenSpec local source checkout invalid: ${sourcePath}`,
+          diagnostics,
+          'local-source-invalid'
+        );
+      }
+    }
+
+    if (cliMode === 'customPath') {
+      const configuredPath = this.getConfiguredPath();
+      diagnostics.push(`openspec.cliPath=${configuredPath || '<empty>'}`);
+
+      if (!configuredPath) {
+        diagnostics.push('customPath mode: cliPath is empty');
+        throw new OpenSpecCliResolutionError(
+          'OpenSpec CLI path is not configured in customPath mode. Set openspec.cliPath.',
+          diagnostics,
+          'configured-path-invalid'
+        );
+      }
+
+      const resolved = await this.tryCommand(configuredPath, diagnostics, 'customPath mode');
+      if (resolved) {
+        return {
+          command: resolved.command,
+          argsPrefix: [],
+          env: resolved.env,
+          version: resolved.version,
+          source: 'customPath',
+          sourceLabel: `custom path (${configuredPath})`,
+          diagnostics: [...diagnostics],
+        };
+      }
+
+      throw new OpenSpecCliResolutionError(
+        `Configured OpenSpec CLI path is invalid: ${configuredPath}`,
+        diagnostics,
+        'configured-path-invalid'
+      );
+    }
+
+    // cliMode === 'auto' or 'installed' — use existing resolve() behavior
+    const base = await this.resolve();
+    return {
+      command: base.command,
+      argsPrefix: [],
+      env: base.env,
+      version: base.version,
+      source: 'installed',
+      sourceLabel: `installed (${base.command})`,
+      diagnostics: [...base.diagnostics],
+    };
   }
 
   private cache(resolved: ResolvedOpenSpecCli): ResolvedOpenSpecCli {

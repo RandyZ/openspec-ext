@@ -429,6 +429,79 @@ export class OpenSpecCliService {
   }
 
   /**
+   * Append --store <storeId> flag when a store ID is provided.
+   */
+  private withStoreFlag(args: string[], storeId?: string): string[] {
+    if (storeId) {
+      return [...args, '--store', storeId];
+    }
+    return args;
+  }
+
+  /**
+   * Execute OpenSpec CLI with args prefix from the resolved runtime.
+   * Resolves the runtime (which may include argsPrefix for local source mode),
+   * prepends the prefix, and spawns the process.
+   */
+  private async execOpenSpecWithArgsPrefix(args: string[]): Promise<string> {
+    const runtime = await this.resolver.resolveRuntime();
+    const fullArgs = [...runtime.argsPrefix, ...args];
+    const isLocalSource = runtime.source === 'localSource';
+
+    return new Promise((resolve, reject) => {
+      const proc = spawn(runtime.command, fullArgs, {
+        cwd: this.workspaceRoot,
+        env: runtime.env,
+        // For local source mode (node + bin/openspec.js), never use shell.
+        // Otherwise use the existing platform-specific shell behavior.
+        shell: !isLocalSource && process.platform === 'win32',
+        windowsHide: !isLocalSource && process.platform === 'win32',
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      proc.stdout.on('data', (data) => {
+        stdout += data.toString();
+      });
+
+      proc.stderr.on('data', (data) => {
+        stderr += data.toString();
+      });
+
+      proc.on('close', (code) => {
+        if (code !== 0) {
+          reject(
+            new OpenSpecCliError(
+              `Command failed with code ${code}`,
+              code || -1,
+              stderr
+            )
+          );
+        } else {
+          resolve(stdout);
+        }
+      });
+
+      proc.on('error', (error) => {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          this.resolver.clearCache();
+        }
+        reject(new Error(`Failed to spawn openspec: ${error.message}`));
+      });
+    });
+  }
+
+  /**
+   * Execute an OpenSpec CLI command expecting JSON output.
+   * Resolves the runtime, prepends argsPrefix, and parses the result as JSON.
+   */
+  async runJson(args: string[]): Promise<unknown> {
+    const output = await this.execOpenSpecWithArgsPrefix(args);
+    return JSON.parse(output);
+  }
+
+  /**
    * Execute OpenSpec CLI command with retry logic.
    * On "command not found" (exit 127 or spawn ENOENT), calls showCliNotFoundError() and rethrows; no file fallback.
    */

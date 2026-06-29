@@ -3,11 +3,18 @@ import { spawn } from 'child_process';
 import { OpenSpecCliResolutionError, OpenSpecCliResolver } from '@extension/services/openspecCliResolver';
 
 let cliPath = '';
+let cliMode = 'auto';
+let localOpenSpecSourcePath = '';
 
 vi.mock('vscode', () => ({
   workspace: {
     getConfiguration: vi.fn(() => ({
-      get: vi.fn((key: string) => (key === 'cliPath' ? cliPath : undefined)),
+      get: vi.fn((key: string) => {
+        if (key === 'cliPath') return cliPath;
+        if (key === 'cliMode') return cliMode;
+        if (key === 'localOpenSpecSourcePath') return localOpenSpecSourcePath;
+        return undefined;
+      }),
     })),
   },
 }));
@@ -58,6 +65,8 @@ describe('OpenSpecCliResolver', () => {
 
   beforeEach(() => {
     cliPath = '';
+    cliMode = 'auto';
+    localOpenSpecSourcePath = '';
     calls.length = 0;
     vi.mocked(spawn).mockReset();
   });
@@ -183,5 +192,103 @@ describe('OpenSpecCliResolver', () => {
     await resolver.resolve();
 
     expect(calls.map((c) => c.command)).toEqual(['/first/openspec', '/second/openspec']);
+  });
+});
+
+describe('OpenSpecCliResolver runtime mode', () => {
+  const calls: SpawnCall[] = [];
+
+  beforeEach(() => {
+    cliPath = '';
+    cliMode = 'auto';
+    localOpenSpecSourcePath = '';
+    calls.length = 0;
+    vi.mocked(spawn).mockReset();
+  });
+
+  it('resolveRuntime() returns argsPrefix:[] and source installed for auto/installed mode', async () => {
+    cliMode = 'installed';
+    vi.mocked(spawn).mockImplementation((command: string, args: string[]) => {
+      calls.push({ command, args });
+      return createProcess('1.3.1') as any;
+    });
+
+    const result = await new OpenSpecCliResolver('/workspace').resolveRuntime();
+
+    expect(result.command).toBe('openspec');
+    expect(result.argsPrefix).toEqual([]);
+    expect(result.source).toBe('installed');
+    expect(result.version).toBe('1.3.1');
+    expect(result.sourceLabel).toBe('installed (openspec)');
+  });
+
+  it('resolveRuntime() returns argsPrefix with source path for localSource mode', async () => {
+    cliMode = 'localSource';
+    localOpenSpecSourcePath = '/src/OpenSpec';
+    vi.mocked(spawn).mockImplementation((command: string, args: string[]) => {
+      calls.push({ command, args });
+      return createProcess('1.5.0') as any;
+    });
+
+    const result = await new OpenSpecCliResolver('/workspace').resolveRuntime();
+
+    expect(result.command).toBe(process.execPath);
+    expect(result.argsPrefix).toEqual(['/src/OpenSpec/bin/openspec.js']);
+    expect(result.source).toBe('localSource');
+    expect(result.version).toBe('1.5.0');
+    expect(result.sourceLabel).toBe('local source (/src/OpenSpec)');
+    expect(calls[0].args).toContain('--version');
+  });
+
+  it('resolveRuntime() throws for localSource mode with empty source path', async () => {
+    cliMode = 'localSource';
+    localOpenSpecSourcePath = '';
+
+    await expect(
+      new OpenSpecCliResolver('/workspace').resolveRuntime()
+    ).rejects.toMatchObject({
+      name: 'OpenSpecCliResolutionError',
+      category: 'local-source-invalid',
+    });
+  });
+
+  it('resolveRuntime() throws for localSource mode with invalid source path', async () => {
+    cliMode = 'localSource';
+    localOpenSpecSourcePath = '/bad/path';
+    vi.mocked(spawn).mockImplementation(() => createSpawnError() as any);
+
+    await expect(
+      new OpenSpecCliResolver('/workspace').resolveRuntime()
+    ).rejects.toMatchObject({
+      name: 'OpenSpecCliResolutionError',
+      category: 'local-source-invalid',
+    });
+  });
+
+  it('resolveRuntime() returns source customPath for customPath mode', async () => {
+    cliMode = 'customPath';
+    cliPath = '/usr/local/bin/openspec';
+    vi.mocked(spawn).mockImplementation((command: string, args: string[]) => {
+      calls.push({ command, args });
+      return createProcess('1.3.1') as any;
+    });
+
+    const result = await new OpenSpecCliResolver('/workspace').resolveRuntime();
+
+    expect(result.source).toBe('customPath');
+    expect(result.sourceLabel).toBe('custom path (/usr/local/bin/openspec)');
+    expect(result.argsPrefix).toEqual([]);
+  });
+
+  it('resolveRuntime() throws for customPath mode with empty cliPath', async () => {
+    cliMode = 'customPath';
+    cliPath = '';
+
+    await expect(
+      new OpenSpecCliResolver('/workspace').resolveRuntime()
+    ).rejects.toMatchObject({
+      name: 'OpenSpecCliResolutionError',
+      category: 'configured-path-invalid',
+    });
   });
 });

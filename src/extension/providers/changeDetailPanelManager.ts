@@ -37,6 +37,13 @@ export class ChangeDetailPanelManager {
     debug?: boolean;
     initialTab?: ChangeDetailTabId;
     interactiveAction?: InteractiveWorkflowAction;
+    scope?: {
+      id: string;
+      label: string;
+      source: string;
+      rootPath: string;
+      storeId?: string;
+    };
   }> {
     return this.buildSetContextPayloadWithOptions(changeName);
   }
@@ -55,8 +62,25 @@ export class ChangeDetailPanelManager {
     debug?: boolean;
     initialTab?: ChangeDetailTabId;
     interactiveAction?: InteractiveWorkflowAction;
+    scope?: {
+      id: string;
+      label: string;
+      source: string;
+      rootPath: string;
+      storeId?: string;
+    };
   }> {
     const debug = vscode.workspace.getConfiguration('openspec').get<boolean>('debug') ?? false;
+    const selectedScope = this.dataManager.getSelectedScope();
+    const scopeView = selectedScope
+      ? {
+        id: selectedScope.id,
+        label: selectedScope.label,
+        source: selectedScope.source,
+        rootPath: selectedScope.rootPath,
+        storeId: selectedScope.storeId,
+      }
+      : undefined;
     try {
       const data = await this.dataManager.getDashboardData();
       const change = data.changes.find((c) => c.name === changeName);
@@ -70,6 +94,7 @@ export class ChangeDetailPanelManager {
         debug,
         ...(options?.initialTab !== undefined ? { initialTab: options.initialTab } : {}),
         ...(options?.interactiveAction !== undefined ? { interactiveAction: options.interactiveAction } : {}),
+        ...(scopeView ? { scope: scopeView } : {}),
       };
     } catch {
       return {
@@ -79,6 +104,7 @@ export class ChangeDetailPanelManager {
         debug,
         ...(options?.initialTab !== undefined ? { initialTab: options.initialTab } : {}),
         ...(options?.interactiveAction !== undefined ? { interactiveAction: options.interactiveAction } : {}),
+        ...(scopeView ? { scope: scopeView } : {}),
       };
     }
   }

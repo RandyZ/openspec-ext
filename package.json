@@ -47,6 +47,23 @@
           "default": "",
           "description": "OpenSpec CLI executable path. Leave empty to auto-detect from PATH and login shell."
         },
+        "openspec.cliMode": {
+          "type": "string",
+          "enum": ["auto", "installed", "localSource", "customPath"],
+          "default": "auto",
+          "description": "OpenSpec CLI runtime source: auto, installed CLI, local OpenSpec source checkout, or custom executable path."
+        },
+        "openspec.localOpenSpecSourcePath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to a local OpenSpec source checkout used when openspec.cliMode is localSource."
+        },
+        "openspec.localOpenSpecAutoBuild": {
+          "type": "string",
+          "enum": ["off", "prompt", "beforeUse"],
+          "default": "off",
+          "description": "Whether the extension may offer to build a local OpenSpec source checkout when build output is missing."
+        },
         "openspec.taskExecutionMode": {
           "type": "string",
           "enum": [

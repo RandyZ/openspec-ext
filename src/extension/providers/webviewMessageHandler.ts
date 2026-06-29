@@ -677,6 +677,18 @@ export async function handleWebviewMessage(
       break;
     }
 
+    case 'selectScope': {
+      await dataManager.selectScope(message.scopeId);
+      const refreshedData = await dataManager.getDashboardData();
+      webview.postMessage({ type: 'dashboardData', data: refreshedData as any, debug: getDebug() });
+      break;
+    }
+
+    case 'openWorkset': {
+      await dataManager.openWorkset(message.name);
+      break;
+    }
+
     default:
       logger.warn(`Unknown message type: ${message.type}`);
   }

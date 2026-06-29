@@ -15,6 +15,7 @@ describe('cliActivationDiagnostic', () => {
     ['spawn-failed', ['open-settings', 'copy-diagnostics', 'retry', 'open-docs']],
     ['shell-resolution-failed', ['open-settings', 'open-docs', 'copy-diagnostics', 'retry']],
     ['version-check-failed', ['open-docs', 'copy-diagnostics', 'retry']],
+    ['local-source-invalid', ['open-settings', 'retry', 'copy-diagnostics', 'open-docs']],
     ['unknown', ['copy-diagnostics', 'retry', 'open-docs']],
   ] as Array<[CliActivationDiagnosticCategory, string[]]>)(
     'maps %s to deterministic recovery actions',
@@ -181,5 +182,26 @@ describe('cliActivationDiagnostic', () => {
     });
 
     expect(diagnostic.normalizedMessage).toBe('configured path invalid: <path>/openspec');
+  });
+
+  it('local-source-invalid has recovery actions including open-settings and retry', () => {
+    const actions = getRecoveryActionsForCategory('local-source-invalid');
+    expect(actions).toContain('open-settings');
+    expect(actions).toContain('retry');
+    expect(actions).toContain('copy-diagnostics');
+    expect(actions).toContain('open-docs');
+
+    const diagnostic = buildCliActivationDiagnostic({
+      category: 'local-source-invalid',
+      message: 'OpenSpec local source checkout invalid: /src/OpenSpec',
+      rawDetails: ['localSource mode: failed ENOENT'],
+      platform: 'darwin',
+      arch: 'arm64',
+      workspaceName: 'openspec-ext',
+      configuredCliPath: '',
+    });
+
+    expect(diagnostic.canRetry).toBe(true);
+    expect(diagnostic.category).toBe('local-source-invalid');
   });
 });
