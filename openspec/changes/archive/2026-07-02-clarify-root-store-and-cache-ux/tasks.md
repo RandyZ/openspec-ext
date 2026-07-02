@@ -30,6 +30,6 @@
 ## Task 5. Verification
 <!-- details: task-details/05-verification.md -->
 
-- [ ] Task 5.1 Run targeted unit tests for the changed webview and extension-host modules
-- [ ] Task 5.2 Run full test, build, and OpenSpec validation commands
-- [ ] Task 5.3 Perform sidebar visual QA for narrow and expanded states
+- [x] Task 5.1 Run targeted unit tests for the changed webview and extension-host modules
+- [x] Task 5.2 Run full test, build, and OpenSpec validation commands
+- [x] Task 5.3 Perform sidebar visual QA for narrow and expanded states
