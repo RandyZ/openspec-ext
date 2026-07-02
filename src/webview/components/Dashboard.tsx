@@ -23,6 +23,10 @@ export const Dashboard: React.FC = () => {
 
       if (message.type === 'dashboardData') {
         dispatch({ type: 'SET_DATA', payload: message.data });
+        if (message.data?.archivedChanges) {
+          setArchivedItems(message.data.archivedChanges);
+          setArchivedLoading(false);
+        }
         if (message.debug !== undefined) {
           dispatch({ type: 'SET_DEBUG', payload: message.debug });
         }

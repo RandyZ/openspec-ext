@@ -52,6 +52,7 @@ export type ExtensionMessage =
 export interface DashboardData {
   changes: ChangeInfo[];
   specs: SpecInfo[];
+  archivedChanges?: ArchivedChangeInfo[];
   lastRefresh: number;
 }
 
