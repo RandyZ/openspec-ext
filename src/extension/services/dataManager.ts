@@ -16,6 +16,7 @@ import { extractProposalWhy } from './proposalWhy';
 export interface DashboardData {
   changes: ChangeInfo[];
   specs: SpecInfo[];
+  archivedChanges: ArchivedChangeInfo[];
   lastRefresh: number;
 }
 
@@ -184,20 +185,24 @@ export class DataManager {
     try {
       logger.info('Refreshing dashboard data...');
 
-      const [rawChanges, specs] = await Promise.all([
+      const [rawChanges, specs, archivedChanges] = await Promise.all([
         this.stateReader.listChanges(),
         this.stateReader.listSpecs(),
+        this.stateReader.listArchivedChanges(),
       ]);
       const changes = await this.enrichChangesWithProposalWhy(rawChanges);
 
       const data: DashboardData = {
         changes,
         specs,
+        archivedChanges,
         lastRefresh: Date.now(),
       };
       this.cachedData = data;
 
-      logger.info(`Refreshed: ${changes.length} changes, ${specs.length} specs`);
+      logger.info(
+        `Refreshed: ${changes.length} changes, ${specs.length} specs, ${archivedChanges.length} archived`
+      );
       this.notifyRefresh(data);
       return this.cachedData;
     } catch (error) {

@@ -36,14 +36,20 @@ export class FileWatcherService {
       new vscode.RelativePattern(this.workspaceRoot, 'openspec/**/*.yaml')
     );
 
+    // Directory moves during archive may surface as changes to the changes tree
+    // rather than individual markdown/YAML file events.
+    const changesTreeWatcher = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(this.workspaceRoot, 'openspec/changes/**')
+    );
+
     // Setup event handlers for both watchers
-    [mdWatcher, yamlWatcher].forEach((watcher) => {
+    [mdWatcher, yamlWatcher, changesTreeWatcher].forEach((watcher) => {
       watcher.onDidCreate((uri) => this.handleFileEvent('create', uri));
       watcher.onDidChange((uri) => this.handleFileEvent('change', uri));
       watcher.onDidDelete((uri) => this.handleFileEvent('delete', uri));
     });
 
-    this.watchers.push(mdWatcher, yamlWatcher);
+    this.watchers.push(mdWatcher, yamlWatcher, changesTreeWatcher);
     logger.info('File watcher started');
   }
 
