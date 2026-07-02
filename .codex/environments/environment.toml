@@ -3,7 +3,11 @@ version = 1
 name = "openspec-ext"
 
 [setup]
-script = ""
+script = '''
+cd "$CODEX_WORKTREE_PATH"
+pnpm install
+codegraph init -i
+'''
 
 [setup.darwin]
 script = "pnpm install"
