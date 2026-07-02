@@ -54,6 +54,7 @@ export interface WorksetView {
 export interface DashboardData {
   changes: ChangeInfo[];
   specs: SpecInfo[];
+  archivedChanges: ArchivedChangeInfo[];
   lastRefresh: number;
   scope?: ScopeInfo;
   scopes?: ScopeInfo[];
@@ -677,9 +678,10 @@ export class DataManager {
 
       const services = this.getScopedServices(scope);
 
-      const [rawChanges, specs] = await Promise.all([
+      const [rawChanges, specs, archivedChanges] = await Promise.all([
         this.listChangesWithFallback(services),
         services.stateReader.listSpecs(),
+        services.stateReader.listArchivedChanges(),
       ]);
       const changes = await this.enrichChangesWithProposalWhy(rawChanges, services.contentAccess);
 
@@ -739,6 +741,7 @@ export class DataManager {
       const data: DashboardData = {
         changes,
         specs,
+        archivedChanges,
         lastRefresh: Date.now(),
         scope: scopeInfo,
         scopes: scopesInfo.length > 0 ? scopesInfo : undefined,
@@ -755,7 +758,9 @@ export class DataManager {
       this.cachedData = data;
       this.cliDiagnostic = null;
 
-      logger.info(`Refreshed: ${changes.length} changes, ${specs.length} specs`);
+      logger.info(
+        `Refreshed: ${changes.length} changes, ${specs.length} specs, ${archivedChanges.length} archived`
+      );
       this.notifyRefresh(data);
       return this.cachedData;
     } catch (error) {

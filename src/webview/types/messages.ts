@@ -178,6 +178,7 @@ export interface DashboardData {
   worksets?: WorksetView[];
   changes: ChangeInfo[];
   specs: SpecInfo[];
+  archivedChanges?: ArchivedChangeInfo[];
   lastRefresh: number;
 }
 

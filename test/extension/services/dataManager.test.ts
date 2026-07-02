@@ -1,6 +1,50 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DataManager } from '@extension/services/dataManager';
-import type { ChangeInfo, SpecInfo } from '@extension/services/types';
+import type { ArchivedChangeInfo, ChangeInfo, SpecInfo } from '@extension/services/types';
+
+vi.mock('vscode', () => ({
+  Disposable: class {
+    constructor(private readonly disposeFn: () => void) {}
+    dispose(): void {
+      this.disposeFn();
+    }
+  },
+  workspace: {
+    getConfiguration: vi.fn(() => ({
+      get: vi.fn(() => false),
+    })),
+    createFileSystemWatcher: vi.fn(() => ({
+      onDidCreate: vi.fn(),
+      onDidChange: vi.fn(),
+      onDidDelete: vi.fn(),
+      dispose: vi.fn(),
+    })),
+  },
+  window: {
+    createOutputChannel: () => ({
+      appendLine: vi.fn(),
+      show: vi.fn(),
+      dispose: vi.fn(),
+    }),
+    showErrorMessage: vi.fn(() => Promise.resolve()),
+    showInformationMessage: vi.fn(() => Promise.resolve()),
+  },
+  env: {
+    openExternal: vi.fn(() => Promise.resolve()),
+  },
+  commands: {
+    executeCommand: vi.fn(() => Promise.resolve()),
+  },
+  Uri: {
+    file: (fsPath: string) => ({ fsPath }),
+  },
+  RelativePattern: class {
+    constructor(
+      public readonly base: string,
+      public readonly pattern: string
+    ) {}
+  },
+}));
 
 vi.mock('@extension/utils/logger', () => ({
   logger: {
@@ -28,6 +72,7 @@ function createManager() {
   const stateReader = {
     listChanges: vi.fn(() => changesDeferred.promise),
     listSpecs: vi.fn(() => specsDeferred.promise),
+    listArchivedChanges: vi.fn().mockResolvedValue([]),
   };
 
   Object.assign(manager as any, {
@@ -102,6 +147,7 @@ function makeDataManagerWithSuccessfulRefresh({ cacheService }: { cacheService: 
     stateReader: {
       listChanges: vi.fn().mockResolvedValue([]),
       listSpecs: vi.fn().mockResolvedValue([]),
+      listArchivedChanges: vi.fn().mockResolvedValue([]),
     },
     contentAccess: {
       readArtifact: vi.fn().mockResolvedValue(''),
@@ -273,8 +319,8 @@ describe('DataManager dashboard data loading', () => {
     specsDeferred.resolve([]);
 
     await expect(Promise.all([first, second])).resolves.toEqual([
-      { changes: [], specs: [], lastRefresh: expect.any(Number) },
-      { changes: [], specs: [], lastRefresh: expect.any(Number) },
+      expect.objectContaining({ changes: [], specs: [], archivedChanges: [], lastRefresh: expect.any(Number) }),
+      expect.objectContaining({ changes: [], specs: [], archivedChanges: [], lastRefresh: expect.any(Number) }),
     ]);
   });
 
@@ -410,6 +456,7 @@ describe('DataManager dashboard data loading', () => {
           stateReader: {
             listChanges: vi.fn(() => isStore ? storeChangesDeferred.promise : localChangesDeferred.promise),
             listSpecs: vi.fn(() => isStore ? storeSpecsDeferred.promise : localSpecsDeferred.promise),
+            listArchivedChanges: vi.fn().mockResolvedValue([]),
           },
           contentAccess: {
             readArtifact: vi.fn().mockResolvedValue(''),
@@ -648,6 +695,7 @@ describe('DataManager CLI activation diagnostic', () => {
     };
     vi.spyOn(manager as any, 'listChangesWithFallback').mockResolvedValue([]);
     vi.spyOn((manager as any).stateReader, 'listSpecs').mockResolvedValue([]);
+    vi.spyOn((manager as any).stateReader, 'listArchivedChanges').mockResolvedValue([]);
 
     await manager.refresh();
 
@@ -668,6 +716,7 @@ describe('DataManager CLI activation diagnostic', () => {
 
     vi.spyOn((manager as any).stateReader, 'listChanges').mockRejectedValue(new Error('missing cli'));
     vi.spyOn((manager as any).stateReader, 'listSpecs').mockResolvedValue([]);
+    vi.spyOn((manager as any).stateReader, 'listArchivedChanges').mockResolvedValue([]);
     vi.spyOn((manager as any).cliService, 'getCliActivationDiagnostic').mockReturnValue(diagnostic);
     vi.spyOn(manager as any, 'listChangesFromFilesystem').mockResolvedValue([
       { name: 'from-files', completedTasks: 0, totalTasks: 0, lastModified: 'now', status: 'draft' },
@@ -681,7 +730,7 @@ describe('DataManager CLI activation diagnostic', () => {
 
   it('keeps cached data and records warning diagnostic when refresh fails later', async () => {
     const manager = new DataManager('/workspace');
-    const cached = { changes: [], specs: [], lastRefresh: 123 };
+    const cached = { changes: [], specs: [], archivedChanges: [], lastRefresh: 123 };
     const diagnostic = {
       category: 'cli-not-found' as const,
       message: 'missing',
@@ -694,6 +743,7 @@ describe('DataManager CLI activation diagnostic', () => {
     (manager as any).cachedData = cached;
     vi.spyOn((manager as any).stateReader, 'listChanges').mockRejectedValue(new Error('missing cli'));
     vi.spyOn((manager as any).stateReader, 'listSpecs').mockResolvedValue([]);
+    vi.spyOn((manager as any).stateReader, 'listArchivedChanges').mockResolvedValue([]);
     vi.spyOn((manager as any).cliService, 'getCliActivationDiagnostic').mockReturnValue(diagnostic);
     vi.spyOn(manager as any, 'listChangesFromFilesystem').mockResolvedValue([]);
     (manager as any).cliAvailable = true;
@@ -910,6 +960,7 @@ describe('DataManager scope-aware features', () => {
     vi.spyOn(manager as any, 'stateReader', 'get').mockReturnValue({
       listChanges: vi.fn().mockResolvedValue([]),
       listSpecs: vi.fn().mockResolvedValue([]),
+      listArchivedChanges: vi.fn().mockResolvedValue([]),
     });
     vi.spyOn(manager as any, 'enrichChangesWithProposalWhy').mockResolvedValue([]);
 
@@ -1089,5 +1140,54 @@ describe('DataManager scope-aware features', () => {
       '--store',
       'team-plans',
     ]);
+  });
+});
+
+describe('DataManager refresh cache', () => {
+  it('includes archived changes in refreshed dashboard snapshots', async () => {
+    const changes: ChangeInfo[] = [
+      {
+        name: 'active-change',
+        completedTasks: 0,
+        totalTasks: 1,
+        lastModified: '2026-07-02T00:00:00.000Z',
+        status: 'in-progress',
+        artifacts: [],
+      },
+    ];
+    const archivedChanges: ArchivedChangeInfo[] = [
+      {
+        directoryName: '2026-07-02-archived-change',
+        name: 'archived-change',
+        archiveDate: '2026-07-02',
+      },
+    ];
+
+    const manager = new DataManager('/workspace') as any;
+    manager.cliAvailable = true;
+    manager.stateReader = {
+      listChanges: vi.fn().mockResolvedValue(changes),
+      listSpecs: vi.fn().mockResolvedValue([]),
+      listArchivedChanges: vi.fn().mockResolvedValue(archivedChanges),
+    };
+    manager.contentAccess = {
+      readArtifact: vi.fn().mockResolvedValue('# Proposal\n\n## Why\nKeep the dashboard fresh.'),
+      getChangeOpenspecYamlPath: vi.fn((changeName: string) => `/workspace/${changeName}/.openspec.yaml`),
+    };
+    manager.cliService = {
+      getCliActivationDiagnostic: vi.fn().mockReturnValue(null),
+    };
+
+    const onRefresh = vi.fn();
+    manager.onRefresh(onRefresh);
+
+    const data = await manager.refresh();
+
+    expect(data.archivedChanges).toEqual(archivedChanges);
+    expect(onRefresh).toHaveBeenCalledWith(
+      expect.objectContaining({
+        archivedChanges,
+      })
+    );
   });
 });
