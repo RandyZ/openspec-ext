@@ -7,6 +7,7 @@
  */
 
 import type { OpenSpecCapabilities } from './openspecFeatures';
+import type { OpenSpecRuntimeSource } from './openspecCliResolver';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,6 +19,8 @@ export interface OpenSpecScope {
   rootPath: string;
   source: OpenSpecScopeSource;
   storeId?: string;
+  /** How the OpenSpec CLI runtime was resolved for this scope (installed/customPath/localSource). */
+  runtimeSource: OpenSpecRuntimeSource;
   capabilities: OpenSpecCapabilities;
   diagnostics: {
     code: string;
@@ -31,12 +34,14 @@ export interface OpenSpecScope {
 export function createLocalScope(
   rootPath: string,
   capabilities: OpenSpecCapabilities,
+  runtimeSource: OpenSpecRuntimeSource = 'installed',
 ): OpenSpecScope {
   return {
     id: `local:${rootPath}`,
     label: 'Local Root',
     rootPath,
     source: 'local',
+    runtimeSource,
     capabilities,
     diagnostics: [],
   };
@@ -45,6 +50,7 @@ export function createLocalScope(
 export function createStoreScope(
   store: { id: string; root: string },
   capabilities: OpenSpecCapabilities,
+  runtimeSource: OpenSpecRuntimeSource = 'installed',
 ): OpenSpecScope {
   return {
     id: `store:${store.id}`,
@@ -52,6 +58,7 @@ export function createStoreScope(
     rootPath: store.root,
     source: 'store',
     storeId: store.id,
+    runtimeSource,
     capabilities,
     diagnostics: [],
   };
@@ -59,23 +66,39 @@ export function createStoreScope(
 
 // ── Scope Manager ────────────────────────────────────────────────────────────
 
+export interface OpenSpecRuntimeLike {
+  resolveRuntime(): Promise<{ source: OpenSpecRuntimeSource }>;
+}
+
 export class OpenSpecScopeManager {
   private selectedScopeId: string | null = null;
   private scopeOptions: OpenSpecScope[] = [];
   private listeners = new Set<() => void>();
+  /** Cached runtime source so scope factories carry it without re-resolving per scope. */
+  private cachedRuntimeSource: OpenSpecRuntimeSource = 'installed';
 
   constructor(
     private workspaceRoot: string,
     private cli: { runJson: (args: string[]) => Promise<unknown> },
     private capabilities: OpenSpecCapabilities,
+    private runtime?: OpenSpecRuntimeLike,
   ) {
     // Default: local root
     this.selectedScopeId = `local:${workspaceRoot}`;
   }
 
   async loadScopeOptions(): Promise<OpenSpecScope[]> {
+    // Resolve the runtime source once so every scope carries it (local source vs installed).
+    if (this.runtime) {
+      try {
+        this.cachedRuntimeSource = (await this.runtime.resolveRuntime()).source;
+      } catch {
+        // Keep 'installed' default; runtime resolution diagnostics surface elsewhere.
+      }
+    }
+
     const scopes: OpenSpecScope[] = [
-      createLocalScope(this.workspaceRoot, this.capabilities),
+      createLocalScope(this.workspaceRoot, this.capabilities, this.cachedRuntimeSource),
     ];
 
     if (this.capabilities.stores) {
@@ -85,7 +108,7 @@ export class OpenSpecScopeManager {
           status?: unknown[];
         };
         for (const store of payload.stores ?? []) {
-          scopes.push(createStoreScope(store, this.capabilities));
+          scopes.push(createStoreScope(store, this.capabilities, this.cachedRuntimeSource));
         }
       } catch {
         // Store probe failure is already captured in capabilities diagnostics
@@ -100,7 +123,7 @@ export class OpenSpecScopeManager {
     const found = this.scopeOptions.find((s) => s.id === this.selectedScopeId);
     if (found) return found;
     // Fallback to local root
-    return createLocalScope(this.workspaceRoot, this.capabilities);
+    return createLocalScope(this.workspaceRoot, this.capabilities, this.cachedRuntimeSource);
   }
 
   getScopeOptions(): OpenSpecScope[] {

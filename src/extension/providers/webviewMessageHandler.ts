@@ -3,8 +3,9 @@ import * as path from 'path';
 import { logger } from '../utils/logger';
 import { DataManager } from '../services/dataManager';
 import { getChangesBasePath } from '../utils/workspaceRoot';
+import { isPathUnderRoot } from '../utils/pathSafety';
 import { getAdapterById, getCurrentAdapter } from '../adapters';
-import type { WebviewMessage } from '../../webview/types/messages';
+import type { CacheStatsView, WebviewMessage } from '../../webview/types/messages';
 import { t } from '../../i18n';
 import { buildWorkflowLaunchPayload } from '../../shared/workflowCommand';
 import { getWorkflowLaunchConfig } from '../services/workflowLaunchConfig';
@@ -12,6 +13,7 @@ import {
   InteractiveAgentTerminalManager,
 } from '../services/interactiveAgentTerminalManager';
 import { confirmDirectArchive } from '../commands/archiveConfirm';
+import { formatBytes } from '../utils/formatBytes';
 import {
   getEffectiveWorkflowAdapterId,
   shouldForceCursorWorkflowRoute,
@@ -21,12 +23,92 @@ import type {
   InteractiveWorkflowAction,
   InteractiveWorkflowState,
 } from '../../shared/interactiveWorkflow';
+import type { OpenSpecScope } from '../services/openspecScope';
 
-/** Returns true if resolvedPath is under workspaceRoot (no .. escape). */
+/**
+ * Resolve the effective root path for a message, honoring a panel-bound scopeId.
+ * Falls back to the workspace root when no scope / local scope is selected, or when
+ * the scope manager is unavailable (defensive: never throws on a minimal dataManager).
+ */
+function resolveScopeRoot(
+  dataManager: DataManager,
+  scopeId?: string
+): { rootPath: string; scope: OpenSpecScope | undefined } {
+  const scopedDataManager = dataManager as DataManager & {
+    resolveScope?: (id?: string) => OpenSpecScope | undefined;
+  };
+  const scope = typeof scopedDataManager.resolveScope === 'function'
+    ? scopedDataManager.resolveScope(scopeId)
+    : undefined;
+  return { rootPath: scope?.rootPath ?? dataManager.getWorkspaceRoot(), scope };
+}
+
+/** Returns true if resolvedPath is under rootPath (no .. escape). */
 function isPathUnderWorkspace(resolvedPath: string, workspaceRoot: string): boolean {
   const normalized = path.normalize(resolvedPath);
   const rel = path.relative(workspaceRoot, normalized);
   return !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
+function toCacheStatsView(
+  stats: Awaited<ReturnType<DataManager['getCacheStats']>>,
+  fallbackRootPath = '',
+  error?: string
+): CacheStatsView {
+  const base = stats ?? {
+    rootPath: fallbackRootPath,
+    totalBytes: 0,
+    fileCount: 0,
+    calculatedAt: Date.now(),
+    isCalculating: false,
+  };
+
+  return {
+    rootPath: base.rootPath,
+    totalBytes: base.totalBytes,
+    formattedSize: formatBytes(base.totalBytes),
+    fileCount: base.fileCount,
+    calculatedAt: base.calculatedAt,
+    isCalculating: base.isCalculating,
+    ...(error ? { error } : {}),
+  };
+}
+
+async function postCacheStats(
+  webview: vscode.Webview,
+  dataManager: DataManager,
+  force = false
+): Promise<void> {
+  const cacheRootPath = dataManager.getCacheRootPath?.() ?? '';
+  try {
+    const stats = await dataManager.getCacheStats?.({ force });
+    webview.postMessage({
+      type: 'cacheStats',
+      stats: toCacheStatsView(
+        stats,
+        cacheRootPath,
+        stats ? undefined : t('cache.statsUnavailable')
+      ),
+    });
+  } catch (error) {
+    logger.warn('Failed to post cache stats', error as Error);
+    webview.postMessage({
+      type: 'cacheStats',
+      stats: toCacheStatsView(
+        undefined,
+        cacheRootPath,
+        (error as Error).message || t('cache.statsUnavailable')
+      ),
+    });
+  }
+}
+
+function requireCacheRootPath(dataManager: DataManager): string {
+  const rootPath = dataManager.getCacheRootPath?.();
+  if (!rootPath) {
+    throw new Error(t('cache.unavailable'));
+  }
+  return rootPath;
 }
 
 /**
@@ -46,7 +128,16 @@ export async function handleWebviewMessage(
   logger.debug(`Received message: ${message.type}`);
 
   const getDebug = () => vscode.workspace.getConfiguration('openspec').get<boolean>('debug') ?? false;
-  const workspaceRoot = dataManager.getWorkspaceRoot();
+  const postCurrentDashboardData = async () => {
+    const data = await dataManager.getDashboardData();
+    webview.postMessage({ type: 'dashboardData', data, debug: getDebug() });
+  };
+  const postError = (error: unknown, fallbackMessage: string) => {
+    webview.postMessage({
+      type: 'error',
+      message: (error as Error).message || fallbackMessage,
+    });
+  };
 
   switch (message.type) {
     case 'getDashboardData': {
@@ -56,8 +147,116 @@ export async function handleWebviewMessage(
     }
 
     case 'refresh': {
-      const refreshedData = await dataManager.refresh();
-      webview.postMessage({ type: 'dashboardData', data: refreshedData, debug: getDebug() });
+      try {
+        const refreshedData = await dataManager.refresh();
+        webview.postMessage({ type: 'dashboardData', data: refreshedData, debug: getDebug() });
+      } catch (error) {
+        logger.error('refresh message failed', error as Error);
+        postError(error, t('command.refreshFailed'));
+      }
+      break;
+    }
+
+    case 'getCacheStats': {
+      await postCacheStats(webview, dataManager, message.force === true);
+      break;
+    }
+
+    case 'cacheAction': {
+      const action = message.action;
+      try {
+        if (action === 'openFolder') {
+          const rootPath = requireCacheRootPath(dataManager);
+          const uri = vscode.Uri.file(rootPath);
+          await vscode.workspace.fs.createDirectory(uri);
+          await vscode.commands.executeCommand('revealFileInOS', uri);
+          webview.postMessage({
+            type: 'cacheActionResult',
+            action,
+            success: true,
+            message: t('cache.openFolder'),
+          });
+          break;
+        }
+
+        if (action === 'copyPath') {
+          const rootPath = requireCacheRootPath(dataManager);
+          await vscode.env.clipboard.writeText(rootPath);
+          const resultMessage = t('cache.pathCopied');
+          vscode.window.showInformationMessage(resultMessage);
+          webview.postMessage({
+            type: 'cacheActionResult',
+            action,
+            success: true,
+            message: resultMessage,
+          });
+          break;
+        }
+
+        if (action === 'clear') {
+          const clearLabel = t('cache.clear');
+          const confirmChoice = await vscode.window.showWarningMessage(
+            t('cache.clearConfirm'),
+            { modal: true },
+            clearLabel,
+          );
+          if (confirmChoice !== clearLabel) {
+            webview.postMessage({
+              type: 'cacheActionResult',
+              action,
+              success: false,
+              message: t('cache.cancelled'),
+            });
+            break;
+          }
+          await dataManager.clearCache();
+          const refreshedData = await dataManager.refresh();
+          const resultMessage = t('cache.cleared');
+          vscode.window.showInformationMessage(resultMessage);
+          webview.postMessage({
+            type: 'cacheActionResult',
+            action,
+            success: true,
+            message: resultMessage,
+          });
+          webview.postMessage({ type: 'dashboardData', data: refreshedData, debug: getDebug() });
+          await postCacheStats(webview, dataManager, true);
+          break;
+        }
+
+        if (action === 'showDetails') {
+          const stats = await dataManager.getCacheStats?.({ force: true });
+          if (!stats) {
+            throw new Error(t('cache.statsUnavailable'));
+          }
+          const resultMessage = stats.isCalculating
+            ? t('cache.statsCalculating')
+            : `${t('cache.details')}: ${t('cache.summary', {
+                size: formatBytes(stats.totalBytes),
+                files: stats.fileCount,
+              })}\n${stats.rootPath}`;
+          vscode.window.showInformationMessage(resultMessage);
+          webview.postMessage({
+            type: 'cacheActionResult',
+            action,
+            success: true,
+            message: resultMessage,
+          });
+          await postCacheStats(webview, dataManager, false);
+          break;
+        }
+
+        throw new Error(`Unsupported cache action: ${String(action)}`);
+      } catch (error) {
+        logger.error(`cacheAction ${action} failed`, error as Error);
+        const resultMessage = (error as Error).message || t('cache.unavailable');
+        webview.postMessage({
+          type: 'cacheActionResult',
+          action,
+          success: false,
+          message: resultMessage,
+        });
+      }
       break;
     }
 
@@ -82,6 +281,75 @@ export async function handleWebviewMessage(
       break;
     }
 
+    case 'requestRegisterStore': {
+      try {
+        const selected = await vscode.window.showOpenDialog({
+          canSelectFiles: false,
+          canSelectFolders: true,
+          canSelectMany: false,
+          title: t('store.register.pickFolder'),
+          openLabel: t('scope.action.registerStore'),
+        });
+        const folder = selected?.[0]?.fsPath;
+        if (!folder) {
+          await postCurrentDashboardData();
+          break;
+        }
+
+        const data = await dataManager.registerStore(folder);
+        vscode.window.showInformationMessage(t('store.register.success'));
+        webview.postMessage({ type: 'dashboardData', data, debug: getDebug() });
+      } catch (error) {
+        logger.error('requestRegisterStore failed', error as Error);
+        vscode.window.showErrorMessage(t('store.actionFailed', { error: (error as Error).message }));
+        postError(error, t('store.actionFailed', { error: (error as Error).message }));
+      }
+      break;
+    }
+
+    case 'requestSetupStore': {
+      try {
+        const id = await vscode.window.showInputBox({
+          prompt: t('store.setup.idPrompt'),
+          placeHolder: t('store.setup.idPlaceholder'),
+          validateInput: (value) => {
+            const normalized = value.trim();
+            if (!normalized) return t('store.idRequired');
+            if (!/^[a-z0-9][a-z0-9-]*$/.test(normalized)) return t('store.idInvalid');
+            return null;
+          },
+        });
+        const storeId = id?.trim();
+        if (!storeId) {
+          await postCurrentDashboardData();
+          break;
+        }
+
+        const selected = await vscode.window.showOpenDialog({
+          canSelectFiles: false,
+          canSelectFolders: true,
+          canSelectMany: false,
+          title: t('store.setup.pickParentFolder'),
+          openLabel: t('scope.action.setupStore'),
+        });
+        const parentFolder = selected?.[0]?.fsPath;
+        if (!parentFolder) {
+          await postCurrentDashboardData();
+          break;
+        }
+
+        const targetPath = path.join(parentFolder, storeId);
+        const data = await dataManager.setupStore(storeId, targetPath);
+        vscode.window.showInformationMessage(t('store.setup.success', { id: storeId }));
+        webview.postMessage({ type: 'dashboardData', data, debug: getDebug() });
+      } catch (error) {
+        logger.error('requestSetupStore failed', error as Error);
+        vscode.window.showErrorMessage(t('store.actionFailed', { error: (error as Error).message }));
+        postError(error, t('store.actionFailed', { error: (error as Error).message }));
+      }
+      break;
+    }
+
     case 'toggleTask': {
       const changeName = message.changeName;
       if (changeName.startsWith('archive:')) {
@@ -89,18 +357,26 @@ export async function handleWebviewMessage(
         break;
       }
       const taskIndex = message.taskIndex;
-      await dataManager.toggleTask(changeName, taskIndex);
+      const { scope } = resolveScopeRoot(dataManager, message.scopeId);
+      await dataManager.toggleTask(changeName, taskIndex, scope);
       const [data, tasksContent] = await Promise.all([
         dataManager.getDashboardData(),
-        dataManager.readArtifact(changeName, 'tasks').catch(() => null),
+        dataManager.readArtifact(changeName, 'tasks', scope).catch(() => null),
       ]);
       webview.postMessage({ type: 'dashboardData', data, debug: getDebug() });
       if (tasksContent != null) {
+        await dataManager.writeArtifactContentCache?.({
+          changeName,
+          artifactType: 'tasks',
+          scope,
+          content: tasksContent,
+        });
         webview.postMessage({
           type: 'artifactContent',
           changeName,
           artifactType: 'tasks',
           content: tasksContent,
+          cache: { source: 'fresh', stale: false },
         });
       }
       break;
@@ -144,10 +420,10 @@ export async function handleWebviewMessage(
     case 'openDeltaSpec': {
       const { changeName, specId } = message;
       if (!changeName || !specId) break;
-      const workspaceRoot = dataManager.getWorkspaceRoot();
-      const changesBase = getChangesBasePath(workspaceRoot, changeName);
+      const { rootPath } = resolveScopeRoot(dataManager, message.scopeId);
+      const changesBase = getChangesBasePath(rootPath, changeName);
       const absPath = path.normalize(path.join(changesBase, 'specs', specId, 'spec.md'));
-      if (!isPathUnderWorkspace(absPath, workspaceRoot)) {
+      if (!isPathUnderRoot(absPath, rootPath)) {
         vscode.window.showErrorMessage(t('file.outsideWorkspaceShort'));
         break;
       }
@@ -162,11 +438,13 @@ export async function handleWebviewMessage(
     }
 
     case 'openArtifact': {
-      const workspaceRoot = dataManager.getWorkspaceRoot();
-      const changesBase = path.normalize(getChangesBasePath(workspaceRoot, message.changeName));
+      const { rootPath } = resolveScopeRoot(dataManager, message.scopeId);
+      const changesBase = path.normalize(getChangesBasePath(rootPath, message.changeName));
       const artifactPath = path.normalize(path.join(changesBase, `${message.artifactType}.md`));
-      logger.info(`[archived] openArtifact: changeName=${message.changeName}, artifactType=${message.artifactType}, workspaceRoot=${workspaceRoot}, artifactPath=${artifactPath}`);
-      if (!isPathUnderWorkspace(changesBase, workspaceRoot) || !isPathUnderWorkspace(artifactPath, workspaceRoot)) {
+      logger.info(`[archived] openArtifact: changeName=${message.changeName}, artifactType=${message.artifactType}, root=${rootPath}, artifactPath=${artifactPath}`);
+      // Gate against the resolved scope root (which may be a store root outside the
+      // workspace) rather than the workspace root, so store artifacts can be opened.
+      if (!isPathUnderRoot(changesBase, rootPath) || !isPathUnderRoot(artifactPath, rootPath)) {
         vscode.window.showErrorMessage(t('file.outsideWorkspaceShort'));
         break;
       }
@@ -214,9 +492,23 @@ export async function handleWebviewMessage(
     case 'getArtifactContent': {
       const { changeName, artifactType } = message;
       if (!changeName || !artifactType) break;
-      const workspaceRoot = dataManager.getWorkspaceRoot();
-      logger.info(`[archived] getArtifactContent: changeName=${changeName}, artifactType=${artifactType}, workspaceRoot=${workspaceRoot}`);
-      const exists = await dataManager.artifactExists(changeName, artifactType);
+      const { scope } = resolveScopeRoot(dataManager, message.scopeId);
+      logger.info(`[archived] getArtifactContent: changeName=${changeName}, artifactType=${artifactType}, scopeId=${message.scopeId ?? '<none>'}`);
+      const cached = await dataManager.getCachedArtifactContent?.({
+        changeName,
+        artifactType,
+        scope,
+      });
+      if (cached) {
+        webview.postMessage({
+          type: 'artifactContent',
+          changeName,
+          artifactType,
+          content: cached.content,
+          cache: { source: cached.source, stale: true, generatedAt: cached.generatedAt },
+        });
+      }
+      const exists = await dataManager.artifactExists(changeName, artifactType, scope);
       if (!exists) {
         logger.info(`[archived] getArtifactContent: artifactExists=false -> ARTIFACT_MISSING`);
         webview.postMessage({
@@ -229,9 +521,21 @@ export async function handleWebviewMessage(
         break;
       }
       try {
-        const content = await dataManager.readArtifact(changeName, artifactType);
+        const content = await dataManager.readArtifact(changeName, artifactType, scope);
+        await dataManager.writeArtifactContentCache?.({
+          changeName,
+          artifactType,
+          scope,
+          content,
+        });
         logger.info(`[archived] getArtifactContent: readArtifact ok, sending content`);
-        webview.postMessage({ type: 'artifactContent', changeName, artifactType, content });
+        webview.postMessage({
+          type: 'artifactContent',
+          changeName,
+          artifactType,
+          content,
+          cache: { source: 'fresh', stale: false },
+        });
       } catch (err) {
         logger.info(`[archived] getArtifactContent: readArtifact threw -> ARTIFACT_READ_ERROR`);
         webview.postMessage({
@@ -248,8 +552,9 @@ export async function handleWebviewMessage(
     case 'listDeltaSpecs': {
       const changeName = message.changeName;
       if (!changeName) break;
+      const { scope } = resolveScopeRoot(dataManager, message.scopeId);
       try {
-        const specIds = await dataManager.listDeltaSpecIds(changeName);
+        const specIds = await dataManager.listDeltaSpecIds(changeName, scope);
         webview.postMessage({ type: 'deltaSpecList', changeName, specIds });
       } catch (err) {
         webview.postMessage({ type: 'deltaSpecList', changeName, specIds: [] });
@@ -260,13 +565,38 @@ export async function handleWebviewMessage(
     case 'getDeltaSpecContent': {
       const { changeName, specId } = message;
       if (!changeName || !specId) break;
+      const { scope } = resolveScopeRoot(dataManager, message.scopeId);
       try {
-        const content = await dataManager.readDeltaSpec(changeName, specId);
+        const cached = await dataManager.getCachedArtifactContent?.({
+          changeName,
+          artifactType: 'specs',
+          specId,
+          scope,
+        });
+        if (cached) {
+          webview.postMessage({
+            type: 'deltaSpecContent',
+            changeName,
+            specId,
+            content: cached.content,
+            cache: { source: cached.source, stale: true, generatedAt: cached.generatedAt },
+          });
+        }
+        const content = await dataManager.readDeltaSpec(changeName, specId, scope);
+        const freshContent = content ?? '';
+        await dataManager.writeArtifactContentCache?.({
+          changeName,
+          artifactType: 'specs',
+          specId,
+          scope,
+          content: freshContent,
+        });
         webview.postMessage({
           type: 'deltaSpecContent',
           changeName,
           specId,
-          content: content ?? '',
+          content: freshContent,
+          cache: { source: 'fresh', stale: false },
         });
       } catch (err) {
         webview.postMessage({
@@ -280,12 +610,13 @@ export async function handleWebviewMessage(
     }
 
     case 'getArchivedChanges': {
+      const { scope } = resolveScopeRoot(dataManager, message.scopeId);
       try {
-        const items = await dataManager.listArchivedChanges();
-        webview.postMessage({ type: 'archivedChanges', items });
+        const items = await dataManager.listArchivedChanges(scope);
+        webview.postMessage({ type: 'archivedChanges', items, scopeId: scope?.id });
       } catch (err) {
         logger.error('Failed to list archived changes', err as Error);
-        webview.postMessage({ type: 'archivedChanges', items: [] });
+        webview.postMessage({ type: 'archivedChanges', items: [], scopeId: scope?.id });
       }
       break;
     }
@@ -384,8 +715,9 @@ export async function handleWebviewMessage(
     case 'getSpecRequirements': {
       const specId = message.specId;
       if (typeof specId !== 'string' || !specId.trim()) break;
+      const { scope } = resolveScopeRoot(dataManager, message.scopeId);
       try {
-        const requirements = await dataManager.getSpecRequirements(specId);
+        const requirements = await dataManager.getSpecRequirements(specId, scope);
         webview.postMessage({ type: 'specRequirements', specId, requirements });
       } catch (err) {
         webview.postMessage({ type: 'specRequirements', specId, requirements: [] });
@@ -396,9 +728,36 @@ export async function handleWebviewMessage(
     case 'getSpecContent': {
       const specId = message.specId;
       if (typeof specId !== 'string' || !specId.trim()) break;
+      const { scope } = resolveScopeRoot(dataManager, message.scopeId);
       try {
-        const content = await dataManager.readSpec(specId);
-        webview.postMessage({ type: 'specContent', specId, content });
+        const cached = await dataManager.getCachedArtifactContent?.({
+          changeName: '__main-spec__',
+          artifactType: 'spec',
+          specId,
+          scope,
+        });
+        if (cached) {
+          webview.postMessage({
+            type: 'specContent',
+            specId,
+            content: cached.content,
+            cache: { source: cached.source, stale: true, generatedAt: cached.generatedAt },
+          });
+        }
+        const content = await dataManager.readSpec(specId, scope);
+        await dataManager.writeArtifactContentCache?.({
+          changeName: '__main-spec__',
+          artifactType: 'spec',
+          specId,
+          scope,
+          content,
+        });
+        webview.postMessage({
+          type: 'specContent',
+          specId,
+          content,
+          cache: { source: 'fresh', stale: false },
+        });
       } catch (err) {
         webview.postMessage({
           type: 'specContentError',
@@ -440,10 +799,15 @@ export async function handleWebviewMessage(
       const changeName = message.changeName;
       if (typeof changeName !== 'string' || !changeName.trim()) break;
 
+      // Resolve the effective root (scope-aware) so store-scoped workflows run against
+      // the store root, not the workspace root.
+      const { rootPath: scopeRootPath } = resolveScopeRoot(dataManager, message.scopeId);
+
       const launchConfig = getWorkflowLaunchConfig();
       const effectiveAdapterId = getEffectiveWorkflowAdapterId(launchConfig);
       logger.info(
         `[workflow] launchWorkflowAction: action=${action}, changeName=${changeName}, ` +
+          `scopeId=${message.scopeId ?? '<none>'}, scopeRoot=${scopeRootPath}, ` +
           `workflowLaunchMode=${launchConfig.workflowLaunchMode}, ` +
           `preferredAgentAdapter=${launchConfig.preferredAgentAdapter}, ` +
           `cursorLaunchMode=${launchConfig.cursorLaunchMode}, ` +
@@ -490,7 +854,7 @@ export async function handleWebviewMessage(
         taskIndex: -1,
         taskText: '',
         contextFiles: [],
-        workspaceRoot: dataManager.getWorkspaceRoot(),
+        workspaceRoot: scopeRootPath,
         promptOverride: payload.command,
       });
       logger.info(
@@ -502,6 +866,7 @@ export async function handleWebviewMessage(
     case 'runInteractiveWorkflow': {
       const { changeName, action } = message;
       if (typeof changeName !== 'string' || !changeName.trim()) break;
+      const { rootPath: scopeRootPath, scope } = resolveScopeRoot(dataManager, message.scopeId);
       postInteractiveWorkflowState(
         webview,
         changeName,
@@ -509,7 +874,8 @@ export async function handleWebviewMessage(
           kind: 'run',
           changeName,
           action,
-          workspaceRoot,
+          workspaceRoot: scopeRootPath,
+          scope,
           interactiveTerminalManager,
         })
       );
@@ -519,6 +885,7 @@ export async function handleWebviewMessage(
     case 'revealInteractiveWorkflow': {
       const { changeName, action } = message;
       if (typeof changeName !== 'string' || !changeName.trim()) break;
+      const { rootPath: scopeRootPath, scope } = resolveScopeRoot(dataManager, message.scopeId);
       postInteractiveWorkflowState(
         webview,
         changeName,
@@ -526,7 +893,8 @@ export async function handleWebviewMessage(
           kind: 'reveal',
           changeName,
           action,
-          workspaceRoot,
+          workspaceRoot: scopeRootPath,
+          scope,
           interactiveTerminalManager,
         })
       );
@@ -536,6 +904,7 @@ export async function handleWebviewMessage(
     case 'stopInteractiveWorkflow': {
       const { changeName, action } = message;
       if (typeof changeName !== 'string' || !changeName.trim()) break;
+      const { rootPath: scopeRootPath, scope } = resolveScopeRoot(dataManager, message.scopeId);
       postInteractiveWorkflowState(
         webview,
         changeName,
@@ -543,7 +912,8 @@ export async function handleWebviewMessage(
           kind: 'stop',
           changeName,
           action,
-          workspaceRoot,
+          workspaceRoot: scopeRootPath,
+          scope,
           interactiveTerminalManager,
         })
       );
@@ -553,6 +923,7 @@ export async function handleWebviewMessage(
     case 'clearInteractiveWorkflow': {
       const { changeName, action } = message;
       if (typeof changeName !== 'string' || !changeName.trim()) break;
+      const { rootPath: scopeRootPath, scope } = resolveScopeRoot(dataManager, message.scopeId);
       postInteractiveWorkflowState(
         webview,
         changeName,
@@ -560,7 +931,8 @@ export async function handleWebviewMessage(
           kind: 'clear',
           changeName,
           action,
-          workspaceRoot,
+          workspaceRoot: scopeRootPath,
+          scope,
           interactiveTerminalManager,
         })
       );
@@ -570,8 +942,9 @@ export async function handleWebviewMessage(
     case 'getInteractiveWorkflowState': {
       const { changeName } = message;
       if (typeof changeName !== 'string' || !changeName.trim()) break;
+      const { rootPath: scopeRootPath, scope } = resolveScopeRoot(dataManager, message.scopeId);
       const state = interactiveTerminalManager
-        ? interactiveTerminalManager.getState(workspaceRoot, changeName)
+        ? interactiveTerminalManager.getState(scopeRootPath, changeName, scope)
         : buildInteractiveWorkflowErrorState(
           changeName,
           'verify',
@@ -678,9 +1051,40 @@ export async function handleWebviewMessage(
     }
 
     case 'selectScope': {
-      await dataManager.selectScope(message.scopeId);
-      const refreshedData = await dataManager.getDashboardData();
-      webview.postMessage({ type: 'dashboardData', data: refreshedData as any, debug: getDebug() });
+      try {
+        // INVARIANT: every `dashboardData` post during a scope switch MUST carry
+        // an explicit `cache` field. The webview drives its stale-indicator off
+        // this field; omitting it would prematurely clear the stale state while
+        // a fresh refresh for the newly selected scope is still in flight.
+        await dataManager.selectScope(message.scopeId);
+        const scopeAwareDataManager = dataManager as DataManager & {
+          resolveScope?: (id?: string) => OpenSpecScope | undefined;
+        };
+        const selectedScope = scopeAwareDataManager.resolveScope?.(message.scopeId);
+        const cached = await dataManager.getCachedDashboardData?.(selectedScope);
+        if (cached) {
+          webview.postMessage({
+            type: 'dashboardData',
+            data: cached.payload,
+            debug: getDebug(),
+            cache: {
+              source: cached.source,
+              stale: true,
+              generatedAt: cached.metadata.generatedAt,
+            },
+          });
+        }
+        const refreshedData = await dataManager.refresh();
+        webview.postMessage({
+          type: 'dashboardData',
+          data: refreshedData,
+          debug: getDebug(),
+          cache: { source: 'fresh', stale: false },
+        });
+      } catch (error) {
+        logger.error('selectScope message failed', error as Error);
+        postError(error, t('command.refreshFailed'));
+      }
       break;
     }
 
@@ -740,6 +1144,7 @@ async function handleInteractiveWorkflowAction(params: {
   changeName: string;
   action: unknown;
   workspaceRoot: string;
+  scope?: { id?: string; rootPath: string; storeId?: string; label?: string };
   interactiveTerminalManager?: InteractiveAgentTerminalManager;
 }): Promise<InteractiveWorkflowState> {
   if (!isInteractiveWorkflowAction(params.action)) {
@@ -770,24 +1175,28 @@ async function handleInteractiveWorkflowAction(params: {
         workspaceRoot: params.workspaceRoot,
         changeName: params.changeName,
         action: params.action,
+        scope: params.scope,
       });
     case 'reveal':
       return params.interactiveTerminalManager.reveal(
         params.workspaceRoot,
         params.changeName,
-        params.action
+        params.action,
+        params.scope
       );
     case 'stop':
       return params.interactiveTerminalManager.stop(
         params.workspaceRoot,
         params.changeName,
-        params.action
+        params.action,
+        params.scope
       );
     case 'clear':
       return params.interactiveTerminalManager.clear(
         params.workspaceRoot,
         params.changeName,
-        params.action
+        params.action,
+        params.scope
       );
   }
 }

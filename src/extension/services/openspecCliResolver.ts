@@ -83,9 +83,9 @@ export class OpenSpecCliResolver {
     const direct = await this.tryCommand('openspec', diagnostics, 'extension host PATH');
     if (direct) return this.cache(direct);
 
-    const shellPath = await this.resolveFromShell(diagnostics);
-    if (shellPath) {
-      const shellResolved = await this.tryCommand(shellPath, diagnostics, 'login shell PATH');
+    const discoveredPaths = await this.resolveFromShell(diagnostics);
+    for (const discoveredPath of discoveredPaths) {
+      const shellResolved = await this.tryCommand(discoveredPath, diagnostics, 'discovered PATH');
       if (shellResolved) return this.cache(shellResolved);
     }
 
@@ -99,16 +99,18 @@ export class OpenSpecCliResolver {
 
   async resolveRuntime(): Promise<ResolvedOpenSpecRuntime> {
     const config = vscode.workspace.getConfiguration('openspec');
-    const cliMode = (config.get<string>('cliMode') ?? 'auto').trim();
+    const rawCliMode = config.get<string>('cliMode');
+    const cliMode = (typeof rawCliMode === 'string' ? rawCliMode : 'auto').trim();
+    const rawLocalSourcePath = config.get<string>('localOpenSpecSourcePath');
+    const localSourcePath = (typeof rawLocalSourcePath === 'string' ? rawLocalSourcePath : '').trim();
     const diagnostics: string[] = [
       `openspec.cliMode=${cliMode}`,
     ];
 
     if (cliMode === 'localSource') {
-      const sourcePath = (config.get<string>('localOpenSpecSourcePath') ?? '').trim();
-      diagnostics.push(`openspec.localOpenSpecSourcePath=${sourcePath || '<empty>'}`);
+      diagnostics.push(`openspec.localOpenSpecSourcePath=${localSourcePath || '<empty>'}`);
 
-      if (!sourcePath) {
+      if (!localSourcePath) {
         diagnostics.push('localSource mode: source path is empty');
         throw new OpenSpecCliResolutionError(
           'OpenSpec local source path is not configured. Set openspec.localOpenSpecSourcePath.',
@@ -117,32 +119,11 @@ export class OpenSpecCliResolver {
         );
       }
 
-      const openspecBin = path.join(sourcePath, 'bin', 'openspec.js');
-      const command = process.execPath; // Node.js executable
-      const argsPrefix = [openspecBin];
-      const env = { ...process.env };
-
       try {
-        const version = (await this.spawnAndCollect(
-          command,
-          [...argsPrefix, '--version'],
-          this.options.timeoutMs,
-          env
-        )).trim();
-        diagnostics.push(`localSource mode: ok (${command} ${openspecBin}) -> ${version}`);
-        return {
-          command,
-          argsPrefix,
-          env,
-          version,
-          source: 'localSource',
-          sourceLabel: `local source (${sourcePath})`,
-          diagnostics: [...diagnostics],
-        };
+        return await this.resolveLocalSourceRuntime(localSourcePath, diagnostics, 'localSource mode');
       } catch (err) {
-        diagnostics.push(`localSource mode: failed (${command} ${openspecBin}) ${(err as Error).message}`);
         throw new OpenSpecCliResolutionError(
-          `OpenSpec local source checkout invalid: ${sourcePath}`,
+          `OpenSpec local source checkout invalid: ${localSourcePath}`,
           diagnostics,
           'local-source-invalid'
         );
@@ -182,7 +163,17 @@ export class OpenSpecCliResolver {
       );
     }
 
-    // cliMode === 'auto' or 'installed' — use existing resolve() behavior
+    if (cliMode === 'auto' && localSourcePath) {
+      diagnostics.push(`openspec.localOpenSpecSourcePath=${localSourcePath}`);
+      try {
+        return await this.resolveLocalSourceRuntime(localSourcePath, diagnostics, 'auto localSource');
+      } catch (err) {
+        diagnostics.push(`auto localSource: falling back to installed CLI (${(err as Error).message})`);
+      }
+    }
+
+    // cliMode === 'auto' or 'installed' — use existing resolve() behavior when
+    // no usable local source checkout is configured.
     const base = await this.resolve();
     return {
       command: base.command,
@@ -193,6 +184,38 @@ export class OpenSpecCliResolver {
       sourceLabel: `installed (${base.command})`,
       diagnostics: [...base.diagnostics],
     };
+  }
+
+  private async resolveLocalSourceRuntime(
+    sourcePath: string,
+    diagnostics: string[],
+    label: string
+  ): Promise<ResolvedOpenSpecRuntime> {
+    const openspecBin = path.join(sourcePath, 'bin', 'openspec.js');
+    const command = process.execPath; // Node.js executable
+    const argsPrefix = [openspecBin];
+    const env = { ...process.env };
+    try {
+      const version = (await this.spawnAndCollect(
+        command,
+        [...argsPrefix, '--version'],
+        this.options.timeoutMs,
+        env
+      )).trim();
+      diagnostics.push(`${label}: ok (${command} ${openspecBin}) -> ${version}`);
+      return {
+        command,
+        argsPrefix,
+        env,
+        version,
+        source: 'localSource',
+        sourceLabel: `local source (${sourcePath})`,
+        diagnostics: [...diagnostics],
+      };
+    } catch (err) {
+      diagnostics.push(`${label}: failed (${command} ${openspecBin}) ${(err as Error).message}`);
+      throw err;
+    }
   }
 
   private cache(resolved: ResolvedOpenSpecCli): ResolvedOpenSpecCli {
@@ -220,16 +243,15 @@ export class OpenSpecCliResolver {
     }
   }
 
-  private async resolveFromShell(diagnostics: string[]): Promise<string | null> {
+  private async resolveFromShell(diagnostics: string[]): Promise<string[]> {
     if (process.platform === 'win32') {
-      diagnostics.push('login shell PATH: skipped on Windows');
-      return null;
+      return this.resolveFromWindows(diagnostics);
     }
 
     const shell = this.options.shell || process.env.SHELL || '/bin/zsh';
     if (!/^\/[\w./-]+$/.test(shell)) {
       diagnostics.push(`login shell PATH: skipped unsafe shell ${shell}`);
-      return null;
+      return [];
     }
 
     try {
@@ -240,11 +262,46 @@ export class OpenSpecCliResolver {
       );
       const resolved = stdout.trim().split(/\r?\n/)[0]?.trim();
       diagnostics.push(`login shell PATH: ${resolved || '<empty>'}`);
-      return resolved || null;
+      return resolved ? [resolved] : [];
     } catch (err) {
       diagnostics.push(`login shell PATH: failed ${(err as Error).message}`);
-      return null;
+      return [];
     }
+  }
+
+  private async resolveFromWindows(diagnostics: string[]): Promise<string[]> {
+    const candidates: string[] = [];
+    try {
+      const stdout = await this.spawnAndCollect(
+        'where.exe',
+        ['openspec'],
+        this.options.timeoutMs,
+        process.env
+      );
+      const found = stdout
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      diagnostics.push(`Windows PATH: where.exe openspec -> ${found.join(', ') || '<empty>'}`);
+      candidates.push(...found);
+    } catch (err) {
+      diagnostics.push(`Windows PATH: where.exe openspec failed ${(err as Error).message}`);
+    }
+
+    const appData = process.env.APPDATA;
+    if (appData) {
+      candidates.push(path.win32.join(appData, 'npm', 'openspec.cmd'));
+      candidates.push(path.win32.join(appData, 'npm', 'openspec.ps1'));
+    } else {
+      diagnostics.push('Windows npm global path: APPDATA is unset');
+    }
+
+    const localAppData = process.env.LOCALAPPDATA;
+    if (localAppData) {
+      candidates.push(path.win32.join(localAppData, 'pnpm', 'openspec.cmd'));
+    }
+
+    return [...new Set(candidates)];
   }
 
   private spawnAndCollect(
@@ -257,6 +314,8 @@ export class OpenSpecCliResolver {
       const proc = spawn(command, args, {
         cwd: this.cwd,
         env,
+        shell: this.shouldUseWindowsShell(command),
+        windowsHide: process.platform === 'win32',
       });
       let stdout = '';
       let stderr = '';
@@ -294,13 +353,25 @@ export class OpenSpecCliResolver {
   }
 
   private buildCommandEnv(command: string): NodeJS.ProcessEnv {
-    if (!path.isAbsolute(command)) {
+    const isAbsolute = process.platform === 'win32'
+      ? path.win32.isAbsolute(command)
+      : path.isAbsolute(command);
+    if (!isAbsolute) {
       return process.env;
     }
-    const commandDir = path.dirname(command);
+    const commandDir = process.platform === 'win32'
+      ? path.win32.dirname(command)
+      : path.dirname(command);
+    const delimiter = process.platform === 'win32' ? ';' : path.delimiter;
     return {
       ...process.env,
-      PATH: [commandDir, process.env.PATH].filter(Boolean).join(path.delimiter),
+      PATH: [commandDir, process.env.PATH].filter(Boolean).join(delimiter),
     };
+  }
+
+  private shouldUseWindowsShell(command: string): boolean {
+    if (process.platform !== 'win32') return false;
+    const ext = path.win32.extname(command).toLowerCase();
+    return ext === '.cmd' || ext === '.bat' || ext === '.ps1' || !path.win32.isAbsolute(command);
   }
 }

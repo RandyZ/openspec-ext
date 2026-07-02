@@ -912,6 +912,45 @@ describe('argsPrefix and scope support', () => {
     }
   });
 
+  it('listChanges spawns node + bin/openspec.js prefix in localSource mode (main path)', async () => {
+    // The review flagged that listChanges/create/validate/archive still used the old
+    // resolver.resolve() path and ignored argsPrefix. After unifying, the main path
+    // must spawn node with the bin/openspec.js prefix.
+    const listCalls: Array<{ command: string; args: readonly string[] }> = [];
+    vi.mocked(spawn).mockImplementation((command: string, args: readonly string[], _options?: any) => {
+      listCalls.push({ command, args });
+      if (args[args.length - 2] === 'list') {
+        return createSpawnSuccessProcess(
+          JSON.stringify({ changes: [{ name: 'demo' }] })
+        ) as any;
+      }
+      return createSpawnSuccessProcess(JSON.stringify({ artifacts: [] })) as any;
+    });
+
+    const service = new OpenSpecCliService(workspaceRoot);
+    (service as any).resolver.resolveRuntime = vi.fn().mockResolvedValue({
+      command: process.execPath,
+      argsPrefix: ['/Users/test/openspec/bin/openspec.js'],
+      env: process.env,
+      version: '1.4.0',
+      source: 'localSource',
+      sourceLabel: 'local source (/Users/test/openspec)',
+      diagnostics: [],
+    });
+
+    await service.listChanges();
+
+    // The list call: prefix + ['list', '--json']
+    const listCall = listCalls.find((c) => c.args[c.args.length - 2] === 'list');
+    expect(listCall).toBeDefined();
+    expect(listCall!.command).toBe(process.execPath);
+    expect(listCall!.args).toEqual([
+      '/Users/test/openspec/bin/openspec.js',
+      'list',
+      '--json',
+    ]);
+  });
+
   it('runJson throws when JSON parsing fails', async () => {
     mockVersionThenCommand('not valid json');
 
@@ -926,22 +965,79 @@ describe('argsPrefix and scope support', () => {
     await expect(service.runJson(['list', '--json'])).rejects.toThrow('Command failed with code 1');
   });
 
-  it('withStoreFlag appends --store when storeId is set', () => {
+  it('root-resolving commands append --store for a store scope', async () => {
+    // Version probe (installed mode) then the actual command(s).
+    const listCalls: Array<{ command: string; args: readonly string[] }> = [];
+    vi.mocked(spawn).mockImplementation((command: string, args: readonly string[], _options?: any) => {
+      if (args[0] === '--version') {
+        return createSpawnSuccessProcess('1.3.1') as any;
+      }
+      // Capture every non-version spawn (list + status enrich).
+      listCalls.push({ command, args });
+      if (args[0] === 'list') {
+        return createSpawnSuccessProcess(
+          JSON.stringify({ changes: [{ name: 'demo' }] })
+        ) as any;
+      }
+      // status --change demo --json
+      return createSpawnSuccessProcess(JSON.stringify({ artifacts: [] })) as any;
+    });
+
     const service = new OpenSpecCliService(workspaceRoot);
-    const result = (service as any).withStoreFlag(['list', '--json'], 'store-123');
-    expect(result).toEqual(['list', '--json', '--store', 'store-123']);
+    await service.listChanges({ storeId: 'store-123' });
+
+    const listCall = listCalls.find((c) => c.args[0] === 'list');
+    expect(listCall).toBeDefined();
+    expect(listCall!.args).toEqual(['list', '--json', '--store', 'store-123']);
+    // The status enrich call must also be store-scoped.
+    const statusCall = listCalls.find((c) => c.args[0] === 'status');
+    expect(statusCall!.args).toEqual([
+      'status',
+      '--change',
+      'demo',
+      '--json',
+      '--store',
+      'store-123',
+    ]);
   });
 
-  it('withStoreFlag returns args unchanged when storeId is undefined', () => {
+  it('createChange appends --store for a store scope', async () => {
+    let commandArgs: readonly string[] = [];
+    vi.mocked(spawn).mockImplementation((_command: string, args: readonly string[], _options?: any) => {
+      if (args[0] === '--version') {
+        return createSpawnSuccessProcess('1.3.1') as any;
+      }
+      commandArgs = args;
+      return createSpawnSuccessProcess('') as any;
+    });
+
     const service = new OpenSpecCliService(workspaceRoot);
-    const result = (service as any).withStoreFlag(['list', '--json'], undefined);
-    expect(result).toEqual(['list', '--json']);
+    await service.createChange('my-change', { storeId: 'store-123' });
+
+    expect(commandArgs).toEqual(['new', 'change', 'my-change', '--store', 'store-123']);
   });
 
-  it('withStoreFlag returns args unchanged when storeId is empty string', () => {
+  it('root-resolving commands omit --store for a local scope (no storeId)', async () => {
+    const listCalls: Array<{ command: string; args: readonly string[] }> = [];
+    vi.mocked(spawn).mockImplementation((command: string, args: readonly string[], _options?: any) => {
+      if (args[0] === '--version') {
+        return createSpawnSuccessProcess('1.3.1') as any;
+      }
+      listCalls.push({ command, args });
+      if (args[0] === 'list') {
+        return createSpawnSuccessProcess(
+          JSON.stringify({ changes: [{ name: 'demo' }] })
+        ) as any;
+      }
+      return createSpawnSuccessProcess(JSON.stringify({ artifacts: [] })) as any;
+    });
+
     const service = new OpenSpecCliService(workspaceRoot);
-    const result = (service as any).withStoreFlag(['list', '--json'], '');
-    // empty string is falsy, so no --store appended
-    expect(result).toEqual(['list', '--json']);
+    // No scope at all — same as local root.
+    await service.listChanges();
+
+    const listCall = listCalls.find((c) => c.args[0] === 'list');
+    expect(listCall).toBeDefined();
+    expect(listCall!.args).toEqual(['list', '--json']);
   });
 });

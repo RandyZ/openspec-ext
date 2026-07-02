@@ -5,6 +5,7 @@ import { DashboardViewProvider } from '../providers/dashboardViewProvider';
 import { getAvailableAdapters, getCurrentAdapter } from '../adapters';
 import { t } from '../../i18n';
 import { confirmDirectArchive } from './archiveConfirm';
+import { formatBytes } from '../utils/formatBytes';
 
 export class CommandManager {
   constructor(
@@ -23,6 +24,18 @@ export class CommandManager {
       ),
       vscode.commands.registerCommand('openspec.refreshData', () =>
         this.handleRefreshData()
+      ),
+      vscode.commands.registerCommand('openspec.openCacheFolder', () =>
+        this.handleOpenCacheFolder()
+      ),
+      vscode.commands.registerCommand('openspec.copyCachePath', () =>
+        this.handleCopyCachePath()
+      ),
+      vscode.commands.registerCommand('openspec.clearCache', () =>
+        this.handleClearCache()
+      ),
+      vscode.commands.registerCommand('openspec.showCacheDetails', () =>
+        this.handleShowCacheDetails()
       ),
       vscode.commands.registerCommand('openspec.newChange', () =>
         this.handleNewChange()
@@ -91,6 +104,92 @@ export class CommandManager {
     } catch (error) {
       logger.error('Failed to refresh data', error as Error);
       vscode.window.showErrorMessage(t('command.refreshFailed'));
+    }
+  }
+
+  private async handleOpenCacheFolder(): Promise<void> {
+    const rootPath = this.dataManager.getCacheRootPath();
+    if (!rootPath) {
+      vscode.window.showInformationMessage(t('cache.unavailable'));
+      return;
+    }
+
+    try {
+      const cacheRootUri = vscode.Uri.file(rootPath);
+      await vscode.workspace.fs.createDirectory(cacheRootUri);
+      await vscode.commands.executeCommand('revealFileInOS', cacheRootUri);
+    } catch (error) {
+      logger.error('Failed to open cache folder', error as Error);
+      vscode.window.showErrorMessage(t('cache.unavailable'));
+    }
+  }
+
+  private async handleCopyCachePath(): Promise<void> {
+    const rootPath = this.dataManager.getCacheRootPath();
+    if (!rootPath) {
+      vscode.window.showInformationMessage(t('cache.unavailable'));
+      return;
+    }
+
+    await vscode.env.clipboard.writeText(rootPath);
+    vscode.window.showInformationMessage(t('cache.pathCopied'));
+  }
+
+  private async handleClearCache(): Promise<void> {
+    const clearLabel = t('cache.clear');
+    const selected = await vscode.window.showWarningMessage(
+      t('cache.clearConfirm'),
+      { modal: true },
+      clearLabel
+    );
+    if (selected !== clearLabel) return;
+
+    try {
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: clearLabel,
+          cancellable: false,
+        },
+        async () => {
+          await this.dataManager.clearCache();
+          await this.dataManager.refresh();
+        }
+      );
+      vscode.window.showInformationMessage(t('cache.cleared'));
+    } catch (error) {
+      logger.error('Failed to clear cache', error as Error);
+      vscode.window.showErrorMessage(t('cache.unavailable'));
+    }
+  }
+
+  private async handleShowCacheDetails(): Promise<void> {
+    const stats = await this.dataManager.getCacheStats();
+    if (!stats) {
+      vscode.window.showInformationMessage(t('cache.statsUnavailable'));
+      return;
+    }
+    if (stats.isCalculating) {
+      vscode.window.showInformationMessage(t('cache.statsCalculating'));
+      return;
+    }
+
+    const openLabel = t('cache.openFolder');
+    const copyLabel = t('cache.copyPath');
+    const summary = t('cache.summary', {
+      size: formatBytes(stats.totalBytes),
+      files: stats.fileCount,
+    });
+    const selected = await vscode.window.showInformationMessage(
+      `${t('cache.details')}: ${summary}\n${stats.rootPath}`,
+      openLabel,
+      copyLabel
+    );
+
+    if (selected === openLabel) {
+      await this.handleOpenCacheFolder();
+    } else if (selected === copyLabel) {
+      await this.handleCopyCachePath();
     }
   }
 

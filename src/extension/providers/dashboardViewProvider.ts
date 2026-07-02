@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { logger } from '../utils/logger';
-import { DataManager, type DashboardData } from '../services/dataManager';
+import { DataManager, type CachedDashboardData, type DashboardData } from '../services/dataManager';
 import { InteractiveAgentTerminalManager } from '../services/interactiveAgentTerminalManager';
 import { ChangeDetailPanelManager } from './changeDetailPanelManager';
 import type { ChangeDetailTabId, InteractiveWorkflowAction } from '../../shared/interactiveWorkflow';
@@ -15,6 +15,7 @@ import {
 export class DashboardViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'openspec.dashboard';
   private static readonly initialDataPostDelayMs = 100;
+  private static readonly scopedPanelKeySeparator = '\u0000';
   private _view?: vscode.WebviewView;
   private dashboardPanel?: vscode.WebviewPanel;
   private specPanels = new Map<string, vscode.WebviewPanel>();
@@ -65,11 +66,31 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     this.refreshSubscription = undefined;
   }
 
-  private postDashboardData(data: DashboardData, targetWebview?: vscode.Webview): void {
+  private postDashboardData(
+    data: DashboardData,
+    targetWebview?: vscode.Webview,
+    cache?: {
+      source: CachedDashboardData['source'] | 'fresh';
+      stale: boolean;
+      generatedAt?: number;
+    }
+  ): void {
     const webview = targetWebview ?? this._view?.webview;
     if (!webview) return;
     const debug = vscode.workspace.getConfiguration('openspec').get<boolean>('debug') ?? false;
-    webview.postMessage({ type: 'dashboardData', data, debug });
+    const message = {
+      type: 'dashboardData' as const,
+      data,
+      debug,
+      ...(cache ? { cache } : {}),
+    };
+    if (cache?.source === 'fresh') {
+      this.postCliActivationDiagnostic(webview, 'warning');
+      this.postWorkflowLaunchConfig(webview);
+      webview.postMessage(message);
+      return;
+    }
+    webview.postMessage(message);
     this.postCliActivationDiagnostic(webview, 'warning');
     this.postWorkflowLaunchConfig(webview);
   }
@@ -125,14 +146,25 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   private postInitialDashboardData(targetWebview?: vscode.Webview): void {
     setTimeout(() => {
       if (!targetWebview) return;
-      this.dataManager.getDashboardData()
+      (async () => {
+        const cached = await this.dataManager.getCachedDashboardData?.();
+        if (cached) {
+          this.postDashboardData(cached.payload, targetWebview, {
+            source: cached.source,
+            stale: true,
+            generatedAt: cached.metadata.generatedAt,
+          });
+        }
+        const data = await this.dataManager.refresh();
+        return data;
+      })()
         .then((data) => {
           logger.info('Posting initial dashboard data to webview');
-          this.postDashboardData(data, targetWebview);
+          this.postDashboardData(data, targetWebview, { source: 'fresh', stale: false });
         })
         .catch((err) => {
           logger.error('Failed to post initial dashboard data', err as Error);
-          const diagnostic = this.dataManager.getCliDiagnostic();
+          const diagnostic = this.dataManager.getCliDiagnostic?.();
           if (diagnostic) {
             this.postCliActivationDiagnostic(targetWebview, 'blocking');
             return;
@@ -194,11 +226,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       this.panelManager.open(message.changeName, {
         initialTab: message.initialTab,
         interactiveAction: message.interactiveAction,
+        scopeId: message.scopeId,
       });
       return;
     }
     if (message.type === 'openSpecInEditor' && message.specId) {
-      this.openSpecPanel(message.specId, message.requirementIndex);
+      this.openSpecPanel(message.specId, message.requirementIndex, message.scopeId);
       return;
     }
 
@@ -238,17 +271,21 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     );
   }
 
-  private async openSpecPanel(specId: string, _requirementIndex?: number): Promise<void> {
-    const existing = this.specPanels.get(specId);
+  private async openSpecPanel(specId: string, _requirementIndex?: number, scopeId?: string): Promise<void> {
+    // Resolve the scope (store root) so the spec is read from the same root it was
+    // listed from, not the workspace local root.
+    const scope = this.dataManager.resolveScope(scopeId);
+    const key = `${scope?.id ?? scopeId ?? 'default'}${DashboardViewProvider.scopedPanelKeySeparator}${specId}`;
+    const existing = this.specPanels.get(key);
     if (existing) {
       existing.reveal(vscode.ViewColumn.One);
-      const content = await this.dataManager.readSpec(specId);
+      const content = await this.dataManager.readSpec(specId, scope);
       existing.webview.postMessage({ type: 'specContent', specId, content });
       return;
     }
 
     try {
-      const content = await this.dataManager.readSpec(specId);
+      const content = await this.dataManager.readSpec(specId, scope);
       const panel = vscode.window.createWebviewPanel(
         'openspecSpecPreview',
         `Spec: ${specId}`,
@@ -259,7 +296,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           localResourceRoots: [vscode.Uri.file(path.join(this.extensionPath, 'dist'))],
         }
       );
-      this.specPanels.set(specId, panel);
+      this.specPanels.set(key, panel);
       panel.webview.html = getWebviewContent(panel.webview, this.extensionPath);
       setTimeout(() => {
         panel.webview.postMessage({ type: 'specContent', specId, content });
@@ -268,7 +305,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         await handleWebviewMessage(msg, panel.webview, this.dataManager);
       });
       panel.onDidDispose(() => {
-        this.specPanels.delete(specId);
+        this.specPanels.delete(key);
       });
     } catch (err) {
       vscode.window.showErrorMessage(`Failed to open spec: ${specId}`);

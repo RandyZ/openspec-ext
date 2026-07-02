@@ -95,7 +95,8 @@ describe('StateReader', () => {
     const reader = new StateReader(mockGateway, mockContentAccess);
     const result = await reader.getChangeDetails('my-change');
     expect(result).toEqual(details);
-    expect(mockGateway.showChange).toHaveBeenCalledWith('my-change');
+    // getChangeDetails forwards an optional scope (undefined by default).
+    expect(mockGateway.showChange).toHaveBeenCalledWith('my-change', undefined);
   });
 
   it('getTasks uses contentAccess when CLI tasks not compatible with UI', async () => {

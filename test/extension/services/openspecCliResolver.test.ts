@@ -69,6 +69,7 @@ describe('OpenSpecCliResolver', () => {
     localOpenSpecSourcePath = '';
     calls.length = 0;
     vi.mocked(spawn).mockReset();
+    vi.unstubAllEnvs();
   });
 
   it('uses configured openspec.cliPath first and validates it', async () => {
@@ -166,6 +167,38 @@ describe('OpenSpecCliResolver', () => {
     } satisfies Partial<OpenSpecCliResolutionError>);
   });
 
+  it('uses the Windows npm global shim when PATH resolution cannot spawn openspec', async () => {
+    const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: 'win32' });
+    vi.stubEnv('APPDATA', 'C:\\Users\\Randy\\AppData\\Roaming');
+
+    try {
+      vi.mocked(spawn).mockImplementation((command: string, args: string[], options: any) => {
+        calls.push({ command, args });
+        if (command === 'openspec') return createSpawnError() as any;
+        if (command === 'C:\\Users\\Randy\\AppData\\Roaming\\npm\\openspec.cmd') {
+          expect(options.shell).toBe(true);
+          expect(options.windowsHide).toBe(true);
+          return createProcess('1.5.0') as any;
+        }
+        return createSpawnError(`unexpected ${command}`) as any;
+      });
+
+      const result = await new OpenSpecCliResolver('/workspace', {
+        knownPaths: [],
+      }).resolve();
+
+      expect(result.command).toBe('C:\\Users\\Randy\\AppData\\Roaming\\npm\\openspec.cmd');
+      expect(calls.map((call) => call.command)).toEqual([
+        'openspec',
+        'where.exe',
+        'C:\\Users\\Randy\\AppData\\Roaming\\npm\\openspec.cmd',
+      ]);
+    } finally {
+      if (originalPlatform) Object.defineProperty(process, 'platform', originalPlatform);
+    }
+  });
+
   it('reports invalid configured path instead of falling through', async () => {
     cliPath = '/bad/openspec';
     vi.mocked(spawn).mockImplementation((command: string, args: string[]) => {
@@ -238,6 +271,40 @@ describe('OpenSpecCliResolver runtime mode', () => {
     expect(result.version).toBe('1.5.0');
     expect(result.sourceLabel).toBe('local source (/src/OpenSpec)');
     expect(calls[0].args).toContain('--version');
+  });
+
+  it('resolveRuntime() prefers configured local source path in auto mode', async () => {
+    cliMode = 'auto';
+    localOpenSpecSourcePath = '/src/OpenSpec';
+    vi.mocked(spawn).mockImplementation((command: string, args: string[]) => {
+      calls.push({ command, args });
+      return createProcess('1.5.0') as any;
+    });
+
+    const result = await new OpenSpecCliResolver('/workspace').resolveRuntime();
+
+    expect(result.command).toBe(process.execPath);
+    expect(result.argsPrefix).toEqual(['/src/OpenSpec/bin/openspec.js']);
+    expect(result.source).toBe('localSource');
+    expect(calls).toEqual([
+      { command: process.execPath, args: ['/src/OpenSpec/bin/openspec.js', '--version'] },
+    ]);
+  });
+
+  it('resolveRuntime() falls back to installed CLI when auto local source is invalid', async () => {
+    cliMode = 'auto';
+    localOpenSpecSourcePath = '/bad/OpenSpec';
+    vi.mocked(spawn).mockImplementation((command: string, args: string[]) => {
+      calls.push({ command, args });
+      if (command === process.execPath) return createSpawnError('missing local source') as any;
+      return createProcess('1.5.0') as any;
+    });
+
+    const result = await new OpenSpecCliResolver('/workspace').resolveRuntime();
+
+    expect(result.source).toBe('installed');
+    expect(result.command).toBe('openspec');
+    expect(calls.map((call) => call.command)).toEqual([process.execPath, 'openspec']);
   });
 
   it('resolveRuntime() throws for localSource mode with empty source path', async () => {

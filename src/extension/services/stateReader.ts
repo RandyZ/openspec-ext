@@ -4,6 +4,8 @@
  */
 import { logger } from '../utils/logger';
 import type { IOpenSpecContentAccess, Task } from './contentAccess';
+import type { ScopeOption } from './openspecCli';
+import type { OpenSpecScope } from './openspecScope';
 import type {
   ChangeInfo,
   ChangeDetails,
@@ -11,11 +13,13 @@ import type {
   ArchivedChangeInfo,
 } from './types';
 
+type ScopeArg = ScopeOption | OpenSpecScope | undefined;
+
 export interface IOpenSpecCliGateway {
-  listChanges(): Promise<ChangeInfo[]>;
-  getChangeStatus(name: string): Promise<{ artifacts?: unknown[] }>;
-  showChange(name: string): Promise<ChangeDetails>;
-  listSpecs(): Promise<SpecInfo[]>;
+  listChanges(scope?: ScopeArg): Promise<ChangeInfo[]>;
+  getChangeStatus(name: string, scope?: ScopeArg): Promise<{ artifacts?: unknown[] }>;
+  showChange(name: string, scope?: ScopeArg): Promise<ChangeDetails>;
+  listSpecs(scope?: ScopeArg): Promise<SpecInfo[]>;
 }
 
 export class StateReader {
@@ -25,22 +29,22 @@ export class StateReader {
   ) {}
 
   /** 变更列表：仅通过 CLI list + status */
-  async listChanges(): Promise<ChangeInfo[]> {
-    return this.gateway.listChanges();
+  async listChanges(scope?: ScopeArg): Promise<ChangeInfo[]> {
+    return this.gateway.listChanges(scope);
   }
 
   /** 变更详情：仅通过 CLI show */
-  async getChangeDetails(changeName: string): Promise<ChangeDetails> {
-    return this.gateway.showChange(changeName);
+  async getChangeDetails(changeName: string, scope?: ScopeArg): Promise<ChangeDetails> {
+    return this.gateway.showChange(changeName, scope);
   }
 
   /**
    * 任务列表：优先用 show 的 tasks（若结构兼容、含 indent 等），否则经 Content Access 读 tasks.md。
    * 当前 CLI show.tasks 无 indent，父子结构依赖 indent，故始终用 contentAccess.readTasks。
    */
-  async getTasks(changeName: string): Promise<Task[]> {
+  async getTasks(changeName: string, scope?: ScopeArg): Promise<Task[]> {
     try {
-      const details = await this.gateway.showChange(changeName);
+      const details = await this.gateway.showChange(changeName, scope);
       const cliTasks = details.tasks;
       if (cliTasks?.length && this.isCliTasksCompatibleWithUi(cliTasks)) {
         return this.mapCliTasksToTasks(cliTasks);
@@ -69,13 +73,13 @@ export class StateReader {
   }
 
   /** Artifact 是否存在：由 show 的 artifacts 推导，否则 Content Access */
-  async artifactExists(changeName: string, artifactType: string): Promise<boolean> {
+  async artifactExists(changeName: string, artifactType: string, scope?: ScopeArg): Promise<boolean> {
     // CLI does not support "archive:YYYY-MM-DD-name"; skip to file check to avoid failed command + retries.
     if (changeName.startsWith('archive:')) {
       return this.contentAccess.artifactExists(changeName, artifactType);
     }
     try {
-      const details = await this.gateway.showChange(changeName);
+      const details = await this.gateway.showChange(changeName, scope);
       const artifacts = details.artifacts ?? [];
       const found = artifacts.some(
         (a: { id?: string }) => (a.id ?? '').toLowerCase() === artifactType.toLowerCase()

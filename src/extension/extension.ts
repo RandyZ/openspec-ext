@@ -6,6 +6,7 @@ import { CommandManager } from './commands/commandManager';
 import { DashboardViewProvider } from './providers/dashboardViewProvider';
 import { ChangeDetailPanelManager } from './providers/changeDetailPanelManager';
 import { InteractiveAgentTerminalManager } from './services/interactiveAgentTerminalManager';
+import { OpenSpecCacheService } from './services/openSpecCacheService';
 import { setLocale, t } from '../i18n';
 
 let dataManager: DataManager | null = null;
@@ -26,7 +27,11 @@ export async function activate(context: vscode.ExtensionContext) {
     logger.info(`[archived] activate: using workspaceRoot=${workspaceRoot}`);
 
     // Initialize data manager
-    dataManager = new DataManager(workspaceRoot);
+    const cacheService = new OpenSpecCacheService(context.globalStorageUri, {
+      workspaceRoot,
+      extensionVersion: context.extension.packageJSON.version ?? '0.0.0',
+    });
+    dataManager = new DataManager(workspaceRoot, { cacheService });
     await dataManager.initialize();
 
     let dashboardViewProviderRef: DashboardViewProvider | null = null;

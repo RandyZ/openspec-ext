@@ -43,6 +43,10 @@ function createManager() {
       showCliNotFoundError: vi.fn(),
       createChange: vi.fn().mockResolvedValue(undefined),
       getCliActivationDiagnostic: vi.fn().mockReturnValue(null),
+      runJson: vi.fn().mockResolvedValue({ stores: [] }),
+      getResolver: vi.fn().mockReturnValue({
+        resolveRuntime: vi.fn().mockResolvedValue({ source: 'installed' }),
+      }),
     },
     fileWatcher: {
       start: vi.fn(),
@@ -53,9 +57,207 @@ function createManager() {
   return { manager, stateReader, changesDeferred, specsDeferred };
 }
 
+function makeCacheServiceFake() {
+  return {
+    readDashboard: vi.fn(),
+    writeDashboard: vi.fn().mockResolvedValue(undefined),
+    readArtifactContent: vi.fn(),
+    writeArtifactContent: vi.fn(),
+    invalidateScope: vi.fn().mockResolvedValue(undefined),
+    invalidateArtifact: vi.fn(),
+    getCacheRootPath: vi.fn().mockReturnValue('/tmp/openspec-cache-root'),
+    getCacheStats: vi.fn().mockResolvedValue({
+      rootPath: '/tmp/openspec-cache-root',
+      totalBytes: 1024,
+      fileCount: 2,
+      calculatedAt: 123,
+      isCalculating: false,
+    }),
+    clearAll: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
+function makeLocalScope() {
+  return {
+    id: 'local:/tmp/openspec-ext-test-workspace',
+    label: 'Local Root',
+    rootPath: '/tmp/openspec-ext-test-workspace',
+    source: 'local',
+    runtimeSource: 'installed',
+    capabilities: { diagnostics: [] },
+  };
+}
+
+function makeDataManagerWithSuccessfulRefresh({ cacheService }: { cacheService: ReturnType<typeof makeCacheServiceFake> }) {
+  const manager = new DataManager('/tmp/openspec-ext-test-workspace', { cacheService } as any);
+  const scope = makeLocalScope();
+
+  Object.assign(manager as any, {
+    cliAvailable: true,
+    capabilities: {},
+    scopeManager: {
+      getSelectedScope: vi.fn(() => scope),
+      getScopeOptions: vi.fn(() => [scope]),
+    },
+    stateReader: {
+      listChanges: vi.fn().mockResolvedValue([]),
+      listSpecs: vi.fn().mockResolvedValue([]),
+    },
+    contentAccess: {
+      readArtifact: vi.fn().mockResolvedValue(''),
+      getChangeOpenspecYamlPath: vi.fn((changeName: string) => `/tmp/${changeName}/.openspec.yaml`),
+    },
+    cliService: {
+      getCliActivationDiagnostic: vi.fn().mockReturnValue(null),
+      runJson: vi.fn().mockResolvedValue({}),
+    },
+  });
+
+  return manager;
+}
+
+function makeDataManagerWithTaskFixture({ cacheService }: { cacheService: ReturnType<typeof makeCacheServiceFake> }) {
+  const manager = new DataManager('/tmp/openspec-ext-test-workspace', { cacheService } as any);
+  const scope = makeLocalScope();
+
+  Object.assign(manager as any, {
+    scopeManager: {
+      getSelectedScope: vi.fn(() => scope),
+      getScopeOptions: vi.fn(() => [scope]),
+    },
+    contentAccess: {
+      toggleTask: vi.fn().mockResolvedValue(undefined),
+      autoCompleteParents: vi.fn().mockResolvedValue(undefined),
+      getChangeOpenspecYamlPath: vi.fn((changeName: string) => `/tmp/${changeName}/.openspec.yaml`),
+    },
+  });
+  vi.spyOn(manager, 'refresh').mockResolvedValue({
+    changes: [],
+    specs: [],
+    lastRefresh: 1,
+    scope,
+  } as any);
+
+  return manager;
+}
+
 describe('DataManager dashboard data loading', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('accepts an optional cache service dependency', () => {
+    const cacheService = {
+      readDashboard: vi.fn(),
+      writeDashboard: vi.fn(),
+      readArtifactContent: vi.fn(),
+      writeArtifactContent: vi.fn(),
+      invalidateScope: vi.fn(),
+      invalidateArtifact: vi.fn(),
+    };
+
+    const manager = new DataManager('/workspace', { cacheService } as any);
+
+    expect(manager).toBeInstanceOf(DataManager);
+    expect((manager as any).cacheService).toBe(cacheService);
+  });
+
+  it('writes fresh dashboard data to the selected scope cache after refresh', async () => {
+    const cacheService = makeCacheServiceFake();
+    const manager = makeDataManagerWithSuccessfulRefresh({ cacheService });
+
+    const data = await manager.refresh();
+
+    expect(cacheService.writeDashboard).toHaveBeenCalledWith(
+      expect.objectContaining({ id: data.scope?.id }),
+      data
+    );
+  });
+
+  it('invalidates the selected scope cache after task mutation', async () => {
+    const cacheService = makeCacheServiceFake();
+    const manager = makeDataManagerWithTaskFixture({ cacheService });
+
+    await manager.toggleTask('change-a', 0);
+
+    expect(cacheService.invalidateScope).toHaveBeenCalledWith(
+      expect.objectContaining({ id: expect.any(String) })
+    );
+  });
+
+  it('invalidates task artifact cache after toggling a task', async () => {
+    const cacheService = makeCacheServiceFake();
+    const manager = makeDataManagerWithTaskFixture({ cacheService });
+
+    await manager.toggleTask('change-a', 0);
+
+    expect(cacheService.invalidateArtifact).toHaveBeenCalledWith(expect.objectContaining({
+      changeName: 'change-a',
+      artifactType: 'tasks',
+    }));
+  });
+
+  it('reads cached artifact content through the scope-aware cache service', async () => {
+    const cacheService = makeCacheServiceFake();
+    cacheService.readArtifactContent.mockResolvedValue({
+      payload: 'cached tasks',
+      metadata: { generatedAt: 123 },
+    });
+    const manager = new DataManager('/tmp/openspec-ext-test-workspace', { cacheService } as any);
+    const scope = makeLocalScope();
+
+    await expect(manager.getCachedArtifactContent({
+      changeName: 'change-a',
+      artifactType: 'tasks',
+      scope,
+    } as any)).resolves.toEqual({
+      content: 'cached tasks',
+      source: 'disk',
+      generatedAt: 123,
+    });
+    expect(cacheService.readArtifactContent).toHaveBeenCalledWith(expect.objectContaining({
+      scope,
+      changeName: 'change-a',
+      artifactType: 'tasks',
+    }));
+  });
+
+  it('writes artifact content through the scope-aware cache service', async () => {
+    const cacheService = makeCacheServiceFake();
+    const manager = new DataManager('/tmp/openspec-ext-test-workspace', { cacheService } as any);
+    const scope = makeLocalScope();
+
+    await manager.writeArtifactContentCache({
+      changeName: 'change-a',
+      artifactType: 'tasks',
+      scope,
+      content: 'fresh tasks',
+    } as any);
+
+    expect(cacheService.writeArtifactContent).toHaveBeenCalledWith(expect.objectContaining({
+      scope,
+      changeName: 'change-a',
+      artifactType: 'tasks',
+    }), 'fresh tasks');
+  });
+
+  it('exposes cache root, stats, and clear operations through a facade', async () => {
+    const cacheService = makeCacheServiceFake();
+    const manager = new DataManager('/tmp/openspec-ext-test-workspace', { cacheService } as any);
+
+    expect(manager.getCacheRootPath()).toBe('/tmp/openspec-cache-root');
+    await expect(manager.getCacheStats()).resolves.toEqual({
+      rootPath: '/tmp/openspec-cache-root',
+      totalBytes: 1024,
+      fileCount: 2,
+      calculatedAt: 123,
+      isCalculating: false,
+    });
+
+    await manager.clearCache();
+
+    expect(cacheService.getCacheStats).toHaveBeenCalledOnce();
+    expect(cacheService.clearAll).toHaveBeenCalledOnce();
   });
 
   it('coalesces concurrent dashboard data requests into a single refresh', async () => {
@@ -91,10 +293,18 @@ describe('DataManager dashboard data loading', () => {
     changesDeferred.resolve([]);
     specsDeferred.resolve([]);
 
-    await expect(dashboardData).resolves.toEqual({
+    // After initialize() the scope manager is wired, so DashboardData now carries a
+    // populated scope snapshot (rootPath/runtimeSource). Assert core fields without
+    // coupling to the full scope shape.
+    await expect(dashboardData).resolves.toMatchObject({
       changes: [],
       specs: [],
       lastRefresh: expect.any(Number),
+      scope: expect.objectContaining({
+        id: 'local:/tmp/openspec-ext-test-workspace',
+        rootPath: '/tmp/openspec-ext-test-workspace',
+        runtimeSource: 'installed',
+      }),
     });
   });
 
@@ -148,6 +358,111 @@ describe('DataManager dashboard data loading', () => {
     await expect(initialLoad).resolves.toMatchObject({ changes: [oldChange] });
     await expect(createChange).resolves.toBeUndefined();
     await expect(manager.getDashboardData()).resolves.toMatchObject({ changes: [newChange] });
+  });
+
+  it('does not publish an old in-flight scope refresh after the selected scope changes', async () => {
+    const manager = new DataManager('/tmp/openspec-ext-test-workspace');
+    const localScope = makeLocalScope();
+    const storeScope = {
+      id: 'store:team-plans',
+      label: 'team-plans',
+      rootPath: '/stores/team-plans',
+      source: 'store',
+      storeId: 'team-plans',
+      runtimeSource: 'installed',
+      capabilities: { diagnostics: [] },
+    };
+    let selectedScope = localScope;
+    const localChangesDeferred = createDeferred<ChangeInfo[]>();
+    const localSpecsDeferred = createDeferred<SpecInfo[]>();
+    const storeChangesDeferred = createDeferred<ChangeInfo[]>();
+    const storeSpecsDeferred = createDeferred<SpecInfo[]>();
+    const localChange: ChangeInfo = {
+      name: 'local-old',
+      completedTasks: 0,
+      totalTasks: 1,
+      lastModified: '2026-01-01',
+      status: 'draft',
+    };
+    const storeChange: ChangeInfo = {
+      name: 'store-fresh',
+      completedTasks: 0,
+      totalTasks: 1,
+      lastModified: '2026-01-02',
+      status: 'draft',
+    };
+    const refreshCallback = vi.fn();
+
+    Object.assign(manager as any, {
+      cliAvailable: true,
+      capabilities: {},
+      cachedData: undefined,
+      scopeManager: {
+        getSelectedScope: vi.fn(() => selectedScope),
+        getScopeOptions: vi.fn(() => [localScope, storeScope]),
+        selectScope: vi.fn((scopeId: string) => {
+          selectedScope = scopeId === storeScope.id ? storeScope as any : localScope;
+        }),
+      },
+      getScopedServices: vi.fn((scope: typeof localScope | typeof storeScope) => {
+        const isStore = scope?.id === storeScope.id;
+        return {
+          stateReader: {
+            listChanges: vi.fn(() => isStore ? storeChangesDeferred.promise : localChangesDeferred.promise),
+            listSpecs: vi.fn(() => isStore ? storeSpecsDeferred.promise : localSpecsDeferred.promise),
+          },
+          contentAccess: {
+            readArtifact: vi.fn().mockResolvedValue(''),
+            getChangeOpenspecYamlPath: vi.fn(),
+          },
+          rootPath: scope?.rootPath ?? '/tmp/openspec-ext-test-workspace',
+          scope,
+        };
+      }),
+      cliService: {
+        getCliActivationDiagnostic: vi.fn().mockReturnValue(null),
+        runJson: vi.fn().mockResolvedValue({}),
+      },
+    });
+    vi.spyOn(manager as any, 'enrichChangesWithProposalWhy').mockImplementation(async (changes) => changes);
+    (manager as any).refreshCallbacks.add(refreshCallback);
+
+    const localRefresh = manager.refresh();
+    manager.selectScope(storeScope.id);
+    const storeRefresh = manager.refresh();
+
+    localChangesDeferred.resolve([localChange]);
+    localSpecsDeferred.resolve([]);
+
+    await vi.waitFor(() => {
+      expect((manager as any).getScopedServices).toHaveBeenCalledWith(storeScope);
+    });
+
+    expect(refreshCallback).not.toHaveBeenCalledWith(expect.objectContaining({
+      scope: expect.objectContaining({ id: localScope.id }),
+    }));
+    expect((manager as any).cachedData).toBeUndefined();
+
+    storeChangesDeferred.resolve([storeChange]);
+    storeSpecsDeferred.resolve([]);
+
+    await expect(localRefresh).resolves.toMatchObject({
+      changes: [localChange],
+      scope: expect.objectContaining({ id: localScope.id }),
+    });
+    await expect(storeRefresh).resolves.toMatchObject({
+      changes: [storeChange],
+      scope: expect.objectContaining({ id: storeScope.id }),
+    });
+    expect(refreshCallback).toHaveBeenCalledTimes(1);
+    expect(refreshCallback).toHaveBeenCalledWith(expect.objectContaining({
+      changes: [storeChange],
+      scope: expect.objectContaining({ id: storeScope.id }),
+    }));
+    expect((manager as any).cachedData).toMatchObject({
+      changes: [storeChange],
+      scope: expect.objectContaining({ id: storeScope.id }),
+    });
   });
 
   it('queues another refresh when a second mutation happens while a queued refresh is running', async () => {
@@ -243,10 +558,17 @@ describe('DataManager dashboard data loading', () => {
       birthtimeMs: birthtime.getTime(),
     } as any);
 
-    vi.spyOn(manager as any, 'countTaskProgress').mockResolvedValue([0, 2]);
+    const contentAccess = manager['contentAccess'] as any;
+    contentAccess.readTasks = vi.fn().mockResolvedValue([
+      { done: true },
+      { done: false },
+    ]);
     vi.spyOn(manager as any, 'getFilesystemArtifactStatuses').mockResolvedValue([]);
 
-    const changes = await (manager as any).listChangesFromFilesystem();
+    const changes = await (manager as any).listChangesFromFilesystem({
+      contentAccess,
+      rootPath: manager.getWorkspaceRoot(),
+    });
 
     expect(changes).toEqual([
       expect.objectContaining({
@@ -266,10 +588,15 @@ describe('DataManager dashboard data loading', () => {
       { name: 'missing-time', isDirectory: () => true },
     ] as any);
     vi.spyOn(fs.promises, 'stat').mockRejectedValue(new Error('stat failed'));
-    vi.spyOn(manager as any, 'countTaskProgress').mockResolvedValue([0, 0]);
+
+    const contentAccess = manager['contentAccess'] as any;
+    contentAccess.readTasks = vi.fn().mockResolvedValue([]);
     vi.spyOn(manager as any, 'getFilesystemArtifactStatuses').mockResolvedValue([]);
 
-    const changes = await (manager as any).listChangesFromFilesystem();
+    const changes = await (manager as any).listChangesFromFilesystem({
+      contentAccess,
+      rootPath: manager.getWorkspaceRoot(),
+    });
 
     expect(changes[0]).toMatchObject({
       name: 'missing-time',
@@ -400,6 +727,9 @@ describe('DataManager scope-aware features', () => {
         createChange: vi.fn().mockResolvedValue(undefined),
         getCliActivationDiagnostic: vi.fn().mockReturnValue(null),
         runJson: vi.fn().mockResolvedValue({ stores: [] }),
+        getResolver: vi.fn().mockReturnValue({
+          resolveRuntime: vi.fn().mockResolvedValue({ source: 'installed' }),
+        }),
       },
       fileWatcher: {
         start: vi.fn(),
@@ -408,6 +738,19 @@ describe('DataManager scope-aware features', () => {
     });
 
     return manager;
+  }
+
+  function createStoreScope() {
+    return {
+      id: 'store:team-plans',
+      label: 'team-plans',
+      rootPath: '/stores/team-plans',
+      source: 'store',
+      storeId: 'team-plans',
+      runtimeSource: 'installed',
+      capabilities: {},
+      diagnostics: [],
+    } as any;
   }
 
   it('initializeScopeManager creates local scope and detects capabilities', async () => {
@@ -527,6 +870,38 @@ describe('DataManager scope-aware features', () => {
     expect((manager as any).contentAccess.toggleTask).not.toHaveBeenCalled();
   });
 
+  it('artifactExists passes store scope to the scoped state reader', async () => {
+    const manager = createManagerWithMockedCli();
+    const scope = createStoreScope();
+    const scopedReader = {
+      artifactExists: vi.fn().mockResolvedValue(true),
+    };
+
+    (manager as any).scopedContentAccess.set(scope.id, {});
+    (manager as any).scopedStateReaders.set(scope.id, scopedReader);
+
+    const exists = await manager.artifactExists('same-name-change', 'proposal', scope);
+
+    expect(exists).toBe(true);
+    expect(scopedReader.artifactExists).toHaveBeenCalledWith('same-name-change', 'proposal', scope);
+  });
+
+  it('readTasks passes store scope to the scoped state reader', async () => {
+    const manager = createManagerWithMockedCli();
+    const scope = createStoreScope();
+    const scopedReader = {
+      getTasks: vi.fn().mockResolvedValue([{ done: false, text: 'Scoped task' }]),
+    };
+
+    (manager as any).scopedContentAccess.set(scope.id, {});
+    (manager as any).scopedStateReaders.set(scope.id, scopedReader);
+
+    const tasks = await manager.readTasks('same-name-change', scope);
+
+    expect(tasks).toEqual([{ done: false, text: 'Scoped task' }]);
+    expect(scopedReader.getTasks).toHaveBeenCalledWith('same-name-change', scope);
+  });
+
   it('getDashboardData includes scope info when scope manager is initialized', async () => {
     const manager = createManagerWithMockedCli();
 
@@ -567,5 +942,152 @@ describe('DataManager scope-aware features', () => {
     manager.selectScope('store:my-store');
     expect(manager.getSelectedScope()?.source).toBe('store');
     expect(manager.getSelectedScope()?.storeId).toBe('my-store');
+  });
+
+  it('refresh after selectScope reads store scope snapshot and scope options', async () => {
+    const manager = createManagerWithMockedCli();
+    await manager.initializeScopeManager();
+
+    // Provide a store option, then select it.
+    vi.spyOn((manager as any).cliService, 'runJson').mockResolvedValue({
+      stores: [{ id: 'team-plans', root: '/stores/team-plans' }],
+    });
+    await manager.getScopeManager()?.loadScopeOptions();
+    manager.selectScope('store:team-plans');
+
+    // Drive refresh through the store scope. resolveScope must return the store scope
+    // and the projected DashboardData.scope must reflect the store root + runtimeSource.
+    const data = await manager.refresh();
+
+    expect(data.scope?.source).toBe('store');
+    expect(data.scope?.storeId).toBe('team-plans');
+    expect(data.scope?.rootPath).toBe('/stores/team-plans');
+    expect(data.scope?.runtimeSource).toBe('installed');
+    // Scope options list must include both local and the store.
+    expect(data.scopes?.map((s) => s.id)).toEqual(
+      expect.arrayContaining(['local:/tmp/openspec-ext-test-workspace', 'store:team-plans'])
+    );
+  });
+
+  it('resolveScope returns the store scope by id and falls back to selected scope', async () => {
+    const manager = createManagerWithMockedCli();
+    await manager.initializeScopeManager();
+
+    vi.spyOn((manager as any).cliService, 'runJson').mockResolvedValue({
+      stores: [{ id: 'team-plans', root: '/stores/team-plans' }],
+    });
+    await manager.getScopeManager()?.loadScopeOptions();
+
+    const byId = manager.resolveScope('store:team-plans');
+    expect(byId?.source).toBe('store');
+    expect(byId?.rootPath).toBe('/stores/team-plans');
+
+    // Unknown id falls back to the currently selected (local) scope.
+    expect(manager.resolveScope('store:does-not-exist')?.source).toBe('local');
+  });
+
+  it('registerStore calls the OpenSpec CLI, reloads scopes, selects the new store, and returns refreshed data', async () => {
+    const manager = createManagerWithMockedCli();
+    await manager.initializeScopeManager();
+    const runJson = (manager as any).cliService.runJson;
+    const refreshedData = {
+      changes: [],
+      specs: [],
+      lastRefresh: 1,
+    };
+    const refreshSpy = vi.spyOn(manager, 'refresh').mockResolvedValue({
+      ...refreshedData,
+    });
+
+    runJson.mockReset();
+    runJson
+      .mockResolvedValueOnce({
+        store: { id: 'team-plans', root: '/stores/team-plans' },
+      })
+      .mockResolvedValueOnce({
+        stores: [{ id: 'team-plans', root: '/stores/team-plans' }],
+      });
+
+    const result = await manager.registerStore('/stores/team-plans');
+
+    expect(runJson).toHaveBeenNthCalledWith(1, [
+      'store',
+      'register',
+      '/stores/team-plans',
+      '--yes',
+      '--json',
+    ]);
+    expect(runJson).toHaveBeenNthCalledWith(2, ['store', 'list', '--json']);
+    expect(manager.getSelectedScope()?.id).toBe('store:team-plans');
+    expect(refreshSpy).toHaveBeenCalled();
+    expect(result).toEqual(refreshedData);
+  });
+
+  it('setupStore calls the OpenSpec CLI with id and path, reloads scopes, selects the new store, and returns refreshed data', async () => {
+    const manager = createManagerWithMockedCli();
+    await manager.initializeScopeManager();
+    const runJson = (manager as any).cliService.runJson;
+    const refreshedData = {
+      changes: [],
+      specs: [],
+      lastRefresh: 1,
+    };
+    const refreshSpy = vi.spyOn(manager, 'refresh').mockResolvedValue({
+      ...refreshedData,
+    });
+
+    runJson.mockReset();
+    runJson
+      .mockResolvedValueOnce({
+        store: { id: 'team-plans', root: '/stores/team-plans' },
+      })
+      .mockResolvedValueOnce({
+        stores: [{ id: 'team-plans', root: '/stores/team-plans' }],
+      });
+
+    const result = await manager.setupStore('team-plans', '/stores/team-plans');
+
+    expect(runJson).toHaveBeenNthCalledWith(1, [
+      'store',
+      'setup',
+      'team-plans',
+      '--path',
+      '/stores/team-plans',
+      '--json',
+    ]);
+    expect(runJson).toHaveBeenNthCalledWith(2, ['store', 'list', '--json']);
+    expect(manager.getSelectedScope()?.id).toBe('store:team-plans');
+    expect(refreshSpy).toHaveBeenCalled();
+    expect(result).toEqual(refreshedData);
+  });
+
+  it('does not pass --store to workset list because OpenSpec workset commands are not store-scoped', async () => {
+    const manager = createManagerWithMockedCli();
+    await manager.initializeScopeManager();
+    const runJson = (manager as any).cliService.runJson;
+
+    runJson.mockResolvedValue({ stores: [{ id: 'team-plans', root: '/stores/team-plans' }] });
+    await manager.getScopeManager()?.loadScopeOptions();
+    manager.selectScope('store:team-plans');
+
+    runJson.mockClear();
+    runJson.mockImplementation(async (args: string[]) => {
+      if (args[0] === 'store') return { stores: [{ id: 'team-plans', root: '/stores/team-plans' }] };
+      if (args[0] === 'workset') return { worksets: [] };
+      if (args[0] === 'context') return { references: [] };
+      if (args[0] === 'doctor') return { root: { path: '/stores/team-plans', healthy: true, status: [] } };
+      return {};
+    });
+
+    await manager.refresh();
+
+    expect(runJson).toHaveBeenCalledWith(['workset', 'list', '--json']);
+    expect(runJson).not.toHaveBeenCalledWith([
+      'workset',
+      'list',
+      '--json',
+      '--store',
+      'team-plans',
+    ]);
   });
 });

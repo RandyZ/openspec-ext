@@ -26,6 +26,8 @@ export interface ChangeDetailProps {
   debug?: boolean;
   initialTab?: ChangeDetailTabId;
   interactiveAction?: InteractiveWorkflowAction;
+  /** Scope id this panel was opened under; binds reads/writes to a store root. */
+  scopeId?: string;
 }
 
 const ALL_TABS = [
@@ -36,8 +38,9 @@ const ALL_TABS = [
   { id: 'verifyArchive' as const, label: 'Verify & Archive' },
 ];
 
-const cacheKey = (type: string, specId?: string | null) =>
-  type === 'specs' && specId ? `specs:${specId}` : type;
+// Cache key includes scopeId so the same change name in two roots never shares content.
+const cacheKey = (scopeId: string | undefined, type: string, specId?: string | null) =>
+  `${scopeId ? `${scopeId}::` : ''}${type === 'specs' && specId ? `specs:${specId}` : type}`;
 
 function getCreateDisabledReason(
   artifactType: string,
@@ -85,6 +88,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   debug = false,
   initialTab,
   interactiveAction,
+  scopeId,
 }) => {
   const { postMessage, onMessage } = useVscode();
   const [activeTab, setActiveTab] = useState<ChangeDetailTabId>(initialTab ?? 'proposal');
@@ -157,7 +161,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     setError(null);
     setErrorCode(undefined);
     setContent(null);
-    postMessage(sendMessage.getArtifactContent(changeName, artifactType));
+    postMessage(sendMessage.getArtifactContent(changeName, artifactType, scopeId));
   };
 
   const requestSpecsList = () => {
@@ -166,7 +170,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     setContent(null);
     setDeltaSpecIds([]);
     setSelectedSpecId(null);
-    postMessage(sendMessage.listDeltaSpecs(changeName));
+    postMessage(sendMessage.listDeltaSpecs(changeName, scopeId));
   };
 
   useEffect(() => {
@@ -200,23 +204,24 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
       return;
     }
 
-    const key = cacheKey(activeTab, null);
+    const key = cacheKey(scopeId, activeTab, null);
     const cached = contentCacheRef.current.get(key);
     if (cached !== undefined) {
       setContent(cached);
       setLoading(false);
       setError(null);
       setErrorCode(undefined);
+      postMessage(sendMessage.getArtifactContent(changeName, activeTab, scopeId));
       return;
     }
     requestArtifact(activeTab);
-  }, [changeName, activeTab, existingArtifactIds, isArchived]);
+  }, [changeName, activeTab, existingArtifactIds, isArchived, postMessage, scopeId]);
 
   useEffect(() => {
     const cleanup = onMessage((event: MessageEvent) => {
       const msg = event.data;
       if (msg.type === 'artifactContent' && msg.changeName === changeName) {
-        const key = cacheKey(msg.artifactType, null);
+        const key = cacheKey(scopeId, msg.artifactType, null);
         contentCacheRef.current.set(key, msg.content ?? '');
         setContent(msg.content ?? '');
         setLoading(false);
@@ -244,7 +249,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
           setError(null);
         }
       } else if (msg.type === 'deltaSpecContent' && msg.changeName === changeName) {
-        const key = cacheKey('specs', msg.specId);
+        const key = cacheKey(scopeId, 'specs', msg.specId);
         contentCacheRef.current.set(key, msg.content ?? '');
         setContent(msg.content ?? '');
         setLoading(false);
@@ -275,15 +280,27 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         setInteractiveState(msg.state ?? { changeName, sessions: {} });
       } else if (msg.type === 'artifactInvalidated' && msg.changeName === changeName) {
         const invalidated: string[] = msg.artifactTypes ?? [];
+        const scopePrefix = scopeId ? `${scopeId}::` : '';
         for (const type of invalidated) {
           if (type === 'specs') {
             for (const key of Array.from(contentCacheRef.current.keys())) {
-              if (key === 'specs' || key.startsWith('specs:')) {
+              // Cache keys are optionally scope-prefixed; drop the specs entries that
+              // belong to this panel's scope (and any legacy unscoped specs:* keys).
+              const suffix = scopePrefix ? key.slice(scopePrefix.length) : key;
+              const isLegacyUnscopedSpecs = scopePrefix && (key === 'specs' || key.startsWith('specs:'));
+              if (
+                (scopePrefix && key.startsWith(scopePrefix) && (suffix === 'specs' || suffix.startsWith('specs:'))) ||
+                (!scopePrefix && (key === 'specs' || key.startsWith('specs:'))) ||
+                isLegacyUnscopedSpecs
+              ) {
                 contentCacheRef.current.delete(key);
               }
             }
           } else {
-            contentCacheRef.current.delete(type);
+            contentCacheRef.current.delete(`${scopePrefix}${type}`);
+            if (scopePrefix) {
+              contentCacheRef.current.delete(type);
+            }
           }
         }
         if (invalidated.includes(activeTab)) {
@@ -296,7 +313,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
       }
     });
     return cleanup;
-  }, [activeTab, changeName, onMessage, postMessage]);
+  }, [activeTab, changeName, onMessage, postMessage, scopeId]);
 
   useEffect(() => {
     postMessage(sendMessage.getWorkflowLaunchConfig());
@@ -304,51 +321,52 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
 
   useEffect(() => {
     if (activeTab === 'specs' && selectedSpecId) {
-      const key = cacheKey('specs', selectedSpecId);
+      const key = cacheKey(scopeId, 'specs', selectedSpecId);
       const cached = contentCacheRef.current.get(key);
       if (cached !== undefined) {
         setContent(cached);
         setLoading(false);
         setError(null);
+        postMessage(sendMessage.getDeltaSpecContent(changeName, selectedSpecId, scopeId));
         return;
       }
       setLoading(true);
       setError(null);
-      postMessage(sendMessage.getDeltaSpecContent(changeName, selectedSpecId));
+      postMessage(sendMessage.getDeltaSpecContent(changeName, selectedSpecId, scopeId));
     }
-  }, [activeTab, selectedSpecId, changeName, postMessage]);
+  }, [activeTab, selectedSpecId, changeName, postMessage, scopeId]);
 
   useEffect(() => {
     if (activeTab === 'tasks') {
       postMessage(sendMessage.getAgentAdapters());
-      postMessage(sendMessage.getTaskExecutionState(changeName));
+      postMessage(sendMessage.getTaskExecutionState(changeName, scopeId));
     }
-  }, [activeTab, changeName, postMessage]);
+  }, [activeTab, changeName, postMessage, scopeId]);
 
   useEffect(() => {
     if (activeTab !== 'verifyArchive') return;
-    postMessage(sendMessage.getInteractiveWorkflowState(changeName));
+    postMessage(sendMessage.getInteractiveWorkflowState(changeName, scopeId));
     if (pendingInteractiveAction) {
-      postMessage(sendMessage.runInteractiveWorkflow(changeName, pendingInteractiveAction));
+      postMessage(sendMessage.runInteractiveWorkflow(changeName, pendingInteractiveAction, scopeId));
       setPendingInteractiveAction(null);
     }
-  }, [activeTab, changeName, pendingInteractiveAction, postMessage]);
+  }, [activeTab, changeName, pendingInteractiveAction, postMessage, scopeId]);
 
 
   const handleOpenInEditor = () => {
     if (activeTab === 'verifyArchive') return;
     if (activeTab === 'specs' && selectedSpecId) {
-      postMessage(sendMessage.openDeltaSpec(changeName, selectedSpecId));
+      postMessage(sendMessage.openDeltaSpec(changeName, selectedSpecId, scopeId));
       return;
     }
-    postMessage(sendMessage.openArtifact(changeName, activeTab));
+    postMessage(sendMessage.openArtifact(changeName, activeTab, scopeId));
   };
 
   const handleRefresh = () => {
     contentCacheRef.current.clear();
     postMessage(sendMessage.refresh());
     if (activeTab === 'verifyArchive') {
-      postMessage(sendMessage.getInteractiveWorkflowState(changeName));
+      postMessage(sendMessage.getInteractiveWorkflowState(changeName, scopeId));
       return;
     }
     if (activeTab === 'specs') {
@@ -368,7 +386,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   const handleLaunchWorkflow = (
     action: 'explore' | 'continue' | 'ff' | 'apply' | 'verify' | 'archive' | 'sync'
   ) => {
-    postMessage(sendMessage.launchWorkflowAction(action, changeName));
+    postMessage(sendMessage.launchWorkflowAction(action, changeName, scopeId));
   };
 
   const handleStepClick = (step: WorkflowStep) => {
@@ -390,7 +408,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
 
   const handleConfirmTaskToggle = () => {
     if (!pendingTaskToggle) return;
-    postMessage(sendMessage.toggleTask(changeName, pendingTaskToggle.taskIndex));
+    postMessage(sendMessage.toggleTask(changeName, pendingTaskToggle.taskIndex, scopeId));
     setPendingTaskToggle(null);
   };
 
@@ -490,10 +508,10 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
             <VerifyArchivePanel
               isArchived={isArchived}
               sessions={interactiveState.sessions}
-              onRun={(action) => postMessage(sendMessage.runInteractiveWorkflow(changeName, action))}
-              onReveal={(action) => postMessage(sendMessage.revealInteractiveWorkflow(changeName, action))}
-              onStop={(action) => postMessage(sendMessage.stopInteractiveWorkflow(changeName, action))}
-              onClear={(action) => postMessage(sendMessage.clearInteractiveWorkflow(changeName, action))}
+              onRun={(action) => postMessage(sendMessage.runInteractiveWorkflow(changeName, action, scopeId))}
+              onReveal={(action) => postMessage(sendMessage.revealInteractiveWorkflow(changeName, action, scopeId))}
+              onStop={(action) => postMessage(sendMessage.stopInteractiveWorkflow(changeName, action, scopeId))}
+              onClear={(action) => postMessage(sendMessage.clearInteractiveWorkflow(changeName, action, scopeId))}
             />
 
             {debug && (
@@ -604,7 +622,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
               }
               onExecuteTask={isArchived ? undefined : (name, taskIndex, taskText) => {
                 setExecutingTaskIndex(taskIndex);
-                postMessage(sendMessage.executeTask(name, taskIndex, taskText));
+                postMessage(sendMessage.executeTask(name, taskIndex, taskText, scopeId));
               }}
             />
           </>

@@ -13,14 +13,42 @@ import { getAvailableAdapters, getCurrentAdapter } from '../adapters';
 import { ChangeInfo, ChangeDetails, SpecInfo, ArchivedChangeInfo } from './types';
 import { extractProposalWhy } from './proposalWhy';
 import type { CliActivationDiagnostic } from './cliActivationDiagnostic';
-import { OpenSpecScopeManager, type OpenSpecScope } from './openspecScope';
+import { OpenSpecScopeManager, loadScopeRelationships, type OpenSpecScope } from './openspecScope';
 import { detectOpenSpecFeatures, type OpenSpecCapabilities } from './openspecFeatures';
+import type { CacheStats, CacheStatsOptions, OpenSpecCacheService } from './openSpecCacheService';
 
 export interface ScopeInfo {
   id: string;
   label: string;
   source: string;
+  rootPath: string;
+  storeId?: string;
+  runtimeSource: 'installed' | 'customPath' | 'localSource';
   capabilities: OpenSpecCapabilities;
+}
+
+export interface ReferenceEntryView {
+  store_id: string;
+  specs?: { id: string; summary?: string }[];
+  fetch?: string;
+  status: { severity: string; code: string; message: string; fix?: string }[];
+}
+
+export interface RelationshipPanelData {
+  references: ReferenceEntryView[];
+  health?: { root: { path: string; healthy: boolean; status: unknown[] } };
+}
+
+export interface FeatureDiagnosticView {
+  code: string;
+  message: string;
+  severity: 'info' | 'warning' | 'error';
+}
+
+export interface WorksetView {
+  name: string;
+  tool?: string;
+  members: { name: string; path: string }[];
 }
 
 export interface DashboardData {
@@ -28,6 +56,22 @@ export interface DashboardData {
   specs: SpecInfo[];
   lastRefresh: number;
   scope?: ScopeInfo;
+  scopes?: ScopeInfo[];
+  relationships?: RelationshipPanelData;
+  featureDiagnostics?: FeatureDiagnosticView[];
+  worksets?: WorksetView[];
+}
+
+export interface CachedDashboardData {
+  payload: DashboardData;
+  metadata: { generatedAt: number };
+  source: 'memory' | 'disk';
+}
+
+export interface CachedArtifactContent {
+  content: string;
+  source: 'memory' | 'disk';
+  generatedAt: number;
 }
 
 export interface AgentAdapterInfo {
@@ -49,27 +93,38 @@ export interface ArtifactChangedEvent {
   artifactTypes: string[];
 }
 
+export interface DataManagerOptions {
+  cacheService?: OpenSpecCacheService;
+}
+
 export class DataManager {
   private cliService: OpenSpecCliService;
   private stateReader: StateReader;
   private contentAccess: IOpenSpecContentAccess;
   private fileWatcher: FileWatcherService;
   private taskExecutorService: TaskExecutorService;
+  private readonly cacheService?: OpenSpecCacheService;
   private cachedData: DashboardData | null = null;
   private cliDiagnostic: CliActivationDiagnostic | null = null;
   private refreshInFlight: Promise<DashboardData> | null = null;
   private queuedRefresh: Promise<DashboardData> | null = null;
   private refreshCallbacks: Set<(data: DashboardData) => void> = new Set();
   private artifactChangedCallbacks: Set<(event: ArtifactChangedEvent) => void> = new Set();
+  private cliAvailable = false;
 
   // Scope-aware additions
   private scopeManager?: OpenSpecScopeManager;
   private capabilities?: OpenSpecCapabilities;
   private scopedContentAccess = new Map<string, IOpenSpecContentAccess>();
+  private scopedStateReaders = new Map<string, StateReader>();
 
-  constructor(private workspaceRoot: string) {
+  constructor(
+    private workspaceRoot: string,
+    options: DataManagerOptions = {}
+  ) {
     const openspecDir = path.join(workspaceRoot, 'openspec');
 
+    this.cacheService = options.cacheService;
     this.cliService = new OpenSpecCliService(workspaceRoot);
     this.contentAccess = new FileManagerService(openspecDir);
     this.stateReader = new StateReader(this.cliService, this.contentAccess);
@@ -90,12 +145,37 @@ export class DataManager {
     return this.cliDiagnostic;
   }
 
+  getCacheRootPath(): string | undefined {
+    return this.cacheService?.getCacheRootPath();
+  }
+
+  async getCacheStats(options?: CacheStatsOptions): Promise<CacheStats | undefined> {
+    if (!this.cacheService) return undefined;
+    try {
+      return await this.cacheService.getCacheStats(options);
+    } catch (error) {
+      logger.warn('Failed to calculate cache stats', error as Error);
+      return undefined;
+    }
+  }
+
+  async clearCache(): Promise<void> {
+    if (!this.cacheService) return;
+    await this.cacheService.clearAll();
+    this.cachedData = null;
+  }
+
   // ── Scope-aware additions ──────────────────────────────────────────────────
 
-  /** Initialize scope manager after CLI service is ready. Call from activate(). */
+  /** Initialize scope manager after CLI service is ready. Call from initialize(). */
   async initializeScopeManager(): Promise<void> {
     this.capabilities = await detectOpenSpecFeatures(this.cliService);
-    this.scopeManager = new OpenSpecScopeManager(this.workspaceRoot, this.cliService, this.capabilities);
+    this.scopeManager = new OpenSpecScopeManager(
+      this.workspaceRoot,
+      this.cliService,
+      this.capabilities,
+      this.cliService.getResolver(),
+    );
     await this.scopeManager.loadScopeOptions();
     this.scopeManager.onDidChangeScope(() => {
       this.cachedData = null;
@@ -127,8 +207,160 @@ export class DataManager {
     return access;
   }
 
+  /**
+   * Resolve a scope by id. Falls back to the currently selected scope when id is
+   * omitted/unknown, then to the local workspace root. Used by message handlers so
+   * change-detail panels can bind to a specific store root.
+   */
+  resolveScope(scopeId?: string): OpenSpecScope | undefined {
+    if (this.scopeManager) {
+      if (scopeId) {
+        const match = this.scopeManager.getScopeOptions().find((s) => s.id === scopeId);
+        if (match) return match;
+      }
+      return this.scopeManager.getSelectedScope();
+    }
+    return undefined;
+  }
+
+  /**
+   * Return the services (StateReader + content access) bound to a scope.
+   * Local scope reuses the default instances; store scopes get a scoped
+   * FileManagerService + StateReader rooted at scope.rootPath.
+   */
+  private getScopedServices(scope?: OpenSpecScope): {
+    stateReader: StateReader;
+    contentAccess: IOpenSpecContentAccess;
+    rootPath: string;
+    scope: OpenSpecScope | undefined;
+  } {
+    if (!scope || scope.source === 'local') {
+      return {
+        stateReader: this.stateReader,
+        contentAccess: this.contentAccess,
+        rootPath: this.workspaceRoot,
+        scope,
+      };
+    }
+    const contentAccess = this.getContentAccessForScope(scope);
+    let stateReader = this.scopedStateReaders.get(scope.id);
+    if (!stateReader) {
+      stateReader = new StateReader(this.cliService, contentAccess);
+      this.scopedStateReaders.set(scope.id, stateReader);
+    }
+    return { stateReader, contentAccess, rootPath: scope.rootPath, scope };
+  }
+
   async openWorkset(name: string): Promise<void> {
     await this.cliService.runJson(['workset', 'open', name]);
+  }
+
+  async registerStore(rootPath: string): Promise<DashboardData> {
+    const payload = await this.cliService.runJson([
+      'store',
+      'register',
+      rootPath,
+      '--yes',
+      '--json',
+    ]);
+    const store = this.parseStoreMutationPayload(payload, rootPath);
+    await this.reloadScopesAfterStoreChange();
+    this.selectStoreScope(store);
+    await this.invalidateDashboardCache();
+    return await this.refresh();
+  }
+
+  async setupStore(id: string, rootPath: string): Promise<DashboardData> {
+    const payload = await this.cliService.runJson([
+      'store',
+      'setup',
+      id,
+      '--path',
+      rootPath,
+      '--json',
+    ]);
+    const store = this.parseStoreMutationPayload(payload, rootPath);
+    await this.reloadScopesAfterStoreChange();
+    this.selectStoreScope({ id: store.id ?? id, rootPath: store.rootPath });
+    await this.invalidateDashboardCache();
+    return await this.refresh();
+  }
+
+  private async reloadScopesAfterStoreChange(): Promise<void> {
+    if (this.scopeManager) {
+      await this.scopeManager.loadScopeOptions();
+    } else if (this.cliAvailable) {
+      await this.initializeScopeManager();
+    }
+    this.cachedData = null;
+    this.scopedContentAccess.clear();
+    this.scopedStateReaders.clear();
+  }
+
+  private parseStoreMutationPayload(
+    payload: unknown,
+    fallbackRootPath: string
+  ): { id?: string; rootPath?: string } {
+    if (!payload || typeof payload !== 'object') {
+      return { rootPath: fallbackRootPath };
+    }
+    const store = 'store' in payload && payload.store && typeof payload.store === 'object'
+      ? payload.store as Record<string, unknown>
+      : payload as Record<string, unknown>;
+    const id = typeof store.id === 'string'
+      ? store.id
+      : typeof store.store_id === 'string'
+        ? store.store_id
+        : undefined;
+    const rootPath = typeof store.root === 'string'
+      ? store.root
+      : typeof store.path === 'string'
+        ? store.path
+        : fallbackRootPath;
+    return { id, rootPath };
+  }
+
+  private selectStoreScope(store: { id?: string; rootPath?: string }): void {
+    if (!this.scopeManager) return;
+    const normalizedRoot = store.rootPath ? path.normalize(store.rootPath) : undefined;
+    const match = this.scopeManager.getScopeOptions().find((scope) => {
+      if (scope.source !== 'store') return false;
+      if (store.id && scope.storeId === store.id) return true;
+      return normalizedRoot !== undefined && path.normalize(scope.rootPath) === normalizedRoot;
+    });
+    if (match) {
+      this.scopeManager.selectScope(match.id);
+    }
+  }
+
+  /**
+   * List worksets via `openspec workset list --json`. Capability-gated and
+   * defensively parsed; returns [] on any failure (UI degrades to hidden panel).
+   */
+  private async listWorksets(scope?: OpenSpecScope): Promise<WorksetView[]> {
+    if (!this.capabilities?.worksets) return [];
+    try {
+      const payload = (await this.cliService.runJson(['workset', 'list', '--json'])) as { worksets?: unknown[] } | null;
+      const raw = Array.isArray(payload?.worksets) ? payload!.worksets : [];
+      return raw
+        .filter((w): w is Record<string, unknown> => w != null && typeof w === 'object')
+        .map((w) => {
+          const membersRaw = Array.isArray(w.members) ? w.members : [];
+          return {
+            name: typeof w.name === 'string' ? w.name : String(w.name ?? ''),
+            tool: typeof w.tool === 'string' ? w.tool : undefined,
+            members: membersRaw
+              .filter((m): m is Record<string, unknown> => m != null && typeof m === 'object')
+              .map((m) => ({
+                name: typeof m.name === 'string' ? m.name : String(m.name ?? ''),
+                path: typeof m.path === 'string' ? m.path : String(m.path ?? ''),
+              })),
+          };
+        });
+    } catch (error) {
+      logger.warn('Failed to list worksets', error as Error);
+      return [];
+    }
   }
 
   /**
@@ -142,6 +374,16 @@ export class DataManager {
       logger.info(`Initialized with OpenSpec CLI ${version}`);
     } else {
       logger.warn('OpenSpec CLI not available; continuing with filesystem fallback mode');
+    }
+
+    // Initialize scope manager (feature probes + store options). Probe failure MUST NOT
+    // break the base dashboard: it produces diagnostics and degrades to local-root only.
+    if (this.cliAvailable) {
+      try {
+        await this.initializeScopeManager();
+      } catch (error) {
+        logger.warn('Scope manager initialization failed; continuing with local root only', error as Error);
+      }
     }
 
     // One-time migration: move openspec/.execution-state.json into each change's .openspec.yaml
@@ -188,7 +430,10 @@ export class DataManager {
       }
 
       logger.info(`File changes detected (${events.length} events), refreshing...`);
-      void this.refresh().catch((error) => {
+      void (async () => {
+        await this.invalidateDashboardCache(this.resolveScopeForRoot(this.workspaceRoot));
+        await this.refresh();
+      })().catch((error) => {
         logger.warn('Failed to refresh after file changes', error as Error);
       });
     });
@@ -286,6 +531,129 @@ export class DataManager {
     return this.cachedData;
   }
 
+  async getCachedDashboardData(scope = this.resolveScope()): Promise<CachedDashboardData | undefined> {
+    if (this.cachedData && this.scopeMatches(this.cachedData.scope, scope)) {
+      return {
+        payload: this.cachedData,
+        metadata: { generatedAt: this.cachedData.lastRefresh },
+        source: 'memory',
+      };
+    }
+
+    const cached = scope && this.cacheService
+      ? await this.cacheService.readDashboard(scope)
+      : undefined;
+
+    return cached
+      ? {
+          payload: cached.payload,
+          metadata: { generatedAt: cached.metadata.generatedAt },
+          source: 'disk',
+        }
+      : undefined;
+  }
+
+  async getCachedArtifactContent(params: {
+    changeName: string;
+    artifactType: string;
+    scope?: OpenSpecScope;
+    specId?: string;
+  }): Promise<CachedArtifactContent | undefined> {
+    if (!this.cacheService || !params.scope) return undefined;
+    try {
+      const cached = await this.cacheService.readArtifactContent({
+        scope: params.scope,
+        changeName: params.changeName,
+        artifactType: params.artifactType,
+        specId: params.specId,
+      });
+      return cached
+        ? { content: cached.payload, source: 'disk', generatedAt: cached.metadata.generatedAt }
+        : undefined;
+    } catch (error) {
+      logger.warn('Failed to read artifact content cache', error as Error);
+      return undefined;
+    }
+  }
+
+  async writeArtifactContentCache(params: {
+    changeName: string;
+    artifactType: string;
+    scope?: OpenSpecScope;
+    specId?: string;
+    content: string;
+  }): Promise<void> {
+    if (!this.cacheService || !params.scope) return;
+    try {
+      await this.cacheService.writeArtifactContent({
+        scope: params.scope,
+        changeName: params.changeName,
+        artifactType: params.artifactType,
+        specId: params.specId,
+      }, params.content);
+    } catch (error) {
+      logger.warn('Failed to write artifact content cache', error as Error);
+    }
+  }
+
+  private scopeMatches(
+    left?: Pick<ScopeInfo, 'id' | 'rootPath'>,
+    right?: Pick<ScopeInfo, 'id' | 'rootPath'>
+  ): boolean {
+    if (!left || !right) return false;
+    return left.id === right.id && left.rootPath === right.rootPath;
+  }
+
+  private resolveScopeForRoot(rootPath: string): OpenSpecScope | undefined {
+    const normalizedRoot = path.normalize(rootPath);
+    return this.scopeManager?.getScopeOptions().find((scope) => (
+      path.normalize(scope.rootPath) === normalizedRoot
+    )) ?? this.resolveScope();
+  }
+
+  private isCurrentScope(scope?: OpenSpecScope): boolean {
+    const currentScope = this.getSelectedScope();
+    if (!scope || !currentScope) return scope === currentScope;
+    return this.scopeMatches(scope, currentScope);
+  }
+
+  private async writeDashboardCache(scope: OpenSpecScope | undefined, data: DashboardData): Promise<void> {
+    if (!scope || !this.cacheService) return;
+    try {
+      await this.cacheService.writeDashboard(scope, data);
+    } catch (error) {
+      logger.warn('Failed to write dashboard cache', error as Error);
+    }
+  }
+
+  private async invalidateDashboardCache(scope = this.resolveScope()): Promise<void> {
+    if (!scope || !this.cacheService) return;
+    try {
+      await this.cacheService.invalidateScope(scope);
+    } catch (error) {
+      logger.warn('Failed to invalidate dashboard cache', error as Error);
+    }
+  }
+
+  private async invalidateArtifactContentCache(params: {
+    scope?: OpenSpecScope;
+    changeName: string;
+    artifactType: string;
+    specId?: string;
+  }): Promise<void> {
+    if (!params.scope || !this.cacheService) return;
+    try {
+      await this.cacheService.invalidateArtifact({
+        scope: params.scope,
+        changeName: params.changeName,
+        artifactType: params.artifactType,
+        specId: params.specId,
+      });
+    } catch (error) {
+      logger.warn('Failed to invalidate artifact content cache', error as Error);
+    }
+  }
+
   private warmDashboardData(): void {
     void this.getDashboardData().catch((error) => {
       logger.warn('Failed to warm dashboard data', error as Error);
@@ -303,31 +671,87 @@ export class DataManager {
   }
 
   private async runRefresh(): Promise<DashboardData> {
+    const scope = this.getSelectedScope();
     try {
       logger.info('Refreshing dashboard data...');
 
-      const [rawChanges, specs] = await Promise.all([
-        this.listChangesWithFallback(),
-        this.stateReader.listSpecs(),
-      ]);
-      const changes = await this.enrichChangesWithProposalWhy(rawChanges);
+      const services = this.getScopedServices(scope);
 
-      const scope = this.getSelectedScope();
+      const [rawChanges, specs] = await Promise.all([
+        this.listChangesWithFallback(services),
+        services.stateReader.listSpecs(),
+      ]);
+      const changes = await this.enrichChangesWithProposalWhy(rawChanges, services.contentAccess);
+
       const scopeInfo: ScopeInfo | undefined = scope
         ? {
             id: scope.id,
             label: scope.label,
             source: scope.source,
+            rootPath: scope.rootPath,
+            storeId: scope.storeId,
+            runtimeSource: scope.runtimeSource,
             capabilities: scope.capabilities,
           }
         : undefined;
+
+      // Scope options, relationships, feature diagnostics, and worksets are populated
+      // when the scope manager is initialized. Probe failures degrade gracefully
+      // (sections simply stay empty), never breaking the base dashboard.
+      const scopeOptions = this.scopeManager?.getScopeOptions() ?? [];
+      const scopesInfo: ScopeInfo[] = scopeOptions.map((s) => ({
+        id: s.id,
+        label: s.label,
+        source: s.source,
+        rootPath: s.rootPath,
+        storeId: s.storeId,
+        runtimeSource: s.runtimeSource,
+        capabilities: s.capabilities,
+      }));
+
+      let relationships: RelationshipPanelData | undefined;
+      let worksets: WorksetView[] | undefined;
+      let featureDiagnostics: FeatureDiagnosticView[] | undefined;
+      if (scope?.capabilities) {
+        featureDiagnostics = scope.capabilities.diagnostics.map((d) => ({
+          code: d.code,
+          message: d.message,
+          severity: d.severity,
+        }));
+      }
+
+      if (scope && scope.capabilities.context) {
+        try {
+          const rel = await loadScopeRelationships(this.cliService, scope);
+          relationships = {
+            references: rel.references,
+            health: rel.health,
+          };
+        } catch (error) {
+          logger.warn('Failed to load scope relationships', error as Error);
+        }
+      }
+
+      if (this.capabilities?.worksets) {
+        worksets = await this.listWorksets(scope);
+      }
 
       const data: DashboardData = {
         changes,
         specs,
         lastRefresh: Date.now(),
         scope: scopeInfo,
+        scopes: scopesInfo.length > 0 ? scopesInfo : undefined,
+        relationships,
+        featureDiagnostics,
+        worksets: worksets && worksets.length > 0 ? worksets : undefined,
       };
+      await this.writeDashboardCache(scope, data);
+      if (!this.isCurrentScope(scope)) {
+        logger.info(`Skipped stale refresh publish for scope ${scope?.id ?? '<none>'}`);
+        return data;
+      }
+
       this.cachedData = data;
       this.cliDiagnostic = null;
 
@@ -340,7 +764,7 @@ export class DataManager {
       const diagnostic = this.cliService.getCliActivationDiagnostic();
       if (diagnostic) {
         this.cliDiagnostic = diagnostic;
-        if (this.cachedData) {
+        if (this.isCurrentScope(scope) && this.cachedData) {
           this.notifyRefresh(this.cachedData);
           return this.cachedData;
         }
@@ -350,18 +774,24 @@ export class DataManager {
     }
   }
 
-  private async listChangesWithFallback(): Promise<ChangeInfo[]> {
+  private async listChangesWithFallback(services: {
+    stateReader: StateReader;
+    contentAccess: IOpenSpecContentAccess;
+    rootPath: string;
+    scope?: OpenSpecScope;
+  }): Promise<ChangeInfo[]> {
     if (!this.cliAvailable) {
       const diagnostic = this.cliService.getCliActivationDiagnostic();
       if (diagnostic) {
         this.cliDiagnostic = diagnostic;
         throw new Error(diagnostic.message);
       }
-      return await this.listChangesFromFilesystem();
+      return await this.listChangesFromFilesystem(services);
     }
 
     try {
-      return await this.stateReader.listChanges();
+      // CLI listing is scope-aware: store scopes append --store via the gateway.
+      return await services.stateReader.listChanges(services.scope);
     } catch (error) {
       const diagnostic = this.cliService.getCliActivationDiagnostic();
       if (diagnostic) {
@@ -370,7 +800,7 @@ export class DataManager {
       }
       logger.warn('CLI change listing failed; falling back to filesystem scan', error as Error);
       this.cliAvailable = false;
-      return await this.listChangesFromFilesystem();
+      return await this.listChangesFromFilesystem(services);
     }
   }
 
@@ -380,8 +810,13 @@ export class DataManager {
     return Number.isFinite(ms) && ms > 0 ? time.toISOString() : undefined;
   }
 
-  private async listChangesFromFilesystem(): Promise<ChangeInfo[]> {
-    const changesDir = path.join(this.workspaceRoot, 'openspec', 'changes');
+  private async listChangesFromFilesystem(services: {
+    contentAccess: IOpenSpecContentAccess;
+    rootPath: string;
+  }): Promise<ChangeInfo[]> {
+    // Filesystem fallback is rooted at the selected scope's root, not workspace root,
+    // so a store root outside the workspace still scans its own changes.
+    const changesDir = path.join(services.rootPath, 'openspec', 'changes');
     let entries: fs.Dirent[];
     try {
       entries = await fs.promises.readdir(changesDir, { withFileTypes: true });
@@ -390,14 +825,17 @@ export class DataManager {
       return [];
     }
 
+    const contentAccess = services.contentAccess;
     const changes = await Promise.all(
       entries
         .filter((entry) => entry.isDirectory() && entry.name !== 'archive')
         .map(async (entry): Promise<ChangeInfo> => {
           const changeName = entry.name;
           const changeDir = path.join(changesDir, changeName);
-          const [completedTasks, totalTasks] = await this.countTaskProgress(changeName);
-          const artifacts = await this.getFilesystemArtifactStatuses(changeName);
+          const tasks = await contentAccess.readTasks(changeName);
+          const completedTasks = tasks.filter((t) => t.done).length;
+          const totalTasks = tasks.length;
+          const artifacts = await this.getFilesystemArtifactStatuses(changeName, contentAccess);
           let lastModified = new Date().toISOString();
           let createdAt: string | undefined;
           try {
@@ -424,16 +862,13 @@ export class DataManager {
     return changes;
   }
 
-  private async countTaskProgress(changeName: string): Promise<[number, number]> {
-    const tasks = await this.contentAccess.readTasks(changeName);
-    const completed = tasks.filter((task) => task.done).length;
-    return [completed, tasks.length];
-  }
-
-  private async getFilesystemArtifactStatuses(changeName: string): Promise<ChangeInfo['artifacts']> {
+  private async getFilesystemArtifactStatuses(
+    changeName: string,
+    contentAccess: IOpenSpecContentAccess
+  ): Promise<ChangeInfo['artifacts']> {
     const artifacts: NonNullable<ChangeInfo['artifacts']> = [];
     for (const artifactType of ['proposal', 'design', 'tasks'] as const) {
-      if (await this.contentAccess.artifactExists(changeName, artifactType)) {
+      if (await contentAccess.artifactExists(changeName, artifactType)) {
         artifacts.push({
           id: artifactType,
           outputPath: `openspec/changes/${changeName}/${artifactType}.md`,
@@ -442,7 +877,7 @@ export class DataManager {
       }
     }
 
-    const deltaSpecIds = await this.contentAccess.listDeltaSpecIds(changeName);
+    const deltaSpecIds = await contentAccess.listDeltaSpecIds(changeName);
     if (deltaSpecIds.length > 0) {
       artifacts.push({
         id: 'specs',
@@ -453,11 +888,14 @@ export class DataManager {
     return artifacts;
   }
 
-  private async enrichChangesWithProposalWhy(changes: ChangeInfo[]): Promise<ChangeInfo[]> {
+  private async enrichChangesWithProposalWhy(
+    changes: ChangeInfo[],
+    contentAccess: IOpenSpecContentAccess
+  ): Promise<ChangeInfo[]> {
     return await Promise.all(
       changes.map(async (change) => {
         try {
-          const proposal = await this.contentAccess.readArtifact(change.name, 'proposal');
+          const proposal = await contentAccess.readArtifact(change.name, 'proposal');
           const why = extractProposalWhy(proposal);
           const artifactSearchText = (change.artifacts ?? [])
             .map((a) => `${a.id} ${a.status}`)
@@ -498,8 +936,11 @@ export class DataManager {
   /**
    * Check if artifact exists (State Reader: show artifacts or Content Access)
    */
-  async artifactExists(changeName: string, artifactType: string): Promise<boolean> {
-    return await this.stateReader.artifactExists(changeName, artifactType);
+  async artifactExists(changeName: string, artifactType: string, scope?: OpenSpecScope): Promise<boolean> {
+    const reader = scope && scope.source !== 'local'
+      ? this.getScopedServices(scope).stateReader
+      : this.stateReader;
+    return await reader.artifactExists(changeName, artifactType, scope);
   }
 
   /**
@@ -513,40 +954,50 @@ export class DataManager {
   /**
    * Read main spec content (Content Access)
    */
-  async readSpec(specId: string): Promise<string> {
-    return await this.contentAccess.readSpec(specId);
+  async readSpec(specId: string, scope?: OpenSpecScope): Promise<string> {
+    const access = scope ? this.getContentAccessForScope(scope) : this.contentAccess;
+    return await access.readSpec(specId);
   }
 
-  async getSpecRequirements(specId: string): Promise<string[]> {
-    return await (this.contentAccess as any).getSpecRequirements?.(specId) ?? [];
+  async getSpecRequirements(specId: string, scope?: OpenSpecScope): Promise<string[]> {
+    const access = scope ? this.getContentAccessForScope(scope) : this.contentAccess;
+    return await (access as any).getSpecRequirements?.(specId) ?? [];
   }
 
   /**
    * Read delta spec (Content Access)
    */
-  async readDeltaSpec(changeName: string, specId: string): Promise<string | null> {
-    return await this.contentAccess.readDeltaSpec(changeName, specId);
+  async readDeltaSpec(changeName: string, specId: string, scope?: OpenSpecScope): Promise<string | null> {
+    const access = scope ? this.getContentAccessForScope(scope) : this.contentAccess;
+    return await access.readDeltaSpec(changeName, specId);
   }
 
   /**
    * List archived changes (State Reader -> Content Access)
    */
-  async listArchivedChanges(): Promise<ArchivedChangeInfo[]> {
-    return await this.stateReader.listArchivedChanges();
+  async listArchivedChanges(scope?: OpenSpecScope): Promise<ArchivedChangeInfo[]> {
+    const reader = scope && scope.source !== 'local'
+      ? this.getScopedServices(scope).stateReader
+      : this.stateReader;
+    return await reader.listArchivedChanges();
   }
 
   /**
    * List delta spec ids for a change (Content Access)
    */
-  async listDeltaSpecIds(changeName: string): Promise<string[]> {
-    return await this.contentAccess.listDeltaSpecIds(changeName);
+  async listDeltaSpecIds(changeName: string, scope?: OpenSpecScope): Promise<string[]> {
+    const access = scope ? this.getContentAccessForScope(scope) : this.contentAccess;
+    return await access.listDeltaSpecIds(changeName);
   }
 
   /**
    * Read tasks for a change (State Reader: show.tasks or Content Access)
    */
-  async readTasks(changeName: string) {
-    return await this.stateReader.getTasks(changeName);
+  async readTasks(changeName: string, scope?: OpenSpecScope) {
+    const reader = scope && scope.source !== 'local'
+      ? this.getScopedServices(scope).stateReader
+      : this.stateReader;
+    return await reader.getTasks(changeName, scope);
   }
 
   /**
@@ -557,22 +1008,31 @@ export class DataManager {
     const access = scope ? this.getContentAccessForScope(scope) : this.contentAccess;
     await access.toggleTask(changeName, taskIndex);
     await access.autoCompleteParents(changeName);
+    const resolvedScope = scope ?? this.resolveScope();
+    await this.invalidateArtifactContentCache({
+      scope: resolvedScope,
+      changeName,
+      artifactType: 'tasks',
+    });
+    await this.invalidateDashboardCache(resolvedScope);
     await this.refresh();
   }
 
   /**
-   * Create new change (via CLI)
+   * Create new change (via CLI). Scope-aware: store scopes append --store.
    */
-  async createChange(name: string): Promise<void> {
-    await this.cliService.createChange(name);
+  async createChange(name: string, scope?: OpenSpecScope): Promise<void> {
+    await this.cliService.createChange(name, scope);
+    await this.invalidateDashboardCache(scope ?? this.resolveScope());
     await this.refresh();
   }
 
   /**
-   * Archive a change (via CLI)
+   * Archive a change (via CLI). Scope-aware: store scopes append --store.
    */
-  async archiveChange(name: string): Promise<void> {
-    await this.cliService.archiveChange(name);
+  async archiveChange(name: string, scope?: OpenSpecScope): Promise<void> {
+    await this.cliService.archiveChange(name, scope);
+    await this.invalidateDashboardCache(scope ?? this.resolveScope());
     await this.refresh();
   }
 

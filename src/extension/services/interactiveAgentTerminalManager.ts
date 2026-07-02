@@ -28,18 +28,28 @@ interface InteractiveAgentTerminalManagerDeps {
   terminalLocation?: vscode.TerminalLocation | vscode.TerminalEditorLocationOptions;
 }
 
+export interface InteractiveWorkflowScope {
+  id?: string;
+  rootPath: string;
+  storeId?: string;
+  label?: string;
+}
+
 export interface StartInteractiveWorkflowRequest {
   workspaceRoot: string;
   changeName: string;
   action: InteractiveWorkflowAction;
+  /** Scope this workflow is bound to. Terminal cwd uses scope.rootPath when set. */
+  scope?: InteractiveWorkflowScope;
 }
 
 function getSessionKey(
   workspaceRoot: string,
   changeName: string,
-  action: InteractiveWorkflowAction
+  action: InteractiveWorkflowAction,
+  scopeId?: string
 ): string {
-  return `${workspaceRoot}::${changeName}::${action}`;
+  return `${scopeId ?? workspaceRoot}::${changeName}::${action}`;
 }
 
 function isWindowsPlatform(platform: string = process.platform): boolean {
@@ -89,10 +99,11 @@ export function buildInteractiveAgentCommand(params: {
   action: InteractiveWorkflowAction;
   changeName: string;
   platform?: string;
+  storeId?: string;
 }): string {
   const platform = params.platform ?? process.platform;
   const q = (value: string) => shellQuote(value, platform);
-  return [
+  const base = [
     'agent',
     '--workspace',
     q(params.workspaceRoot),
@@ -100,7 +111,13 @@ export function buildInteractiveAgentCommand(params: {
     q(params.model),
     q(`/opsx-${params.action}`),
     q(params.changeName),
-  ].join(' ');
+  ];
+  // When bound to a store scope, forward --store so the agent runs the workflow
+  // against the store root rather than the workspace root.
+  if (params.storeId) {
+    base.push('--store', q(params.storeId));
+  }
+  return base.join(' ');
 }
 
 export class InteractiveAgentTerminalManager implements vscode.Disposable {
@@ -136,11 +153,13 @@ export class InteractiveAgentTerminalManager implements vscode.Disposable {
   }
 
   async start(request: StartInteractiveWorkflowRequest): Promise<InteractiveWorkflowState> {
-    const key = getSessionKey(request.workspaceRoot, request.changeName, request.action);
+    const scope = request.scope;
+    const effectiveRoot = scope?.rootPath ?? request.workspaceRoot;
+    const key = getSessionKey(request.workspaceRoot, request.changeName, request.action, scope?.id);
     const existing = this.sessions.get(key);
     if (existing?.terminal && existing.state.status === 'running') {
       existing.terminal.show(true);
-      return this.getState(request.workspaceRoot, request.changeName);
+      return this.getState(request.workspaceRoot, request.changeName, scope);
     }
 
     const available = await this.isAgentAvailable();
@@ -156,21 +175,22 @@ export class InteractiveAgentTerminalManager implements vscode.Disposable {
           message: t('verifyArchive.agentCliNotFound'),
         },
       });
-      return this.getState(request.workspaceRoot, request.changeName);
+      return this.getState(request.workspaceRoot, request.changeName, scope);
     }
 
     const model = this.getModel().trim() || 'auto';
     const command = buildInteractiveAgentCommand({
-      workspaceRoot: request.workspaceRoot,
+      workspaceRoot: effectiveRoot,
       model,
       action: request.action,
       changeName: request.changeName,
+      storeId: scope?.storeId,
     });
 
     try {
       const terminal = this.createTerminal({
         name: this.getTerminalName(request.action, request.changeName),
-        cwd: request.workspaceRoot,
+        cwd: effectiveRoot,
         location: this.terminalLocation,
       });
       terminal.show(true);
@@ -204,39 +224,46 @@ export class InteractiveAgentTerminalManager implements vscode.Disposable {
       });
     }
 
-    return this.getState(request.workspaceRoot, request.changeName);
+    return this.getState(request.workspaceRoot, request.changeName, scope);
   }
 
   reveal(
     workspaceRoot: string,
     changeName: string,
-    action: InteractiveWorkflowAction
+    action: InteractiveWorkflowAction,
+    scope?: InteractiveWorkflowScope
   ): InteractiveWorkflowState {
-    const session = this.sessions.get(getSessionKey(workspaceRoot, changeName, action));
+    const session = this.sessions.get(getSessionKey(workspaceRoot, changeName, action, scope?.id));
     session?.terminal?.show(true);
-    return this.getState(workspaceRoot, changeName);
+    return this.getState(workspaceRoot, changeName, scope);
   }
 
   stop(
     workspaceRoot: string,
     changeName: string,
-    action: InteractiveWorkflowAction
+    action: InteractiveWorkflowAction,
+    scope?: InteractiveWorkflowScope
   ): InteractiveWorkflowState {
-    return this.disposeSession(workspaceRoot, changeName, action);
+    return this.disposeSession(workspaceRoot, changeName, action, scope);
   }
 
   clear(
     workspaceRoot: string,
     changeName: string,
-    action: InteractiveWorkflowAction
+    action: InteractiveWorkflowAction,
+    scope?: InteractiveWorkflowScope
   ): InteractiveWorkflowState {
-    return this.disposeSession(workspaceRoot, changeName, action);
+    return this.disposeSession(workspaceRoot, changeName, action, scope);
   }
 
-  getState(workspaceRoot: string, changeName: string): InteractiveWorkflowState {
+  getState(
+    workspaceRoot: string,
+    changeName: string,
+    scope?: InteractiveWorkflowScope
+  ): InteractiveWorkflowState {
     const sessions: InteractiveWorkflowState['sessions'] = {};
     for (const action of ['verify', 'archive'] as const) {
-      const session = this.sessions.get(getSessionKey(workspaceRoot, changeName, action));
+      const session = this.sessions.get(getSessionKey(workspaceRoot, changeName, action, scope?.id));
       if (session) {
         sessions[action] = { ...session.state };
       }
@@ -247,13 +274,14 @@ export class InteractiveAgentTerminalManager implements vscode.Disposable {
   private disposeSession(
     workspaceRoot: string,
     changeName: string,
-    action: InteractiveWorkflowAction
+    action: InteractiveWorkflowAction,
+    scope?: InteractiveWorkflowScope
   ): InteractiveWorkflowState {
-    const key = getSessionKey(workspaceRoot, changeName, action);
+    const key = getSessionKey(workspaceRoot, changeName, action, scope?.id);
     const session = this.sessions.get(key);
     session?.terminal?.dispose();
     this.sessions.delete(key);
-    return this.getState(workspaceRoot, changeName);
+    return this.getState(workspaceRoot, changeName, scope);
   }
 
   private getTerminalName(action: InteractiveWorkflowAction, changeName: string): string {

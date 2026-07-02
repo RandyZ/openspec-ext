@@ -46,4 +46,29 @@ describe('OpenSpec package configuration', () => {
       default: 'auto',
     });
   });
+
+  it('contributes cache management commands to the command palette', () => {
+    expect(packageJson.contributes.commands).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        command: 'openspec.openCacheFolder',
+        title: 'OpenSpec: Open Cache Folder',
+        category: 'OpenSpec',
+      }),
+      expect.objectContaining({
+        command: 'openspec.copyCachePath',
+        title: 'OpenSpec: Copy Cache Path',
+        category: 'OpenSpec',
+      }),
+      expect.objectContaining({
+        command: 'openspec.clearCache',
+        title: 'OpenSpec: Clear Cache',
+        category: 'OpenSpec',
+      }),
+      expect.objectContaining({
+        command: 'openspec.showCacheDetails',
+        title: 'OpenSpec: Show Cache Details',
+        category: 'OpenSpec',
+      }),
+    ]));
+  });
 });

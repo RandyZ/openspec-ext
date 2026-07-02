@@ -28,6 +28,7 @@ function AppContent() {
   const [existingArtifactIds, setExistingArtifactIds] = useState<string[] | undefined>(undefined);
   const [initialTab, setInitialTab] = useState<ChangeDetailTabId | undefined>(undefined);
   const [interactiveAction, setInteractiveAction] = useState<InteractiveWorkflowAction | undefined>(undefined);
+  const [panelScopeId, setPanelScopeId] = useState<string | undefined>(undefined);
   const [panelSpecId, setPanelSpecId] = useState<string | null>(null);
   const [panelSpecContent, setPanelSpecContent] = useState<string | null>(null);
 
@@ -40,6 +41,9 @@ function AppContent() {
         setPanelChangeName(msg.changeName);
         setPanelSpecId(null);
         setInitialTab(msg.initialTab);
+        // Bind the panel to the scope it was opened under so store-scoped changes don't
+        // cross-resolve with a same-named change in another root.
+        setPanelScopeId(msg.scope?.id);
         if (msg.interactiveAction) {
           setInteractiveAction(undefined);
           setTimeout(() => setInteractiveAction(msg.interactiveAction), 0);
@@ -71,6 +75,7 @@ function AppContent() {
           debug={state.debug}
           initialTab={initialTab}
           interactiveAction={interactiveAction}
+          scopeId={panelScopeId}
         />
       );
   }

@@ -20,6 +20,7 @@ interface ChangesSectionProps {
   archivedLoading?: boolean;
   onOpenArchivedChange?: (directoryName: string) => void;
   workflowLaunchConfig?: WorkflowLaunchConfigView | null;
+  rootLabel?: string;
 }
 
 type StatusGroup = 'in-progress' | 'draft' | 'complete';
@@ -56,6 +57,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
   archivedLoading = false,
   onOpenArchivedChange,
   workflowLaunchConfig,
+  rootLabel,
 }) => {
   const [query, setQuery] = useState('');
   const filteredChanges = useMemo(() => filterChanges(changes, query), [changes, query]);
@@ -90,7 +92,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
 
       {changes.length === 0 ? (
         <EmptyState
-          message={t('dashboard.emptyChanges')}
+          message={rootLabel ? t('dashboard.emptyChangesInRoot', { root: rootLabel }) : t('dashboard.emptyChanges')}
           actionLabel={t('dashboard.createNew')}
           onAction={onRequestNewChange}
         />
@@ -155,7 +157,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
                 </div>
               ) : archivedItems.length === 0 ? (
                 <div className="text-xs py-2" style={{ color: 'var(--vscode-descriptionForeground)' }}>
-                  {t('dashboard.archivedEmpty')}
+                  {rootLabel ? t('dashboard.archivedEmptyInRoot', { root: rootLabel }) : t('dashboard.archivedEmpty')}
                 </div>
               ) : (
                 <div className="space-y-2">

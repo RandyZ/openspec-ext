@@ -17,13 +17,19 @@ vi.mock('vscode', () => ({
     showWarningMessage: vi.fn(() => Promise.resolve(undefined)),
     showInformationMessage: vi.fn(() => Promise.resolve(undefined)),
     showErrorMessage: vi.fn(() => Promise.resolve(undefined)),
+    showOpenDialog: vi.fn(() => Promise.resolve(undefined)),
+    showInputBox: vi.fn(() => Promise.resolve(undefined)),
+    showTextDocument: vi.fn(() => Promise.resolve(undefined)),
   },
   workspace: {
     getConfiguration: vi.fn(() => ({
       get: vi.fn(() => false),
       inspect: vi.fn(() => undefined),
     })),
-    openTextDocument: vi.fn(),
+    openTextDocument: vi.fn(() => Promise.resolve({})),
+    fs: {
+      createDirectory: vi.fn(() => Promise.resolve()),
+    },
   },
   commands: {
     executeCommand: vi.fn(),
@@ -32,6 +38,11 @@ vi.mock('vscode', () => ({
     clipboard: {
       writeText: vi.fn(),
     },
+    openExternal: vi.fn(() => Promise.resolve(true)),
+  },
+  Uri: {
+    file: vi.fn((fsPath: string) => ({ fsPath, path: fsPath, scheme: 'file' })),
+    parse: vi.fn((value: string) => ({ fsPath: value, path: value, scheme: value.split(':')[0] })),
   },
 }));
 
@@ -76,7 +87,7 @@ describe('handleWebviewMessage toggleTask', () => {
     );
 
     expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
-    expect(dataManager.toggleTask).toHaveBeenCalledWith('change-a', 0);
+    expect(dataManager.toggleTask).toHaveBeenCalledWith('change-a', 0, undefined);
     expect(webview.postMessage).toHaveBeenCalledWith({ type: 'dashboardData', data, debug: false });
   });
 
@@ -114,6 +125,171 @@ describe('handleWebviewMessage toggleTask', () => {
 
     expect(vscode.env.clipboard.writeText).toHaveBeenCalledWith('/opsx:archive demo-change');
     expect(adapterFillChat).not.toHaveBeenCalled();
+  });
+
+  it('posts formatted cache stats for getCacheStats requests', async () => {
+    const calculatedAt = 1_720_000_000_000;
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      getCacheStats: vi.fn().mockResolvedValue({
+        rootPath: '/tmp/openspec-cache',
+        totalBytes: 12 * 1024,
+        fileCount: 3,
+        calculatedAt,
+        isCalculating: false,
+      }),
+    };
+    const webview = {
+      postMessage: vi.fn(),
+    };
+
+    await handleWebviewMessage(
+      { type: 'getCacheStats' },
+      webview as any,
+      dataManager as any
+    );
+
+    expect(dataManager.getCacheStats).toHaveBeenCalledWith({ force: false });
+    expect(webview.postMessage).toHaveBeenCalledWith({
+      type: 'cacheStats',
+      stats: {
+        rootPath: '/tmp/openspec-cache',
+        totalBytes: 12 * 1024,
+        formattedSize: '12 KB',
+        fileCount: 3,
+        calculatedAt,
+        isCalculating: false,
+      },
+    });
+  });
+
+  it('copies the cache path for cacheAction copyPath and posts a success result', async () => {
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      getCacheRootPath: vi.fn().mockReturnValue('/tmp/openspec-cache'),
+    };
+    const webview = {
+      postMessage: vi.fn(),
+    };
+
+    await handleWebviewMessage(
+      { type: 'cacheAction', action: 'copyPath' },
+      webview as any,
+      dataManager as any
+    );
+
+    expect(vscode.env.clipboard.writeText).toHaveBeenCalledWith('/tmp/openspec-cache');
+    expect(webview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'cacheActionResult',
+      action: 'copyPath',
+      success: true,
+    }));
+  });
+
+  it('clears the cache, refreshes dashboard data, and posts fresh zero-byte stats', async () => {
+    vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce(t('cache.clear') as any);
+    const dashboardData = { changes: [], specs: [], lastRefresh: 2 };
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      getCacheRootPath: vi.fn().mockReturnValue('/tmp/openspec-cache'),
+      clearCache: vi.fn().mockResolvedValue(undefined),
+      refresh: vi.fn().mockResolvedValue(dashboardData),
+      getCacheStats: vi.fn().mockResolvedValue({
+        rootPath: '/tmp/openspec-cache',
+        totalBytes: 0,
+        fileCount: 0,
+        calculatedAt: 1_720_000_000_001,
+        isCalculating: false,
+      }),
+    };
+    const webview = {
+      postMessage: vi.fn(),
+    };
+
+    await handleWebviewMessage(
+      { type: 'cacheAction', action: 'clear' },
+      webview as any,
+      dataManager as any
+    );
+
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      t('cache.clearConfirm'),
+      { modal: true },
+      t('cache.clear'),
+    );
+    expect(dataManager.clearCache).toHaveBeenCalled();
+    expect(dataManager.refresh).toHaveBeenCalled();
+    expect(webview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'cacheActionResult',
+      action: 'clear',
+      success: true,
+    }));
+    expect(webview.postMessage).toHaveBeenCalledWith({
+      type: 'dashboardData',
+      data: dashboardData,
+      debug: false,
+    });
+    expect(webview.postMessage).toHaveBeenCalledWith({
+      type: 'cacheStats',
+      stats: {
+        rootPath: '/tmp/openspec-cache',
+        totalBytes: 0,
+        formattedSize: '0 B',
+        fileCount: 0,
+        calculatedAt: 1_720_000_000_001,
+        isCalculating: false,
+      },
+    });
+  });
+
+  it('does not clear the cache and posts a non-success result when the user dismisses the clear confirmation', async () => {
+    vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce(undefined as any);
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      getCacheRootPath: vi.fn().mockReturnValue('/tmp/openspec-cache'),
+      clearCache: vi.fn().mockResolvedValue(undefined),
+      refresh: vi.fn(),
+      getCacheStats: vi.fn(),
+    };
+    const webview = {
+      postMessage: vi.fn(),
+    };
+
+    await handleWebviewMessage(
+      { type: 'cacheAction', action: 'clear' },
+      webview as any,
+      dataManager as any
+    );
+
+    expect(dataManager.clearCache).not.toHaveBeenCalled();
+    expect(dataManager.refresh).not.toHaveBeenCalled();
+    expect(webview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'cacheActionResult',
+      action: 'clear',
+      success: false,
+      message: t('cache.cancelled'),
+    }));
+  });
+
+  it('posts an error message when manual refresh fails', async () => {
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      refresh: vi.fn().mockRejectedValue(new Error('refresh failed')),
+    };
+    const webview = {
+      postMessage: vi.fn(),
+    };
+
+    await expect(handleWebviewMessage(
+      { type: 'refresh' },
+      webview as any,
+      dataManager as any
+    )).resolves.toBeUndefined();
+
+    expect(webview.postMessage).toHaveBeenCalledWith({
+      type: 'error',
+      message: 'refresh failed',
+    });
   });
 
   it('routes launchWorkflowAction through Cursor adapter with hyphen command when adapter mode is selected', async () => {
@@ -307,10 +483,10 @@ describe('handleWebviewMessage toggleTask', () => {
       interactiveTerminalManager as any
     );
 
-    expect(interactiveTerminalManager.reveal).toHaveBeenCalledWith('/workspace', 'demo-change', 'archive');
-    expect(interactiveTerminalManager.stop).toHaveBeenCalledWith('/workspace', 'demo-change', 'archive');
-    expect(interactiveTerminalManager.clear).toHaveBeenCalledWith('/workspace', 'demo-change', 'archive');
-    expect(interactiveTerminalManager.getState).toHaveBeenCalledWith('/workspace', 'demo-change');
+    expect(interactiveTerminalManager.reveal).toHaveBeenCalledWith('/workspace', 'demo-change', 'archive', undefined);
+    expect(interactiveTerminalManager.stop).toHaveBeenCalledWith('/workspace', 'demo-change', 'archive', undefined);
+    expect(interactiveTerminalManager.clear).toHaveBeenCalledWith('/workspace', 'demo-change', 'archive', undefined);
+    expect(interactiveTerminalManager.getState).toHaveBeenCalledWith('/workspace', 'demo-change', undefined);
     expect(webview.postMessage).toHaveBeenNthCalledWith(4, {
       type: 'interactiveWorkflowState',
       changeName: 'demo-change',
@@ -525,5 +701,472 @@ describe('handleWebviewMessage toggleTask', () => {
 
     expect(archiveChange).not.toHaveBeenCalled();
     expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+  });
+
+  it('openArtifact resolves the artifact path against the panel-bound store root', async () => {
+    const storeScope = {
+      id: 'store:team-plans',
+      rootPath: '/stores/team-plans',
+      source: 'store',
+      storeId: 'team-plans',
+      runtimeSource: 'installed',
+    };
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      resolveScope: vi.fn().mockReturnValue(storeScope),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'openArtifact', changeName: 'demo-change', artifactType: 'proposal', scopeId: 'store:team-plans' },
+      webview as any,
+      dataManager as any
+    );
+
+    // Path must be derived from the store root, not the workspace root.
+    expect(vscode.workspace.openTextDocument).toHaveBeenCalledWith(
+      expect.stringContaining('/stores/team-plans/openspec/changes/demo-change/proposal.md')
+    );
+    expect(dataManager.resolveScope).toHaveBeenCalledWith('store:team-plans');
+  });
+
+  it('getSpecRequirements reads requirements against the store scope', async () => {
+    const storeScope = {
+      id: 'store:team-plans',
+      rootPath: '/stores/team-plans',
+      source: 'store',
+      storeId: 'team-plans',
+      runtimeSource: 'installed',
+    };
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      resolveScope: vi.fn().mockReturnValue(storeScope),
+      getSpecRequirements: vi.fn().mockResolvedValue(['REQ-1', 'REQ-2']),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'getSpecRequirements', specId: 'auth', scopeId: 'store:team-plans' },
+      webview as any,
+      dataManager as any
+    );
+
+    // Requirements must be read via the store scope, not the default root.
+    expect(dataManager.getSpecRequirements).toHaveBeenCalledWith('auth', storeScope);
+    expect(webview.postMessage).toHaveBeenCalledWith({
+      type: 'specRequirements',
+      specId: 'auth',
+      requirements: ['REQ-1', 'REQ-2'],
+    });
+  });
+
+  it('getSpecContent reads the spec against the store scope', async () => {
+    const storeScope = {
+      id: 'store:team-plans',
+      rootPath: '/stores/team-plans',
+      source: 'store',
+      storeId: 'team-plans',
+      runtimeSource: 'installed',
+    };
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      resolveScope: vi.fn().mockReturnValue(storeScope),
+      readSpec: vi.fn().mockResolvedValue('# auth spec'),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'getSpecContent', specId: 'auth', scopeId: 'store:team-plans' },
+      webview as any,
+      dataManager as any
+    );
+
+    expect(dataManager.readSpec).toHaveBeenCalledWith('auth', storeScope);
+    expect(webview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'specContent',
+      specId: 'auth',
+      content: '# auth spec',
+    }));
+  });
+
+  it('posts cached artifact content before fresh scoped artifact content', async () => {
+    const webview = { postMessage: vi.fn() };
+    const scope = { id: 'store:aihelp', rootPath: '/store', label: 'aihelp', source: 'store' };
+    const dataManager = {
+      resolveScope: vi.fn().mockReturnValue(scope),
+      artifactExists: vi.fn().mockResolvedValue(true),
+      getCachedArtifactContent: vi.fn().mockResolvedValue({
+        content: 'cached tasks',
+        source: 'disk',
+        generatedAt: 1,
+      }),
+      readArtifact: vi.fn().mockResolvedValue('fresh tasks'),
+    };
+
+    await handleWebviewMessage(
+      { type: 'getArtifactContent', changeName: 'same', artifactType: 'tasks', scopeId: 'store:aihelp' },
+      webview as any,
+      dataManager as any
+    );
+
+    expect(webview.postMessage).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      type: 'artifactContent',
+      content: 'cached tasks',
+      cache: { source: 'disk', stale: true, generatedAt: 1 },
+    }));
+    expect(webview.postMessage).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: 'artifactContent',
+      content: 'fresh tasks',
+      cache: { source: 'fresh', stale: false },
+    }));
+  });
+
+  it('calls resolveScope with the data manager receiver intact', async () => {
+    const storeScope = {
+      id: 'store:team-plans',
+      rootPath: '/stores/team-plans',
+      source: 'store',
+      storeId: 'team-plans',
+      runtimeSource: 'installed',
+    };
+    const dataManager = {
+      scopeById: new Map([['store:team-plans', storeScope]]),
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      resolveScope(scopeId?: string) {
+        return this.scopeById.get(scopeId ?? '');
+      },
+      readSpec: vi.fn().mockResolvedValue('# auth spec'),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'getSpecContent', specId: 'auth', scopeId: 'store:team-plans' },
+      webview as any,
+      dataManager as any
+    );
+
+    expect(dataManager.readSpec).toHaveBeenCalledWith('auth', storeScope);
+  });
+
+  it('getSpecRequirements without scopeId falls back to the selected/local scope', async () => {
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      resolveScope: vi.fn().mockReturnValue(undefined),
+      getSpecRequirements: vi.fn().mockResolvedValue([]),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'getSpecRequirements', specId: 'auth' },
+      webview as any,
+      dataManager as any
+    );
+
+    // No store scope — readSpec called with undefined scope (default root).
+    expect(dataManager.getSpecRequirements).toHaveBeenCalledWith('auth', undefined);
+  });
+
+  it('registers an existing store from the no-stores action and refreshes dashboard data', async () => {
+    const data = { changes: [], specs: [], lastRefresh: 1 };
+    vi.mocked(vscode.window.showOpenDialog).mockResolvedValueOnce([
+      { fsPath: '/stores/team-plans' },
+    ] as any);
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      registerStore: vi.fn().mockResolvedValue(data),
+      getDashboardData: vi.fn(),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'requestRegisterStore' },
+      webview as any,
+      dataManager as any
+    );
+
+    expect(dataManager.registerStore).toHaveBeenCalledWith('/stores/team-plans');
+    expect(dataManager.getDashboardData).not.toHaveBeenCalled();
+    expect(webview.postMessage).toHaveBeenCalledWith({ type: 'dashboardData', data, debug: false });
+  });
+
+  it('creates a new store under the selected parent folder and refreshes dashboard data', async () => {
+    const data = { changes: [], specs: [], lastRefresh: 1 };
+    vi.mocked(vscode.window.showInputBox).mockResolvedValueOnce('team-plans');
+    vi.mocked(vscode.window.showOpenDialog).mockResolvedValueOnce([{ fsPath: '/stores' }] as any);
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      setupStore: vi.fn().mockResolvedValue(data),
+      getDashboardData: vi.fn(),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'requestSetupStore' },
+      webview as any,
+      dataManager as any
+    );
+
+    expect(dataManager.setupStore).toHaveBeenCalledWith('team-plans', '/stores/team-plans');
+    expect(dataManager.getDashboardData).not.toHaveBeenCalled();
+    expect(webview.postMessage).toHaveBeenCalledWith({ type: 'dashboardData', data, debug: false });
+  });
+
+  it('queues a fresh refresh when selecting a scope instead of reusing stale in-flight data', async () => {
+    const staleData = {
+      changes: [],
+      specs: [],
+      lastRefresh: 1,
+      scope: { id: 'local:/workspace', label: 'Local Root' },
+    };
+    const selectedData = {
+      changes: [],
+      specs: [],
+      lastRefresh: 2,
+      scope: { id: 'store:team-plans', label: 'team-plans' },
+    };
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      selectScope: vi.fn(),
+      refresh: vi.fn().mockResolvedValue(selectedData),
+      getDashboardData: vi.fn().mockResolvedValue(staleData),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'selectScope', scopeId: 'store:team-plans' },
+      webview as any,
+      dataManager as any
+    );
+
+    expect(dataManager.selectScope).toHaveBeenCalledWith('store:team-plans');
+    expect(dataManager.refresh).toHaveBeenCalled();
+    expect(dataManager.getDashboardData).not.toHaveBeenCalled();
+    expect(webview.postMessage).toHaveBeenCalledWith({
+      type: 'dashboardData',
+      data: selectedData,
+      debug: false,
+      cache: { source: 'fresh', stale: false },
+    });
+  });
+
+  it('posts cached target data and an error when selected scope fresh refresh fails', async () => {
+    const cachedData = {
+      changes: [],
+      specs: [],
+      lastRefresh: 1,
+      scope: { id: 'store:team-plans', label: 'team-plans' },
+    };
+    const selectedScope = { id: 'store:team-plans', label: 'team-plans', rootPath: '/stores/team-plans' };
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      selectScope: vi.fn(),
+      resolveScope: vi.fn().mockReturnValue(selectedScope),
+      getCachedDashboardData: vi.fn().mockResolvedValue({
+        payload: cachedData,
+        source: 'disk',
+        metadata: { generatedAt: 123 },
+      }),
+      refresh: vi.fn().mockRejectedValue(new Error('fresh refresh failed')),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await expect(handleWebviewMessage(
+      { type: 'selectScope', scopeId: 'store:team-plans' },
+      webview as any,
+      dataManager as any
+    )).resolves.toBeUndefined();
+
+    expect(webview.postMessage).toHaveBeenCalledWith({
+      type: 'dashboardData',
+      data: cachedData,
+      debug: false,
+      cache: {
+        source: 'disk',
+        stale: true,
+        generatedAt: 123,
+      },
+    });
+    expect(webview.postMessage).toHaveBeenCalledWith({
+      type: 'error',
+      message: 'fresh refresh failed',
+    });
+  });
+
+  it('restores dashboard data when register-store directory selection is cancelled', async () => {
+    const data = { changes: [], specs: [], lastRefresh: 7 };
+    vi.mocked(vscode.window.showOpenDialog).mockResolvedValueOnce(undefined as any);
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      registerStore: vi.fn(),
+      getDashboardData: vi.fn().mockResolvedValue(data),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'requestRegisterStore' },
+      webview as any,
+      dataManager as any
+    );
+
+    expect(dataManager.registerStore).not.toHaveBeenCalled();
+    expect(dataManager.getDashboardData).toHaveBeenCalled();
+    expect(webview.postMessage).toHaveBeenCalledWith({ type: 'dashboardData', data, debug: false });
+  });
+
+  it('restores dashboard data when setup-store input is cancelled', async () => {
+    const data = { changes: [], specs: [], lastRefresh: 8 };
+    vi.mocked(vscode.window.showInputBox).mockResolvedValueOnce(undefined as any);
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      setupStore: vi.fn(),
+      getDashboardData: vi.fn().mockResolvedValue(data),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'requestSetupStore' },
+      webview as any,
+      dataManager as any
+    );
+
+    expect(dataManager.setupStore).not.toHaveBeenCalled();
+    expect(dataManager.getDashboardData).toHaveBeenCalled();
+    expect(webview.postMessage).toHaveBeenCalledWith({ type: 'dashboardData', data, debug: false });
+  });
+
+  it('restores dashboard data when setup-store parent folder selection is cancelled', async () => {
+    const data = { changes: [], specs: [], lastRefresh: 9 };
+    vi.mocked(vscode.window.showInputBox).mockResolvedValueOnce('team-plans');
+    vi.mocked(vscode.window.showOpenDialog).mockResolvedValueOnce(undefined as any);
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      setupStore: vi.fn(),
+      getDashboardData: vi.fn().mockResolvedValue(data),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'requestSetupStore' },
+      webview as any,
+      dataManager as any
+    );
+
+    expect(dataManager.setupStore).not.toHaveBeenCalled();
+    expect(dataManager.getDashboardData).toHaveBeenCalled();
+    expect(webview.postMessage).toHaveBeenCalledWith({ type: 'dashboardData', data, debug: false });
+  });
+
+  it('posts an error when register-store fails so pending UI can clear', async () => {
+    vi.mocked(vscode.window.showOpenDialog).mockResolvedValueOnce([
+      { fsPath: '/stores/team-plans' },
+    ] as any);
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      registerStore: vi.fn().mockRejectedValue(new Error('register failed')),
+      getDashboardData: vi.fn(),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'requestRegisterStore' },
+      webview as any,
+      dataManager as any
+    );
+
+    expect(webview.postMessage).toHaveBeenCalledWith({
+      type: 'error',
+      message: 'register failed',
+    });
+  });
+
+  it('posts an error when setup-store fails so pending UI can clear', async () => {
+    vi.mocked(vscode.window.showInputBox).mockResolvedValueOnce('team-plans');
+    vi.mocked(vscode.window.showOpenDialog).mockResolvedValueOnce([
+      { fsPath: '/stores' },
+    ] as any);
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      setupStore: vi.fn().mockRejectedValue(new Error('setup failed')),
+      getDashboardData: vi.fn(),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'requestSetupStore' },
+      webview as any,
+      dataManager as any
+    );
+
+    expect(webview.postMessage).toHaveBeenCalledWith({
+      type: 'error',
+      message: 'setup failed',
+    });
+  });
+
+  it('passes the resolved store scope when listing archived changes', async () => {
+    const storeScope = {
+      id: 'store:team-plans',
+      label: 'team-plans',
+      source: 'store',
+      rootPath: '/stores/team-plans',
+      storeId: 'team-plans',
+    };
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      resolveScope: vi.fn().mockReturnValue(storeScope),
+      listArchivedChanges: vi.fn().mockResolvedValue([
+        {
+          directoryName: '2026-06-30-store-change',
+          name: 'store-change',
+          archiveDate: '2026-06-30',
+        },
+      ]),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'getArchivedChanges', scopeId: 'store:team-plans' },
+      webview as any,
+      dataManager as any,
+    );
+
+    expect(dataManager.resolveScope).toHaveBeenCalledWith('store:team-plans');
+    expect(dataManager.listArchivedChanges).toHaveBeenCalledWith(storeScope);
+    expect(webview.postMessage).toHaveBeenCalledWith({
+      type: 'archivedChanges',
+      items: [
+        {
+          directoryName: '2026-06-30-store-change',
+          name: 'store-change',
+          archiveDate: '2026-06-30',
+        },
+      ],
+      scopeId: 'store:team-plans',
+    });
+  });
+
+  it('returns an empty archive list when the selected scoped archive request fails', async () => {
+    const storeScope = {
+      id: 'store:team-plans',
+      label: 'team-plans',
+      source: 'store',
+      rootPath: '/stores/team-plans',
+      storeId: 'team-plans',
+    };
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      resolveScope: vi.fn().mockReturnValue(storeScope),
+      listArchivedChanges: vi.fn().mockRejectedValue(new Error('store archive unavailable')),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'getArchivedChanges', scopeId: 'store:team-plans' },
+      webview as any,
+      dataManager as any,
+    );
+
+    expect(dataManager.listArchivedChanges).toHaveBeenCalledWith(storeScope);
+    expect(webview.postMessage).toHaveBeenCalledWith({ type: 'archivedChanges', items: [], scopeId: 'store:team-plans' });
   });
 });

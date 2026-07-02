@@ -9,6 +9,7 @@ interface SpecsSectionProps {
   specRequirements?: Record<string, string[]>;
   onOpenSpec?: (spec: SpecInfo) => void;
   onRequirementClick?: (spec: SpecInfo, requirementIndex: number) => void;
+  rootLabel?: string;
 }
 
 export const SpecsSection: React.FC<SpecsSectionProps> = ({
@@ -16,6 +17,7 @@ export const SpecsSection: React.FC<SpecsSectionProps> = ({
   specRequirements,
   onOpenSpec,
   onRequirementClick,
+  rootLabel,
 }) => {
   return (
     <div className="mb-6">
@@ -27,7 +29,9 @@ export const SpecsSection: React.FC<SpecsSectionProps> = ({
       </h2>
 
       {specs.length === 0 ? (
-        <EmptyState message={t('dashboard.emptySpecs')} />
+        <EmptyState
+          message={rootLabel ? t('dashboard.emptySpecsInRoot', { root: rootLabel }) : t('dashboard.emptySpecs')}
+        />
       ) : (
         <div className="space-y-2">
           {specs.map((spec) => (

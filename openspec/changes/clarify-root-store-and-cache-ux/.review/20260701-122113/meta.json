@@ -1,0 +1,8 @@
+{
+  "git_range": {"base": "8c93df0ba76950d6ec083da630d4fa89a0e41b4c", "head": "3d7c433f45aa101cc2a69bfee552153e31be5eea"},
+  "change_name": "clarify-root-store-and-cache-ux",
+  "timestamp": "2026-07-01T04:21:13+0000",
+  "reviewers": ["aihelp-spec-reviewer", "aihelp-adversarial-reviewer"],
+  "reviewer_selection_reason": "Implementation delta ~12 files, ~1217 lines (>=1000) -> aihelp-adversarial-reviewer added. No security-sensitive surfaces (webview UI + message handler + i18n only; no auth/crypto/secrets/injection) -> aihelp-security-reviewer skipped. aihelp-spec-reviewer always included.",
+  "review_scope_note": "Branch origin/main..HEAD contains many unrelated prior changes. Review is scoped to the working-tree implementation delta of clarify-root-store-and-cache-ux: src/webview/components/{ScopeBar,ChangesSection,SpecsSection,Dashboard,StoresAndWorksetsPanel}.tsx, src/webview/utils/scopeLabels.ts, src/extension/providers/webviewMessageHandler.ts, src/i18n/locales/{en,zh-cn}.json, and new tests under test/webview/components/."
+}

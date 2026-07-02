@@ -13,6 +13,7 @@ import {
   OpenSpecCliError,
 } from './types';
 import { OpenSpecCliResolver, OpenSpecCliResolutionError } from './openspecCliResolver';
+import type { OpenSpecScope } from './openspecScope';
 import {
   buildCliActivationDiagnostic,
   type CliActivationDiagnostic,
@@ -20,6 +21,11 @@ import {
 } from './cliActivationDiagnostic';
 
 const MINIMUM_OPENSPEC_VERSION = '1.0.0';
+
+export interface ScopeOption {
+  /** When set, root-resolving commands append `--store <storeId>`. */
+  storeId?: string;
+}
 
 export class OpenSpecCliService {
   private workspaceRoot: string;
@@ -30,6 +36,10 @@ export class OpenSpecCliService {
   constructor(workspaceRoot: string, resolver?: OpenSpecCliResolver) {
     this.workspaceRoot = workspaceRoot;
     this.resolver = resolver ?? new OpenSpecCliResolver(workspaceRoot);
+  }
+
+  getResolver(): OpenSpecCliResolver {
+    return this.resolver;
   }
 
   getCliActivationDiagnostic(): CliActivationDiagnostic | null {
@@ -188,9 +198,14 @@ export class OpenSpecCliService {
    * Get change status with artifact details.
    * If CLI returns non-JSON, returns { artifacts: [] } so listChanges can still show basic change list.
    */
-  async getChangeStatus(name: string): Promise<{ artifacts?: unknown[]; [k: string]: unknown }> {
+  async getChangeStatus(
+    name: string,
+    scope?: ScopeOption | OpenSpecScope
+  ): Promise<{ artifacts?: unknown[]; [k: string]: unknown }> {
     try {
-      const output = await this.execOpenSpec(['status', '--change', name, '--json']);
+      const output = await this.execOpenSpec(
+        this.withStoreFlag(['status', '--change', name, '--json'], scope)
+      );
       const data = this.tryParseJson<{ artifacts?: unknown[] }>(output, `openspec status --change ${name} --json`);
       return data ?? { artifacts: [] };
     } catch (error) {
@@ -223,9 +238,9 @@ export class OpenSpecCliService {
    * List all changes with artifact status.
    * Handles non-JSON output (e.g. human-readable "Active changes:") by returning [].
    */
-  async listChanges(): Promise<ChangeInfo[]> {
+  async listChanges(scope?: ScopeOption | OpenSpecScope): Promise<ChangeInfo[]> {
     try {
-      const output = await this.execOpenSpec(['list', '--json']);
+      const output = await this.execOpenSpec(this.withStoreFlag(['list', '--json'], scope));
       const data = this.tryParseJson<{ changes?: unknown[] }>(output, 'openspec list --json');
       if (!data?.changes || !Array.isArray(data.changes)) {
         if (!data) return [];
@@ -237,7 +252,7 @@ export class OpenSpecCliService {
       const enrichedChanges = await Promise.all(
         data.changes.map(async (c: any) => {
           try {
-            const status = await this.getChangeStatus(c.name);
+            const status = await this.getChangeStatus(c.name, scope);
             const artifacts = this.normalizeArtifactStatuses(status.artifacts ?? []);
             return {
               name: c.name,
@@ -273,9 +288,9 @@ export class OpenSpecCliService {
    * Show details for a specific change.
    * If CLI returns non-JSON or command fails (e.g. exit 1), returns minimal ChangeDetails so callers can fallback to Content Access.
    */
-  async showChange(name: string): Promise<ChangeDetails> {
+  async showChange(name: string, scope?: ScopeOption | OpenSpecScope): Promise<ChangeDetails> {
     try {
-      const output = await this.execOpenSpec(['show', name, '--json']);
+      const output = await this.execOpenSpec(this.withStoreFlag(['show', name, '--json'], scope));
       const data = this.tryParseJson<{ name?: string; schema?: string; artifacts?: unknown[]; tasks?: unknown[]; metadata?: Record<string, unknown> }>(
         output,
         `openspec show ${name} --json`
@@ -316,9 +331,9 @@ export class OpenSpecCliService {
    * List all specs.
    * CLI may return "No specs found.", or human-readable "Specs: ..." instead of JSON when --json is not honored or output is mixed.
    */
-  async listSpecs(): Promise<SpecInfo[]> {
+  async listSpecs(scope?: ScopeOption | OpenSpecScope): Promise<SpecInfo[]> {
     try {
-      const output = (await this.execOpenSpec(['list', '--specs', '--json'])).trim();
+      const output = (await this.execOpenSpec(this.withStoreFlag(['list', '--specs', '--json'], scope))).trim();
 
       if (!output || output.startsWith('No specs found')) {
         return [];
@@ -347,9 +362,9 @@ export class OpenSpecCliService {
    * Validate a change.
    * If CLI returns non-JSON, returns { valid: false, errors: ['Invalid or non-JSON output'], warnings: [] }.
    */
-  async validateChange(name: string): Promise<ValidationResult> {
+  async validateChange(name: string, scope?: ScopeOption | OpenSpecScope): Promise<ValidationResult> {
     try {
-      const output = await this.execOpenSpec(['validate', name, '--json']);
+      const output = await this.execOpenSpec(this.withStoreFlag(['validate', name, '--json'], scope));
       const data = this.tryParseJson<{ valid?: boolean; errors?: string[]; warnings?: string[] }>(
         output,
         `openspec validate ${name} --json`
@@ -371,9 +386,9 @@ export class OpenSpecCliService {
   /**
    * Create a new change
    */
-  async createChange(name: string): Promise<void> {
+  async createChange(name: string, scope?: ScopeOption | OpenSpecScope): Promise<void> {
     try {
-      await this.execOpenSpec(['new', 'change', name]);
+      await this.execOpenSpec(this.withStoreFlag(['new', 'change', name], scope));
       logger.info(`Created change: ${name}`);
     } catch (error) {
       logger.error(`Failed to create change: ${name}`, error as Error);
@@ -384,9 +399,13 @@ export class OpenSpecCliService {
   /**
    * Archive a change
    */
-  async archiveChange(name: string): Promise<void> {
+  async archiveChange(name: string, scope?: ScopeOption | OpenSpecScope): Promise<void> {
     try {
-      const output = await this.execOpenSpec(['archive', name, '--yes'], 1, { timeoutMs: 120000 });
+      const output = await this.execOpenSpec(
+        this.withStoreFlag(['archive', name, '--yes'], scope),
+        1,
+        { timeoutMs: 120000 }
+      );
       if (this.isArchiveAbortOutput(output)) {
         throw new OpenSpecCliError(this.extractArchiveAbortMessage(output), 0, output);
       }
@@ -418,20 +437,25 @@ export class OpenSpecCliService {
    * Returns raw JSON string from `openspec instructions <artifact> --change <changeName> --json`.
    * Throws if CLI is not available or command fails.
    */
-  async getInstructions(artifact: string, changeName: string): Promise<string> {
-    return await this.execOpenSpec([
-      'instructions',
-      artifact,
-      '--change',
-      changeName,
-      '--json',
-    ]);
+  async getInstructions(
+    artifact: string,
+    changeName: string,
+    scope?: ScopeOption | OpenSpecScope
+  ): Promise<string> {
+    return await this.execOpenSpec(
+      this.withStoreFlag(['instructions', artifact, '--change', changeName, '--json'], scope)
+    );
   }
 
   /**
-   * Append --store <storeId> flag when a store ID is provided.
+   * Append --store <storeId> when a scope carries a storeId.
+   * Accepts a ScopeOption ({ storeId? }) or a full OpenSpecScope; both expose storeId.
    */
-  private withStoreFlag(args: string[], storeId?: string): string[] {
+  private withStoreFlag(
+    args: string[],
+    scope?: ScopeOption | OpenSpecScope
+  ): string[] {
+    const storeId = scope && typeof scope === 'object' ? (scope as ScopeOption).storeId : undefined;
     if (storeId) {
       return [...args, '--store', storeId];
     }
@@ -439,65 +463,11 @@ export class OpenSpecCliService {
   }
 
   /**
-   * Execute OpenSpec CLI with args prefix from the resolved runtime.
-   * Resolves the runtime (which may include argsPrefix for local source mode),
-   * prepends the prefix, and spawns the process.
-   */
-  private async execOpenSpecWithArgsPrefix(args: string[]): Promise<string> {
-    const runtime = await this.resolver.resolveRuntime();
-    const fullArgs = [...runtime.argsPrefix, ...args];
-    const isLocalSource = runtime.source === 'localSource';
-
-    return new Promise((resolve, reject) => {
-      const proc = spawn(runtime.command, fullArgs, {
-        cwd: this.workspaceRoot,
-        env: runtime.env,
-        // For local source mode (node + bin/openspec.js), never use shell.
-        // Otherwise use the existing platform-specific shell behavior.
-        shell: !isLocalSource && process.platform === 'win32',
-        windowsHide: !isLocalSource && process.platform === 'win32',
-      });
-
-      let stdout = '';
-      let stderr = '';
-
-      proc.stdout.on('data', (data) => {
-        stdout += data.toString();
-      });
-
-      proc.stderr.on('data', (data) => {
-        stderr += data.toString();
-      });
-
-      proc.on('close', (code) => {
-        if (code !== 0) {
-          reject(
-            new OpenSpecCliError(
-              `Command failed with code ${code}`,
-              code || -1,
-              stderr
-            )
-          );
-        } else {
-          resolve(stdout);
-        }
-      });
-
-      proc.on('error', (error) => {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-          this.resolver.clearCache();
-        }
-        reject(new Error(`Failed to spawn openspec: ${error.message}`));
-      });
-    });
-  }
-
-  /**
    * Execute an OpenSpec CLI command expecting JSON output.
-   * Resolves the runtime, prepends argsPrefix, and parses the result as JSON.
+   * Resolves the runtime, prepends argsPrefix, runs with retry logic, and parses the result as JSON.
    */
   async runJson(args: string[]): Promise<unknown> {
-    const output = await this.execOpenSpecWithArgsPrefix(args);
+    const output = await this.execOpenSpec(args);
     return JSON.parse(output);
   }
 
@@ -563,18 +533,27 @@ export class OpenSpecCliService {
   }
 
   /**
-   * Execute OpenSpec CLI command (single attempt)
+   * Execute OpenSpec CLI command (single attempt).
+   *
+   * Uses the resolved runtime (which may include argsPrefix for local source mode),
+   * spawning `runtime.command [...runtime.argsPrefix, ...args]`. This is the single
+   * execution path for every CLI command, so localSource/customPath/installed modes
+   * all flow through the same code.
    */
   private async execOpenSpecOnce(args: string[], timeoutMs: number): Promise<string> {
+    const runtime = await this.resolver.resolveRuntime();
+    const fullArgs = [...runtime.argsPrefix, ...args];
+    const isLocalSource = runtime.source === 'localSource';
+
     return new Promise((resolve, reject) => {
-      this.resolver.resolve().then(({ command, env }) => {
-      const proc = spawn(command, args, {
+      const proc = spawn(runtime.command, fullArgs, {
         cwd: this.workspaceRoot,
-        env,
+        env: runtime.env,
         // Windows: npm global installs `openspec.cmd`; `spawn` without shell often fails with
         // ENOENT in Electron/Cursor when PATH is resolved differently than in a terminal.
-        shell: process.platform === 'win32',
-        windowsHide: process.platform === 'win32',
+        // For local source mode (node + bin/openspec.js), never use shell.
+        shell: !isLocalSource && process.platform === 'win32',
+        windowsHide: !isLocalSource && process.platform === 'win32',
       });
 
       let stdout = '';
@@ -616,7 +595,6 @@ export class OpenSpecCliService {
       proc.on('close', () => {
         clearTimeout(timeout);
       });
-      }).catch(reject);
     });
   }
 

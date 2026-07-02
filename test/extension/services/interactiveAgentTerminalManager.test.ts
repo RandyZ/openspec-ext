@@ -283,6 +283,83 @@ describe('InteractiveAgentTerminalManager', () => {
   });
 });
 
+describe('InteractiveAgentTerminalManager scope-aware behavior', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setLocale('en');
+  });
+
+  it('uses scope.rootPath as terminal cwd for a store scope', async () => {
+    const terminal = createTerminalDouble('OpenSpec Verify: demo-change');
+    vi.mocked(vscode.window.createTerminal).mockReturnValue(terminal as any);
+    const manager = new InteractiveAgentTerminalManager({
+      isAgentAvailable: vi.fn().mockResolvedValue(true),
+      now: () => 1,
+      getModel: () => 'auto',
+    });
+
+    await manager.start({
+      workspaceRoot: '/workspace/root',
+      changeName: 'demo-change',
+      action: 'verify',
+      scope: { id: 'store:team-plans', rootPath: '/stores/team-plans', storeId: 'team-plans' },
+    });
+
+    // Terminal cwd must be the store root, not the workspace root.
+    expect(vscode.window.createTerminal).toHaveBeenCalledWith({
+      name: 'OpenSpec Verify: demo-change',
+      cwd: '/stores/team-plans',
+      location: 'editor',
+    });
+    // Command must run against the store root and forward --store.
+    expect(terminal.sendText).toHaveBeenCalledWith(
+      "agent --workspace '/stores/team-plans' --model 'auto' '/opsx-verify' 'demo-change' --store 'team-plans'",
+      true
+    );
+  });
+
+  it('includes --store in the agent command for a store scope', () => {
+    const command = buildInteractiveAgentCommand({
+      workspaceRoot: '/stores/team-plans',
+      model: 'auto',
+      action: 'archive',
+      changeName: 'demo-change',
+      storeId: 'team-plans',
+    });
+    expect(command).toBe(
+      "agent --workspace '/stores/team-plans' --model 'auto' '/opsx-archive' 'demo-change' --store 'team-plans'"
+    );
+  });
+
+  it('keeps separate sessions per scope (same change name, different roots)', async () => {
+    const localTerminal = createTerminalDouble('OpenSpec Verify: shared');
+    const storeTerminal = createTerminalDouble('OpenSpec Verify: shared');
+    vi.mocked(vscode.window.createTerminal)
+      .mockReturnValueOnce(localTerminal as any)
+      .mockReturnValueOnce(storeTerminal as any);
+    const manager = new InteractiveAgentTerminalManager({
+      isAgentAvailable: vi.fn().mockResolvedValue(true),
+      now: () => 1,
+      getModel: () => 'auto',
+    });
+
+    await manager.start({
+      workspaceRoot: '/workspace/root',
+      changeName: 'shared',
+      action: 'verify',
+    });
+    await manager.start({
+      workspaceRoot: '/workspace/root',
+      changeName: 'shared',
+      action: 'verify',
+      scope: { id: 'store:team-plans', rootPath: '/stores/team-plans', storeId: 'team-plans' },
+    });
+
+    // Two distinct terminals because the scope id differs the session key.
+    expect(vscode.window.createTerminal).toHaveBeenCalledTimes(2);
+  });
+});
+
 function createTerminalDouble(name: string) {
   return {
     name,

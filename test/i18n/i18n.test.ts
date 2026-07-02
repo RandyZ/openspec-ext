@@ -151,5 +151,39 @@ describe('i18n', () => {
         expect(zhCn[key as keyof typeof zhCn]).toBeTruthy();
       }
     });
+
+    it('contains cache management keys in both locales', () => {
+      const requiredKeys = [
+        'cache.unavailable',
+        'cache.label',
+        'cache.openFolder',
+        'cache.copyPath',
+        'cache.clear',
+        'cache.showDetails',
+        'cache.clearConfirm',
+        'cache.cleared',
+        'cache.pathCopied',
+        'cache.details',
+        'cache.statsUnavailable',
+        'cache.statsCalculating',
+        'cache.summary',
+        'cache.menuLabel',
+      ];
+
+      for (const key of requiredKeys) {
+        expect(en[key as keyof typeof en]).toBeTruthy();
+        expect(zhCn[key as keyof typeof zhCn]).toBeTruthy();
+      }
+    });
+
+    it('keeps cache and refresh status rail labels stable in both locales', () => {
+      expect(en['cache.clear']).toBe('Clear Cache');
+      expect(en['cache.showDetails']).toBe('Show Details');
+      expect(en['dashboard.refreshing']).toBe('Refreshing OpenSpec data...');
+
+      expect(zhCn['cache.clear']).toBe('清理缓存');
+      expect(zhCn['cache.showDetails']).toBe('查看详情');
+      expect(zhCn['dashboard.refreshing']).toBe('正在刷新 OpenSpec 数据...');
+    });
   });
 });

@@ -8,12 +8,19 @@ import {
 const defaultCapabilities = { stores: false, context: false, doctor: false, worksets: false, diagnostics: [] };
 
 describe('OpenSpec scope factories', () => {
-  it('creates a local root scope', () => {
+  it('creates a local root scope with default runtimeSource', () => {
     expect(createLocalScope('/workspace', defaultCapabilities)).toMatchObject({
       id: 'local:/workspace',
       label: 'Local Root',
       rootPath: '/workspace',
       source: 'local',
+      runtimeSource: 'installed',
+    });
+  });
+
+  it('creates a local root scope with the provided runtimeSource', () => {
+    expect(createLocalScope('/workspace', defaultCapabilities, 'localSource')).toMatchObject({
+      runtimeSource: 'localSource',
     });
   });
 
@@ -29,6 +36,7 @@ describe('OpenSpec scope factories', () => {
       rootPath: '/stores/team-plans',
       source: 'store',
       storeId: 'team-plans',
+      runtimeSource: 'installed',
     });
   });
 });
@@ -100,5 +108,32 @@ describe('OpenSpecScopeManager', () => {
     const scope = manager.getSelectedScope();
     expect(scope.id).toBe('store:team-plans');
     expect(scope.rootPath).toBe('/stores/team-plans');
+  });
+
+  it('passes the resolved runtime source to scope options', async () => {
+    const cli = {
+      runJson: vi.fn().mockResolvedValue({
+        stores: [{ id: 'team-plans', root: '/stores/team-plans' }],
+        status: [],
+      }),
+    };
+    const runtime = { resolveRuntime: vi.fn().mockResolvedValue({ source: 'localSource' }) };
+    const manager = new OpenSpecScopeManager('/workspace', cli, capabilities, runtime);
+
+    const scopes = await manager.loadScopeOptions();
+
+    expect(scopes.every((s) => s.runtimeSource === 'localSource')).toBe(true);
+    const selected = manager.getSelectedScope();
+    expect(selected.runtimeSource).toBe('localSource');
+  });
+
+  it('keeps installed runtimeSource when resolver is unavailable', async () => {
+    const cli = { runJson: vi.fn().mockResolvedValue({ stores: [], status: [] }) };
+    // No runtime injected (4th arg) — should default to 'installed'.
+    const manager = new OpenSpecScopeManager('/workspace', cli, capabilities);
+
+    await manager.loadScopeOptions();
+
+    expect(manager.getSelectedScope().runtimeSource).toBe('installed');
   });
 });

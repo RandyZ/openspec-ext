@@ -114,6 +114,273 @@ The system SHALL reflect file system changes and extension-triggered state chang
 - THEN the UI MUST reuse cached dashboard data where valid
 - AND it MUST NOT perform an additional full OpenSpec scan solely because of the click
 
+### Requirement: Scope transition feedback
+Dashboard SHALL provide immediate visual feedback when the active OpenSpec scope is changing, and SHALL keep the visible activity label consistent with the data currently displayed.
+
+The scope selector and store setup/register actions MUST enter a pending state as soon as the user triggers a scope-affecting action. The dashboard MUST prevent duplicate scope-affecting actions while the pending operation is active. `Switching` MUST only describe the period before dashboard data for the target scope is visible; once target-scope cached data is displayed, dashboard MUST show a cached-refresh activity instead of continuing to show switching.
+
+#### Scenario: Select different scope
+- **GIVEN** dashboard shows multiple OpenSpec scopes
+- **WHEN** the user selects a different scope from the scope selector
+- **THEN** dashboard MUST immediately show a loading indicator associated with scope switching
+- **AND** dashboard MUST disable duplicate scope selection until the operation completes
+- **AND** dashboard MUST request data for the selected scope from the extension host
+
+#### Scenario: Target cached data arrives during scope switch
+- **GIVEN** dashboard is showing a scope switching pending state for a selected target scope
+- **WHEN** the extension host returns cached dashboard data marked stale for the selected target scope
+- **THEN** dashboard MUST display changes and specs for the selected target scope
+- **AND** the scope selector MUST show the selected target scope
+- **AND** dashboard MUST clear the scope switching label
+- **AND** dashboard MUST show a cached-refresh activity such as `Showing cached data while refreshing`
+
+#### Scenario: Fresh data arrives after cached scope data
+- **GIVEN** dashboard is displaying cached data for the selected target scope with a cached-refresh activity
+- **WHEN** fresh dashboard data for that scope arrives from the extension host
+- **THEN** dashboard MUST replace cached data with fresh data
+- **AND** dashboard MUST clear the cached-refresh activity
+- **AND** dashboard MUST keep the scope selector on the selected scope
+
+#### Scenario: Scope switch succeeds without cached intermediate data
+- **GIVEN** dashboard is showing a scope switching pending state
+- **WHEN** the extension host returns fresh dashboard data for the selected scope
+- **THEN** dashboard MUST display changes and specs for the selected scope
+- **AND** dashboard MUST clear the scope switching pending state
+- **AND** the scope selector MUST show the selected scope
+
+#### Scenario: Scope switch fails before target data is visible
+- **GIVEN** dashboard is showing a scope switching pending state
+- **WHEN** the extension host reports a failure before any data for the selected scope is displayed
+- **THEN** dashboard MUST clear the scope switching pending state
+- **AND** dashboard MUST keep or restore the last successfully loaded dashboard data
+- **AND** dashboard MUST show an error or warning explaining that scope data could not be loaded
+
+#### Scenario: Fresh refresh fails after target cached data is visible
+- **GIVEN** dashboard is displaying cached data for the selected target scope
+- **WHEN** the extension host reports that fresh refresh failed
+- **THEN** dashboard MUST keep displaying the target scope cached data
+- **AND** dashboard MUST stop showing switching or refresh spinners
+- **AND** dashboard MUST show a warning that visible data may be stale
+
+#### Scenario: Store setup or register pending
+- **GIVEN** dashboard displays store setup or register actions
+- **WHEN** the user starts setup or register from the dashboard
+- **THEN** dashboard MUST show a pending state for that action
+- **AND** dashboard MUST refresh scope metadata after the action succeeds
+- **AND** dashboard MUST prevent duplicate setup/register clicks while the action is pending
+
+### Requirement: Cache-aware dashboard rendering
+Dashboard SHALL render valid cached dashboard data while fresh data is being loaded.
+
+Cached dashboard data MUST be visibly treated as potentially stale until fresh data is returned by the extension host.
+
+#### Scenario: Open dashboard with cached data
+- **GIVEN** valid cached dashboard data exists for the current workspace and scope
+- **WHEN** the dashboard webview opens
+- **THEN** dashboard MUST render cached changes and specs without waiting for a full CLI refresh
+- **AND** dashboard MUST show a refreshing or stale indicator until fresh data arrives
+
+#### Scenario: Fresh dashboard data replaces cache
+- **GIVEN** dashboard is rendering cached data
+- **WHEN** fresh dashboard data arrives from the extension host
+- **THEN** dashboard MUST replace cached data with fresh data
+- **AND** dashboard MUST clear the stale indicator
+- **AND** search, status grouping, specs list, and scope metadata MUST reflect the fresh data
+
+#### Scenario: Cached data is scoped
+- **GIVEN** dashboard has cached data for multiple scopes
+- **WHEN** the user switches from one scope to another
+- **THEN** dashboard MUST only render cached data belonging to the selected scope
+- **AND** dashboard MUST NOT show changes or specs from the previously selected scope as if they belonged to the new scope
+
+### Requirement: Scope Bar
+The Dashboard SHALL show a compact Scope Bar that makes the active OpenSpec runtime and selected writable root visible.
+
+#### Scenario: Scope Bar shows local root
+- **GIVEN** the selected scope is the workspace local OpenSpec root
+- **WHEN** the dashboard renders
+- **THEN** the Scope Bar MUST show the local root label
+- **AND** it MUST show the root path in a concise, inspectable form
+- **AND** it MUST show the resolved runtime source
+
+#### Scenario: Scope Bar shows selected store
+- **GIVEN** the selected scope is a registered store
+- **WHEN** the dashboard renders
+- **THEN** the Scope Bar MUST show the store id
+- **AND** it MUST show that commands act on the store root
+- **AND** it MUST distinguish explicit store scope from local root scope
+
+#### Scenario: Scope Bar shows declared store
+- **GIVEN** OpenSpec reports that the current workspace resolves through a declared store
+- **WHEN** the dashboard renders
+- **THEN** the Scope Bar MUST show the declared store id
+- **AND** it MUST indicate that the selected root comes from project configuration
+
+#### Scenario: Scope Bar remains compact in sidebar
+- **GIVEN** the OpenSpec dashboard is shown in the sidebar
+- **WHEN** the available width is narrow
+- **THEN** runtime, scope, health, and actions MUST wrap or collapse without overlapping text
+- **AND** the change list MUST remain readable below the Scope Bar
+
+### Requirement: Store selection
+The Dashboard SHALL allow users to switch between local root and registered store scopes when store-aware features are available.
+
+#### Scenario: Store selector lists local root and registered stores
+- **GIVEN** store-aware features are available
+- **AND** registered stores exist
+- **WHEN** the user opens the scope selector
+- **THEN** the selector MUST include the local root when available
+- **AND** it MUST include each registered store by id
+- **AND** each option SHOULD include a concise path or health hint
+
+#### Scenario: Selecting a store refreshes scoped data
+- **GIVEN** the dashboard is showing local root data
+- **WHEN** the user selects a registered store
+- **THEN** the dashboard MUST refresh changes and specs from the selected store scope
+- **AND** stale local-root changes MUST not remain visible as store changes
+
+#### Scenario: Returning to local root restores local dashboard
+- **GIVEN** the dashboard is showing a store scope
+- **WHEN** the user selects the local root option
+- **THEN** the dashboard MUST refresh changes and specs from the workspace root
+- **AND** store-specific relationship data MUST no longer be shown as the active root relationship data
+
+#### Scenario: Store selector hidden when unsupported
+- **GIVEN** the resolved OpenSpec runtime does not support stores
+- **WHEN** the dashboard renders
+- **THEN** the store selector MUST NOT be shown as an enabled control
+- **AND** the dashboard MAY show a concise message explaining that local source mode is needed for unreleased store support
+
+### Requirement: Root health display
+The Dashboard SHALL surface selected root health without blocking normal data display for non-fatal health findings.
+
+#### Scenario: Healthy root
+- **GIVEN** OpenSpec doctor reports the selected root is healthy
+- **WHEN** the dashboard renders
+- **THEN** the Scope Bar MUST show a healthy state
+- **AND** no relationship warning card MUST be shown for root health
+
+#### Scenario: Health findings are visible
+- **GIVEN** OpenSpec doctor reports warnings or informational findings for the selected root
+- **WHEN** the dashboard renders
+- **THEN** the Scope Bar MUST show a warning or info state
+- **AND** the relationship area MUST show diagnostic messages and fixes supplied by OpenSpec
+
+#### Scenario: Doctor unavailable
+- **GIVEN** base dashboard data can load
+- **AND** doctor support is unavailable or probe-disabled
+- **WHEN** the dashboard renders
+- **THEN** the dashboard MUST continue to show changes and specs
+- **AND** health status MUST be shown as unavailable rather than failed activation
+
+### Requirement: Read-only references panel
+The Dashboard SHALL show referenced stores as read-only upstream context for the selected scope.
+
+#### Scenario: Resolved reference displays specs
+- **GIVEN** the selected root has a resolved referenced store with specs
+- **WHEN** the references panel renders
+- **THEN** it MUST show the referenced store id
+- **AND** it MUST show referenced spec ids and one-line summaries when provided by OpenSpec
+- **AND** it MUST show a fetch command or action for reading a referenced spec
+
+#### Scenario: Empty resolved reference remains visible
+- **GIVEN** a referenced store resolves but has no specs
+- **WHEN** the references panel renders
+- **THEN** it MUST show the referenced store id
+- **AND** it MUST indicate that no specs are currently available
+
+#### Scenario: Unresolved reference displays fix
+- **GIVEN** OpenSpec context or doctor reports an unresolved referenced store
+- **WHEN** the references panel renders
+- **THEN** it MUST show the store id and warning state
+- **AND** it MUST show the fix text supplied by OpenSpec
+- **AND** it MUST NOT hide the reference silently
+
+#### Scenario: References do not expose write actions
+- **GIVEN** a referenced store is displayed
+- **WHEN** the user views the reference row or card
+- **THEN** the UI MUST NOT show New Change, Apply, Sync, Verify, Archive, or task-toggle controls for that referenced store
+- **AND** it MAY offer to select the referenced store as the active scope when the store is registered
+
+### Requirement: Workset entry points
+The Dashboard SHALL expose personal worksets as local open-together conveniences without making them project truth.
+
+#### Scenario: Worksets are listed when supported
+- **GIVEN** the runtime supports worksets
+- **WHEN** the dashboard requests workset data
+- **THEN** the UI MAY show saved workset names, preferred tool, and members
+- **AND** the section MUST label worksets as local personal views
+
+#### Scenario: Open workset action delegates to OpenSpec
+- **GIVEN** a saved workset is visible
+- **WHEN** the user chooses to open it
+- **THEN** the extension MUST delegate to `openspec workset open <name>` or an equivalent OpenSpec command
+- **AND** it MUST not write membership files into any member folder
+
+#### Scenario: Workset management is not required for MVP
+- **GIVEN** store-aware dashboard MVP is implemented
+- **WHEN** worksets are displayed
+- **THEN** create, edit, and remove workset UI MAY be absent
+- **AND** the UI MUST still explain how the user can manage worksets through OpenSpec CLI when needed
+
+### Requirement: Operational status rail
+Dashboard SHALL render OpenSpec runtime, scope, health, activity, and cache summary as a compact operational status rail instead of a large filled status card.
+
+The status rail MUST fit narrow IDE sidebars, MUST use VS Code theme tokens, and MUST keep status meaning visible through text in addition to color. Icon-only controls in the rail MUST have accessible labels or tooltips.
+
+#### Scenario: Rail shows normal runtime status
+- **GIVEN** OpenSpec CLI is installed and the current scope is healthy
+- **WHEN** dashboard renders the status rail
+- **THEN** the rail MUST show the CLI source or mode, selected scope name, and health text in a compact two-line or equivalent layout
+- **AND** the rail MUST NOT dominate the dashboard content like a large content card
+- **AND** the health state MUST be understandable without relying only on green color
+
+#### Scenario: Rail adapts to narrow sidebar width
+- **GIVEN** the OpenSpec sidebar is rendered in a narrow IDE panel
+- **WHEN** the selected scope name or cache summary is long
+- **THEN** the rail MUST keep controls usable without horizontal overflow
+- **AND** long labels MUST truncate or wrap in a controlled way
+- **AND** primary dashboard actions MUST remain visible and clickable
+
+#### Scenario: Rail exposes cache entry
+- **GIVEN** cache statistics are available or being calculated
+- **WHEN** dashboard renders the status rail
+- **THEN** the rail MUST expose a cache entry showing a concise summary such as size and file count when available
+- **AND** the cache entry MUST provide access to cache management actions
+- **AND** unavailable cache stats MUST be represented as pending or unavailable without blocking the rest of the rail
+
+#### Scenario: Rail uses accessible activity copy
+- **GIVEN** dashboard is switching scope, refreshing cached data, or showing a warning
+- **WHEN** the rail renders the current activity
+- **THEN** the rail MUST show a concise text label for the activity
+- **AND** spinner or progress indicators MUST be paired with accessible text
+- **AND** warning or error states MUST remain visible after the transient spinner ends
+
+### Requirement: Dashboard cache management entry
+Dashboard SHALL provide a clear cache management entry connected to extension-host cache actions and settings/discovery surfaces.
+
+The dashboard entry MUST allow users to open the cache folder, copy the cache path, clear the cache, and view cache details without knowing the editor-specific storage path.
+
+#### Scenario: User opens cache action menu
+- **GIVEN** dashboard status rail includes a cache entry
+- **WHEN** the user activates the cache entry
+- **THEN** dashboard MUST show available cache actions
+- **AND** each action MUST send a typed message or command to the extension host
+- **AND** dashboard MUST NOT attempt to read the filesystem directly from the webview
+
+#### Scenario: Cache action completes
+- **GIVEN** the user selects a cache action from dashboard
+- **WHEN** extension host reports the action result
+- **THEN** dashboard MUST show non-blocking success or failure feedback
+- **AND** cache statistics MUST refresh after actions that mutate cache contents
+- **AND** current dashboard data MUST remain visible unless the user explicitly clears and refreshes data
+
+#### Scenario: Settings surface links to cache management
+- **GIVEN** the user opens OpenSpec extension settings or command palette
+- **WHEN** they look for cache management
+- **THEN** the extension MUST expose discoverable commands or settings descriptions for opening, copying, clearing, and inspecting cache
+- **AND** the description MUST make clear that cache lives in editor extension storage, not in the project
+
 ### Requirement: Dashboard Actions
 The system SHALL provide quick actions for common operations, workflow-oriented quick actions SHALL route through shared OpenSpec workflow command routing, and Verify/Archive quick actions SHALL be able to open the interactive `Verify & Archive` workflow.
 

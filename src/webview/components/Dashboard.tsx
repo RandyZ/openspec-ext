@@ -1,21 +1,66 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useVscode } from '../hooks/useVscode';
 import { useAppState } from '../context/AppContext';
+import type { AppAction } from '../context/AppContext';
 import { sendMessage } from '../types/messages';
-import type { ArchivedChangeInfo, SpecInfo } from '../types/messages';
+import type { ArchivedChangeInfo, SpecInfo, WebviewMessage } from '../types/messages';
 import { Header } from './Header';
 import { ChangesSection } from './ChangesSection';
 import { SpecsSection } from './SpecsSection';
 import { CliActivationDiagnosticCard } from './CliActivationDiagnosticCard';
 import { ScopeBar } from './ScopeBar';
-import { ReferencesPanel } from './ReferencesPanel';
-import { WorksetsPanel } from './WorksetsPanel';
+import { StoresAndWorksetsPanel } from './StoresAndWorksetsPanel';
+import { formatOpenSpecRootLabel } from '../utils/scopeLabels';
 import { t } from '../../i18n';
 import {
   buildWorkflowCommand,
   type WorkflowAction,
 } from '../../shared/workflowCommand';
 import type { WorkflowLaunchConfigView } from '../utils/workflowLaunchLabels';
+import type { CacheAction, CacheStatsView } from '../types/messages';
+
+type DashboardDispatch = React.Dispatch<AppAction>;
+type DashboardPostMessage = (message: WebviewMessage) => void;
+
+export function createScopeSelectHandler(
+  dispatch: DashboardDispatch,
+  postMessage: DashboardPostMessage,
+) {
+  return (scopeId: string) => {
+    dispatch({ type: 'START_SCOPE_SWITCH', scopeId });
+    postMessage(sendMessage.selectScope(scopeId));
+  };
+}
+
+export function createStoreRegisterHandler(
+  dispatch: DashboardDispatch,
+  postMessage: DashboardPostMessage,
+) {
+  return () => {
+    dispatch({ type: 'START_LOADING', reason: 'store-register' });
+    postMessage(sendMessage.requestRegisterStore());
+  };
+}
+
+export function createStoreSetupHandler(
+  dispatch: DashboardDispatch,
+  postMessage: DashboardPostMessage,
+) {
+  return () => {
+    dispatch({ type: 'START_LOADING', reason: 'store-setup' });
+    postMessage(sendMessage.requestSetupStore());
+  };
+}
+
+export function requestInitialDashboardData(
+  dispatch: DashboardDispatch,
+  postMessage: DashboardPostMessage,
+) {
+  dispatch({ type: 'SET_LOADING', payload: true, reason: 'initial' });
+  postMessage(sendMessage.getDashboardData());
+  postMessage(sendMessage.getWorkflowLaunchConfig());
+  postMessage(sendMessage.getCacheStats());
+}
 
 export const Dashboard: React.FC = () => {
   const { postMessage, onMessage } = useVscode();
@@ -24,6 +69,14 @@ export const Dashboard: React.FC = () => {
   const [archivedItems, setArchivedItems] = useState<ArchivedChangeInfo[]>([]);
   const [archivedLoading, setArchivedLoading] = useState(false);
   const [specRequirements, setSpecRequirements] = useState<Record<string, string[]>>({});
+  const [cacheStats, setCacheStats] = useState<CacheStatsView | null>(null);
+  const [cacheActionMessage, setCacheActionMessage] = useState<string | null>(null);
+  const [pendingCacheAction, setPendingCacheAction] = useState<CacheAction | null>(null);
+  // Tracks the scope the current requirements cache was loaded under; reset on change.
+  const lastScopeIdRef = useRef<string | undefined>(undefined);
+  // Ref mirror of the current scope id, so the onMessage callback (created once per
+  // effect run) can read the latest scope without closing over stale state.
+  const scopeIdRef = useRef<string | undefined>(undefined);
   const [workflowLaunchConfig, setWorkflowLaunchConfig] = useState<WorkflowLaunchConfigView | null>(null);
 
   useEffect(() => {
@@ -32,15 +85,26 @@ export const Dashboard: React.FC = () => {
       const message = event.data;
 
       if (message.type === 'dashboardData') {
-        dispatch({ type: 'SET_DATA', payload: message.data });
+        dispatch({ type: 'SET_DATA', payload: message.data, cache: message.cache });
         if (message.debug !== undefined) {
           dispatch({ type: 'SET_DEBUG', payload: message.debug });
         }
+        // Prefetch spec requirements scoped to the current root so store-scope specs
+        // don't read requirements from the local workspace root.
+        const scopeId = message.data?.scope?.id;
         if (message.data?.specs) {
           for (const spec of message.data.specs) {
-            postMessage(sendMessage.getSpecRequirements(spec.id));
+            postMessage(sendMessage.getSpecRequirements(spec.id, scopeId));
           }
         }
+        // When the scope changes, drop requirements cached for the previous scope.
+        if (lastScopeIdRef.current !== undefined && lastScopeIdRef.current !== scopeId) {
+          setSpecRequirements({});
+          setArchivedItems([]);
+          setArchivedLoading(false);
+        }
+        lastScopeIdRef.current = scopeId;
+        scopeIdRef.current = scopeId;
       } else if (message.type === 'error') {
         dispatch({ type: 'SET_ERROR', payload: message.message });
       } else if (message.type === 'cliActivationDiagnostic') {
@@ -54,17 +118,33 @@ export const Dashboard: React.FC = () => {
           [message.specId]: message.requirements ?? [],
         }));
       } else if (message.type === 'archivedChanges') {
-        setArchivedItems(message.items ?? []);
-        setArchivedLoading(false);
+        const currentScopeId = scopeIdRef.current;
+        if (
+          message.scopeId !== undefined &&
+          currentScopeId !== undefined &&
+          message.scopeId !== currentScopeId
+        ) {
+          // Stale response from a previous root; ignore so cross-root archives
+          // don't leak into the currently selected scope.
+        } else {
+          setArchivedItems(message.items ?? []);
+          setArchivedLoading(false);
+        }
       } else if (message.type === 'workflowLaunchConfig') {
         setWorkflowLaunchConfig(message.config ?? null);
+      } else if (message.type === 'cacheStats') {
+        setCacheStats(message.stats ?? null);
+      } else if (message.type === 'cacheActionResult') {
+        setPendingCacheAction(null);
+        setCacheActionMessage(message.message ?? (message.success ? t('cache.menuLabel') : t('cache.unavailable')));
+        if (message.success) {
+          postMessage(sendMessage.getCacheStats(true));
+        }
       }
     });
 
     // Request initial data
-    dispatch({ type: 'SET_LOADING', payload: true });
-    postMessage(sendMessage.getDashboardData());
-    postMessage(sendMessage.getWorkflowLaunchConfig());
+    requestInitialDashboardData(dispatch, postMessage);
 
     return cleanup;
   }, [postMessage, onMessage, dispatch]);
@@ -74,26 +154,44 @@ export const Dashboard: React.FC = () => {
     setArchivedExpanded(next);
     if (next) {
       setArchivedLoading(true);
-      postMessage(sendMessage.getArchivedChanges());
+      postMessage(sendMessage.getArchivedChanges(state.data?.scope?.id));
     }
   };
 
-  const handleSelectScope = useCallback((scopeId: string) => {
-    postMessage(sendMessage.selectScope(scopeId));
-  }, [postMessage]);
+  const handleSelectScope = useCallback(
+    createScopeSelectHandler(dispatch, postMessage),
+    [dispatch, postMessage],
+  );
+
+  const handleRegisterStore = useCallback(
+    createStoreRegisterHandler(dispatch, postMessage),
+    [dispatch, postMessage],
+  );
+
+  const handleSetupStore = useCallback(
+    createStoreSetupHandler(dispatch, postMessage),
+    [dispatch, postMessage],
+  );
 
   const handleOpenArchivedChange = (directoryName: string) => {
-    postMessage(sendMessage.openChangeDetailInEditor(`archive:${directoryName}`));
+    postMessage(sendMessage.openChangeDetailInEditor(`archive:${directoryName}`, undefined, undefined, state.data?.scope?.id));
   };
 
   const handleRefresh = () => {
-    dispatch({ type: 'SET_LOADING', payload: true });
+    dispatch({ type: 'SET_LOADING', payload: true, reason: 'refresh' });
     postMessage(sendMessage.refresh());
     postMessage(sendMessage.getWorkflowLaunchConfig());
+    postMessage(sendMessage.getCacheStats(true));
   };
 
+  const handleCacheAction = useCallback((action: CacheAction) => {
+    setCacheActionMessage(null);
+    setPendingCacheAction(action);
+    postMessage(sendMessage.cacheAction(action));
+  }, [postMessage]);
+
   const handleOpenChange = (changeName: string) => {
-    postMessage(sendMessage.openChangeDetailInEditor(changeName));
+    postMessage(sendMessage.openChangeDetailInEditor(changeName, undefined, undefined, state.data?.scope?.id));
   };
 
   const handleRequestNewChange = () => {
@@ -110,21 +208,23 @@ export const Dashboard: React.FC = () => {
 
   const handleLaunchWorkflow = (action: WorkflowAction, changeName: string) => {
     if (action === 'verify' || action === 'archive') {
-      postMessage(sendMessage.openChangeDetailInEditor(changeName, 'verifyArchive', action));
+      postMessage(sendMessage.openChangeDetailInEditor(changeName, 'verifyArchive', action, state.data?.scope?.id));
       return;
     }
-    postMessage(sendMessage.launchWorkflowAction(action, changeName));
+    postMessage(sendMessage.launchWorkflowAction(action, changeName, state.data?.scope?.id));
   };
 
   const handleOpenSpec = (spec: SpecInfo) => {
-    postMessage(sendMessage.openSpecInEditor(spec.id));
+    const scopeId = state.data?.scope?.id;
+    postMessage(sendMessage.openSpecInEditor(spec.id, undefined, scopeId));
     if (!specRequirements[spec.id]) {
-      postMessage(sendMessage.getSpecRequirements(spec.id));
+      postMessage(sendMessage.getSpecRequirements(spec.id, scopeId));
     }
   };
 
   const handleRequirementClick = (spec: SpecInfo, requirementIndex: number) => {
-    postMessage(sendMessage.openSpecInEditor(spec.id, requirementIndex));
+    const scopeId = state.data?.scope?.id;
+    postMessage(sendMessage.openSpecInEditor(spec.id, requirementIndex, scopeId));
   };
 
   const handleCliDiagnosticAction = (action: string) => {
@@ -134,7 +234,11 @@ export const Dashboard: React.FC = () => {
     if (action === 'open-docs') postMessage(sendMessage.openCliInstallDocs());
   };
 
-  const { data, loading, error } = state;
+  const { data, loading, loadingReason, pendingScopeId, activity, error } = state;
+
+  // Root-scoped empty states name the selected root (e.g. "Store: team-plans") so it is
+  // clear that local root content does not leak into a store root, and vice versa.
+  const selectedRootLabel = data?.scope ? formatOpenSpecRootLabel(data.scope) : undefined;
 
   return (
     <div className="min-h-screen" style={{ 
@@ -183,24 +287,43 @@ export const Dashboard: React.FC = () => {
                   : undefined
               }
               loading={loading}
+              loadingReason={loadingReason}
+              pendingScopeId={pendingScopeId}
+              activity={activity}
+              cacheStats={cacheStats}
+              cacheActionMessage={cacheActionMessage}
+              pendingCacheAction={pendingCacheAction}
               onSelectScope={handleSelectScope}
+              onRegisterStore={handleRegisterStore}
+              onSetupStore={handleSetupStore}
+              onCacheAction={handleCacheAction}
             />
 
-            {/* References Panel */}
-            {data.relationships?.references && data.relationships.references.length > 0 && (
-              <ReferencesPanel
-                references={data.relationships.references}
-                onCopyFetch={(text) => {
-                  navigator.clipboard.writeText(text).catch(() => {});
-                }}
-              />
+            {state.stale && activity.kind !== 'cached-refresh' && (
+              <div
+                role="status"
+                className="mb-3 text-xs"
+                style={{ color: 'var(--vscode-descriptionForeground)' }}
+              >
+                {t('dashboard.staleData')}
+              </div>
             )}
 
-            {/* Worksets Panel */}
-            <WorksetsPanel
-              worksets={[]}
+            {/* Stores & Worksets maintenance panel */}
+            <StoresAndWorksetsPanel
+              scopes={data.scopes ?? []}
+              currentScopeId={data.scope?.id}
+              references={data.relationships?.references ?? []}
+              worksets={data.worksets ?? []}
+              pending={loadingReason === 'store-register' || loadingReason === 'store-setup'}
+              onSelectStore={handleSelectScope}
+              onRegisterStore={handleRegisterStore}
+              onSetupStore={handleSetupStore}
               onOpenWorkset={(name) => {
                 postMessage(sendMessage.openWorkset(name));
+              }}
+              onCopyFetch={(text) => {
+                navigator.clipboard.writeText(text).catch(() => {});
               }}
             />
 
@@ -217,12 +340,14 @@ export const Dashboard: React.FC = () => {
               archivedLoading={archivedLoading}
               onOpenArchivedChange={handleOpenArchivedChange}
               workflowLaunchConfig={workflowLaunchConfig}
+              rootLabel={selectedRootLabel}
             />
             <SpecsSection
               specs={data.specs}
               specRequirements={specRequirements}
               onOpenSpec={handleOpenSpec}
               onRequirementClick={handleRequirementClick}
+              rootLabel={selectedRootLabel}
             />
           </>
         ) : loading ? (

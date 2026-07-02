@@ -49,9 +49,89 @@ vi.mock('@extension/utils/logger', () => ({
 }));
 
 describe('DashboardViewProvider', () => {
+  function makeDashboardData({
+    changeName,
+    lastRefresh,
+  }: {
+    changeName: string;
+    lastRefresh: number;
+  }) {
+    return {
+      changes: [
+        {
+          name: changeName,
+          completedTasks: 0,
+          totalTasks: 1,
+          lastModified: '2026-06-01T00:00:00.000Z',
+          status: 'draft',
+        },
+      ],
+      specs: [],
+      lastRefresh,
+    };
+  }
+
+  function makeWebview(postMessage = vi.fn()) {
+    return {
+      options: undefined,
+      html: '',
+      cspSource: 'vscode-resource',
+      asWebviewUri: vi.fn((uri) => `vscode-resource:${uri.fsPath}`),
+      postMessage,
+      onDidReceiveMessage: vi.fn(),
+    };
+  }
+
+  function makeWebviewView(webview: ReturnType<typeof makeWebview>) {
+    return {
+      webview,
+      onDidDispose: vi.fn(),
+      show: vi.fn(),
+    };
+  }
+
+  function makeDataManager(overrides: Record<string, unknown> = {}) {
+    return {
+      onRefresh: vi.fn(() => ({ dispose: vi.fn() })),
+      getCliDiagnostic: vi.fn().mockReturnValue(null),
+      ...overrides,
+    };
+  }
+
   beforeEach(() => {
     vi.useRealTimers();
     vi.clearAllMocks();
+  });
+
+  it('posts cached dashboard data before fresh initial refresh data', async () => {
+    vi.useFakeTimers();
+    const cachedData = makeDashboardData({ changeName: 'cached-change', lastRefresh: 1 });
+    const freshData = makeDashboardData({ changeName: 'fresh-change', lastRefresh: 2 });
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const dataManager = makeDataManager({
+      getCachedDashboardData: vi.fn().mockResolvedValue({
+        payload: cachedData,
+        metadata: { generatedAt: 1 },
+        source: 'disk',
+      }),
+      refresh: vi.fn().mockResolvedValue(freshData),
+    });
+    const provider = new DashboardViewProvider(dataManager as any, '/ext');
+
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+
+    expect(postMessage.mock.calls[0][0]).toMatchObject({
+      type: 'dashboardData',
+      data: cachedData,
+      cache: { source: 'disk', stale: true },
+    });
+    expect(postMessage.mock.calls.at(-1)?.[0]).toMatchObject({
+      type: 'dashboardData',
+      data: freshData,
+      cache: { source: 'fresh', stale: false },
+    });
   });
 
   it('posts initial dashboard data after the sidebar webview resolves', async () => {
@@ -60,6 +140,8 @@ describe('DashboardViewProvider', () => {
     const dataManager = {
       onRefresh: vi.fn(() => ({ dispose: vi.fn() })),
       getDashboardData: vi.fn().mockResolvedValue(dashboardData),
+      getCachedDashboardData: vi.fn().mockResolvedValue(undefined),
+      refresh: vi.fn().mockResolvedValue(dashboardData),
       getCliDiagnostic: vi.fn().mockReturnValue(null),
     };
     const webview = {
@@ -81,11 +163,12 @@ describe('DashboardViewProvider', () => {
 
     await vi.runAllTimersAsync();
 
-    expect(dataManager.getDashboardData).toHaveBeenCalled();
+    expect(dataManager.refresh).toHaveBeenCalled();
     expect(webview.postMessage).toHaveBeenCalledWith({
       type: 'dashboardData',
       data: dashboardData,
       debug: false,
+      cache: { source: 'fresh', stale: false },
     });
     expect(webview.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'workflowLaunchConfig' })
@@ -98,6 +181,8 @@ describe('DashboardViewProvider', () => {
     const dataManager = {
       onRefresh: vi.fn(() => ({ dispose: vi.fn() })),
       getDashboardData: vi.fn().mockResolvedValue(dashboardData),
+      getCachedDashboardData: vi.fn().mockResolvedValue(undefined),
+      refresh: vi.fn().mockResolvedValue(dashboardData),
       getCliDiagnostic: vi.fn().mockReturnValue(null),
     };
     const webview = {
@@ -130,6 +215,7 @@ describe('DashboardViewProvider', () => {
       type: 'dashboardData',
       data: dashboardData,
       debug: false,
+      cache: { source: 'fresh', stale: false },
     });
   });
 
@@ -164,12 +250,67 @@ describe('DashboardViewProvider', () => {
       changeName: 'demo-change',
       initialTab: 'verifyArchive',
       interactiveAction: 'archive',
+      scopeId: 'store:team-plans',
     });
 
     expect(panelManager.open).toHaveBeenCalledWith('demo-change', {
       initialTab: 'verifyArchive',
       interactiveAction: 'archive',
+      scopeId: 'store:team-plans',
     });
+  });
+
+  it('keeps same-named spec preview panels isolated by scope', async () => {
+    const localScope = { id: 'local:/workspace', rootPath: '/workspace', source: 'local' };
+    const storeScope = { id: 'store:team-plans', rootPath: '/stores/team-plans', source: 'store' };
+    const dataManager = {
+      onRefresh: vi.fn(() => ({ dispose: vi.fn() })),
+      getDashboardData: vi.fn().mockResolvedValue({ changes: [], specs: [], lastRefresh: 1 }),
+      getCliDiagnostic: vi.fn().mockReturnValue(null),
+      resolveScope: vi.fn((scopeId?: string) => (scopeId === storeScope.id ? storeScope : localScope)),
+      readSpec: vi.fn(async (_specId: string, scope?: { id: string }) => `# ${scope?.id ?? 'default'}`),
+    };
+    const webview = {
+      options: undefined,
+      html: '',
+      cspSource: 'vscode-resource',
+      asWebviewUri: vi.fn((uri) => `vscode-resource:${uri.fsPath}`),
+      postMessage: vi.fn(),
+      onDidReceiveMessage: vi.fn(),
+    };
+    const webviewView = {
+      webview,
+      onDidDispose: vi.fn(),
+      show: vi.fn(),
+    };
+    const createSpecPanel = () => ({
+      webview: {
+        html: '',
+        cspSource: 'vscode-resource',
+        asWebviewUri: vi.fn((uri) => `vscode-resource:${uri.fsPath}`),
+        postMessage: vi.fn(),
+        onDidReceiveMessage: vi.fn(),
+      },
+      reveal: vi.fn(),
+      onDidDispose: vi.fn(),
+    });
+    const vscode = await import('vscode');
+    vi.mocked(vscode.window.createWebviewPanel)
+      .mockReturnValueOnce(createSpecPanel() as any)
+      .mockReturnValueOnce(createSpecPanel() as any);
+
+    const provider = new DashboardViewProvider(dataManager as any, '/ext');
+    provider.resolveWebviewView(webviewView as any, {} as any, {} as any);
+
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+    await handler?.({ type: 'openSpecInEditor', specId: 'auth', scopeId: localScope.id });
+    await handler?.({ type: 'openSpecInEditor', specId: 'auth', scopeId: storeScope.id });
+
+    await vi.waitFor(() => {
+      expect(vscode.window.createWebviewPanel).toHaveBeenCalledTimes(2);
+    });
+    expect(dataManager.readSpec).toHaveBeenNthCalledWith(1, 'auth', localScope);
+    expect(dataManager.readSpec).toHaveBeenNthCalledWith(2, 'auth', storeScope);
   });
 
   describe('CLI activation diagnostic', () => {
@@ -183,12 +324,13 @@ describe('DashboardViewProvider', () => {
       normalizedMessage: 'openspec cli unavailable',
     };
 
-    function createDiagnosticDataManager(getDashboardData: () => Promise<any>) {
+    function createDiagnosticDataManager(loadDashboardData: () => Promise<any>) {
       return {
         onRefresh: vi.fn(() => ({ dispose: vi.fn() })),
-        getDashboardData,
+        getDashboardData: loadDashboardData,
+        getCachedDashboardData: vi.fn().mockResolvedValue(undefined),
         getCliDiagnostic: vi.fn().mockReturnValue(diagnostic),
-        refresh: vi.fn(),
+        refresh: vi.fn(loadDashboardData),
       };
     }
 

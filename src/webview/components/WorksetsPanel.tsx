@@ -1,10 +1,8 @@
 import React from 'react';
+import type { WorksetView } from '../types/messages';
+import { t } from '../../i18n';
 
-export interface WorksetView {
-  name: string;
-  tool?: string;
-  members: { name: string; path: string }[];
-}
+// ── Component ────────────────────────────────────────────────────────────────
 
 export interface WorksetsPanelProps {
   worksets?: WorksetView[];
@@ -23,13 +21,13 @@ export const WorksetsPanel: React.FC<WorksetsPanelProps> = ({
         className="text-base font-semibold mb-1"
         style={{ color: 'var(--vscode-foreground)' }}
       >
-        Worksets
+        {t('worksets.title')}
       </h2>
       <p
         className="text-xs mb-2"
         style={{ color: 'var(--vscode-descriptionForeground)' }}
       >
-        Local personal views for opening folders together.
+        {t('worksets.description')}
       </p>
       <div className="space-y-1">
         {worksets.map((workset) => (

@@ -29,6 +29,12 @@ describe('ChangeDetail workflow routing', () => {
     expect(source).toContain('sendMessage.copyToClipboard(changeName)');
   });
 
+  it('renders copy change name with stable accessible icon states', () => {
+    expect(source).toContain("icon={copiedName ? 'check' : 'copy'}");
+    expect(source).toContain("t('action.copyChangeName')");
+    expect(source).toContain("t('action.copiedChangeName')");
+  });
+
   it('keeps Open in Editor and Refresh in the detail header instead of ActionBar props', () => {
     expect(source).toContain('handleOpenInEditor');
     expect(source).toContain('handleRefresh');
