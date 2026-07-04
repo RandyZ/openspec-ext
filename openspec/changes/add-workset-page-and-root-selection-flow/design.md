@@ -15,6 +15,7 @@ The implementation should refine these pieces rather than introduce a second dat
 **Goals:**
 
 - Make the OpenSpec root selector display only project/store root scopes.
+- Discover all OpenSpec project roots from a multi-folder VS Code workspace, not only the first activation root.
 - Group or label root selector options as Project and Store so the scope action is unambiguous.
 - Add a dedicated Worksets workspace page using the existing workset data source.
 - Display workset details from CLI JSON: name, tool, member count, primary member, and member paths.
@@ -35,7 +36,11 @@ The implementation should refine these pieces rather than introduce a second dat
 
 Use existing `DashboardData.scopes` and `OpenSpecScopeView.source` to render root choices. The selector filters to root scopes only, which today are `local`, `store`, and possibly `declared`.
 
+For a workset-opened multi-folder workspace, the extension must discover every workspace folder that contains `openspec/config.yaml`. Keep the first activation root as `local`, and represent additional project folders as project-like scopes using the existing `declared` source unless implementation chooses a clearer backward-compatible source model. In the UI, both `local` and `declared` belong under Projects.
+
 Alternative considered: merge worksets into `OpenSpecScopeView`. Rejected because a workset has members and opener behavior, not root-owned changes/specs.
+
+Current implementation risk: `getOpenSpecWorkspaceRoot()` returns a single folder, and `OpenSpecScopeManager.loadScopeOptions()` creates only that local root plus stores. This change must add a project-root discovery path so a workset containing Store + Project A + Project B exposes Project A and Project B as selectable roots.
 
 ### Decision 2: Render Root Options With Semantic Groups
 
@@ -50,6 +55,25 @@ OpenSpec Root
 ```
 
 The selector must not include worksets. Worksets are reached from the workspace page.
+
+### Decision 2.5: Execute Project-Scoped CLI Commands From The Selected Project Root
+
+Store scopes can continue using `--store <id>`. Non-store project scopes cannot be selected with `--store`; they must run OpenSpec CLI commands with `cwd` set to that project root.
+
+Implementation options:
+
+- Add a scoped `OpenSpecCliService` per non-store project root and route `StateReader`/workflow commands through that service.
+- Or add an execution option to `OpenSpecCliService` so calls can run with `scope.rootPath` as cwd when `scope.source !== 'store'`.
+
+Prefer the smallest change that preserves existing APIs. The important contract is that selecting `FastGPT` runs local OpenSpec commands from the FastGPT root, while selecting `Server_DotNetCore` runs them from the Server_DotNetCore root.
+
+```text
+Scope selected: Project A
+  openspec list --json         cwd=/path/to/project-a
+
+Scope selected: Store S
+  openspec list --json --store S
+```
 
 ### Decision 3: Add A Worksets Workspace Page Instead Of Another Inline Panel
 
@@ -113,18 +137,20 @@ If implementation discovers that workset open/remove/setup needs independent ref
 - [Risk] Native `select` `optgroup` styling may be inconsistent inside VS Code themes. -> Mitigation: keep labels readable even if group styling is minimal.
 - [Risk] The CLI may return workset fields beyond `name`, `tool`, and `members`. -> Mitigation: defensively parse known fields and preserve layout flexibility for extra metadata later.
 - [Risk] Workset open may launch or focus another editor window, so the current webview may not receive immediate completion state. -> Mitigation: provide fire-and-forget feedback and do not mutate root state locally.
+- [Risk] Multi-folder worksets may expose several local project roots, but existing activation code only selects one root. -> Mitigation: discover all workspace folders with `openspec/config.yaml`, list them as project scopes, and run project-scope CLI commands from the selected root cwd.
 - [Risk] Users may expect opening a workset to select a root automatically. -> Mitigation: page copy and root rail explicitly state the active root remains project/store-scoped.
 - [Risk] Existing `StoresAndWorksetsPanel` might duplicate the new Worksets page. -> Mitigation: refactor it into store/reference management plus a Worksets entry, or remove its workset list once the dedicated page exists.
 
 ## Migration Plan
 
-1. Add tests around root selector grouping and workset exclusion.
-2. Add tests around Worksets page rendering CLI metadata and primary member.
-3. Refactor `ScopeBar` root option rendering without changing selected-scope message contracts.
-4. Add the Worksets page and connect it to existing `DashboardData.worksets` and `openWorkset`.
-5. Refactor or remove duplicate inline workset lists.
-6. Update i18n strings in English and Chinese.
-7. Run unit tests and build.
+1. Add tests around multi-folder project root discovery and scoped CLI cwd.
+2. Add tests around root selector grouping and workset exclusion.
+3. Add tests around Worksets page rendering CLI metadata and primary member.
+4. Refactor `ScopeBar` root option rendering without changing selected-scope message contracts.
+5. Add the Worksets page and connect it to existing `DashboardData.worksets` and `openWorkset`.
+6. Refactor or remove duplicate inline workset lists.
+7. Update i18n strings in English and Chinese.
+8. Run unit tests and build.
 
 Rollback is straightforward: revert the webview component changes. Existing extension-host data plumbing can remain because it is already used by current panels.
 

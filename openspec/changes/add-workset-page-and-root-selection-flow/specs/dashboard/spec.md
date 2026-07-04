@@ -9,6 +9,12 @@ Dashboard SHALL present OpenSpec root selection as a Project/Store scope choice 
 - **THEN** the selector MUST distinguish project roots from store roots through grouping or equivalent labels
 - **AND** each option MUST expose the root label and enough secondary metadata to disambiguate same-named roots
 
+#### Scenario: Multi-folder workspace exposes all project roots
+- **GIVEN** the current VS Code workspace contains multiple folders with `openspec/config.yaml`
+- **WHEN** the dashboard loads OpenSpec root options
+- **THEN** the Project group MUST include each discovered project root
+- **AND** the Project group MUST NOT collapse the workspace to only the first OpenSpec folder
+
 #### Scenario: Worksets are excluded from root selector
 - **GIVEN** dashboard data includes saved worksets from `openspec workset list --json`
 - **WHEN** the dashboard renders the OpenSpec root selector
@@ -20,6 +26,12 @@ Dashboard SHALL present OpenSpec root selection as a Project/Store scope choice 
 - **WHEN** the extension host returns dashboard data for that scope
 - **THEN** changes, archived changes, specs, New Change, and workflow actions MUST be scoped to the selected OpenSpec root
 - **AND** the dashboard MUST keep the selected root visible while the scoped data is loading or displayed
+
+#### Scenario: Selecting a project root runs local OpenSpec commands from that root
+- **GIVEN** the user selects a non-store project root from the OpenSpec root selector
+- **WHEN** the extension host loads changes, specs, archives, artifacts, or workflow instructions for that scope
+- **THEN** local OpenSpec CLI commands MUST execute with that selected project root as their working directory
+- **AND** the extension MUST NOT resolve project-scoped commands from a different workspace folder merely because it was the activation root
 
 ### Requirement: Worksets Workspace Page
 Dashboard SHALL provide a dedicated Worksets workspace page backed by `openspec workset list --json`.

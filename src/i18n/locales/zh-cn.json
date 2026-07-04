@@ -222,6 +222,8 @@
   "cli.runtime.localSource": "本地源码",
   "cli.runtime.customPath": "自定义路径",
   "scope.localRoot": "本地根目录",
+  "scope.group.projects": "项目",
+  "scope.group.stores": "存储",
   "scope.root.selectorLabel": "OpenSpec 根",
   "scope.root.localLabel": "本地根",
   "scope.root.storeLabel": "Store：{id}",
@@ -261,5 +263,14 @@
   "storesWorksets.referencesDescription": "References 提供上游上下文，不是当前可写规划根。",
   "storesWorksets.noReferences": "还没有配置 reference。",
   "storesWorksets.worksets": "个人工作集",
-  "storesWorksets.noWorksets": "还没有工作集。"
+  "storesWorksets.noWorksets": "还没有工作集。",
+  "worksetsPage.title": "工作集",
+  "worksetsPage.back": "返回",
+  "worksetsPage.description": "工作集是保存的多文件夹工作区视图。打开工作集只切换编辑器工作区，不会改变当前选中的 OpenSpec 根。",
+  "worksetsPage.currentRoot": "当前根：{root}",
+  "worksetsPage.memberCount": "{count} 个成员",
+  "worksetsPage.primaryMember": "主成员",
+  "worksetsPage.open": "打开",
+  "worksetsPage.empty": "暂无工作集。使用 `openspec workset` CLI 创建一个，以便同时打开相关文件夹。",
+  "worksetsPage.openWorksets": "管理工作集"
 }

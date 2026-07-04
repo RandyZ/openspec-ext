@@ -31,6 +31,38 @@ export async function getOpenSpecWorkspaceRoot(): Promise<string | null> {
   return fallback;
 }
 
+export interface OpenSpecProjectRoot {
+  path: string;
+  label: string;
+}
+
+/**
+ * Discover ALL workspace folders containing openspec/config.yaml.
+ *
+ * Multi-folder workspaces can contain several OpenSpec project roots (e.g.
+ * FastGPT and Server_DotNetCore side by side). Each such folder becomes an
+ * independent project root selectable in the root selector. Folders without an
+ * OpenSpec config are excluded entirely — they must NOT become project roots.
+ *
+ * Returns folders in workspace order so the activation (first) root stays stable.
+ */
+export async function getOpenSpecProjectRoots(): Promise<OpenSpecProjectRoot[]> {
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders || folders.length === 0) return [];
+
+  const roots: OpenSpecProjectRoot[] = [];
+  for (const folder of folders) {
+    const configUri = vscode.Uri.joinPath(folder.uri, OPENSPEC_CONFIG);
+    try {
+      await vscode.workspace.fs.stat(configUri);
+      roots.push({ path: folder.uri.fsPath, label: folder.name });
+    } catch {
+      // Folder without openspec/config.yaml — not a project root.
+    }
+  }
+  return roots;
+}
+
 /**
  * Sync variant for callers that already have a root (e.g. from DataManager).
  * Use getOpenSpecWorkspaceRoot() when resolving at activation.

@@ -75,7 +75,8 @@ describe('StoresAndWorksetsPanel', () => {
     expect(html).not.toContain('Verify');
   });
 
-  it('lists worksets as local personal views', () => {
+  it('navigates to the dedicated Worksets page instead of listing worksets inline', () => {
+    const onOpenWorksetsPage = vi.fn();
     const html = renderToStaticMarkup(
       <StoresAndWorksetsPanel
         scopes={[localScope]}
@@ -91,13 +92,51 @@ describe('StoresAndWorksetsPanel', () => {
         onRegisterStore={vi.fn()}
         onSetupStore={vi.fn()}
         onOpenWorkset={vi.fn()}
+        onOpenWorksetsPage={onOpenWorksetsPage}
         onCopyFetch={vi.fn()}
       />,
     );
 
-    expect(html).toContain('Personal worksets');
-    expect(html).toContain('Local personal views');
-    expect(html).toContain('platform');
-    expect(html).toContain('code');
+    // A compact navigation entry opens the dedicated Worksets page.
+    expect(html).toContain('Manage Worksets');
+    // The inline workset detail (name + tool + members) must NOT render here;
+    // it lives on the Worksets page now. The inline row rendered "platform" and
+    // "(code)"; neither should appear on the maintenance panel.
+    expect(html).not.toContain('platform');
+    expect(html).not.toContain('(code)');
+    expect(html).not.toContain('Local personal views');
+  });
+
+  it('keeps store and reference maintenance actions separate from workset launching', () => {
+    const onOpenWorksetsPage = vi.fn();
+    const html = renderToStaticMarkup(
+      <StoresAndWorksetsPanel
+        scopes={[localScope, storeScope]}
+        currentScopeId={localScope.id}
+        references={[
+          {
+            store_id: 'platform-reqs',
+            specs: [{ id: 'billing', summary: 'Billing requirements' }],
+            fetch: 'openspec show billing --type spec --store platform-reqs',
+            status: [],
+          },
+        ]}
+        worksets={[]}
+        onSelectStore={vi.fn()}
+        onRegisterStore={vi.fn()}
+        onSetupStore={vi.fn()}
+        onOpenWorkset={vi.fn()}
+        onOpenWorksetsPage={onOpenWorksetsPage}
+        onCopyFetch={vi.fn()}
+      />,
+    );
+
+    // Store/reference maintenance remains present.
+    expect(html).toContain('Store: team-plans');
+    expect(html).toContain('platform-reqs');
+    expect(html).toContain('Register Store');
+    expect(html).toContain('Create Store');
+    // Workset launching is a separate navigation affordance.
+    expect(html).toContain('Manage Worksets');
   });
 });

@@ -222,6 +222,8 @@
   "cli.runtime.localSource": "Local Source",
   "cli.runtime.customPath": "Custom Path",
   "scope.localRoot": "Local Root",
+  "scope.group.projects": "Projects",
+  "scope.group.stores": "Stores",
   "scope.root.selectorLabel": "OpenSpec Root",
   "scope.root.localLabel": "Local Root",
   "scope.root.storeLabel": "Store: {id}",
@@ -261,5 +263,14 @@
   "storesWorksets.referencesDescription": "References provide upstream context and are not the writable planning root.",
   "storesWorksets.noReferences": "No references configured.",
   "storesWorksets.worksets": "Personal worksets",
-  "storesWorksets.noWorksets": "No worksets yet."
+  "storesWorksets.noWorksets": "No worksets yet.",
+  "worksetsPage.title": "Worksets",
+  "worksetsPage.back": "Back",
+  "worksetsPage.description": "Worksets are saved multi-folder workspace views. Opening one changes the editor workspace, not the selected OpenSpec root.",
+  "worksetsPage.currentRoot": "Current root: {root}",
+  "worksetsPage.memberCount": "{count} members",
+  "worksetsPage.primaryMember": "Primary",
+  "worksetsPage.open": "Open",
+  "worksetsPage.empty": "No worksets saved yet. Create one with `openspec workset` CLI to open related folders together.",
+  "worksetsPage.openWorksets": "Manage Worksets"
 }

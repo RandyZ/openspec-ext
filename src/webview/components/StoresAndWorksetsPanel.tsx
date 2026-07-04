@@ -17,6 +17,7 @@ export interface StoresAndWorksetsPanelProps {
   onRegisterStore: () => void;
   onSetupStore: () => void;
   onOpenWorkset: (name: string) => void;
+  onOpenWorksetsPage?: () => void;
   onCopyFetch: (text: string) => void;
 }
 
@@ -30,6 +31,7 @@ export const StoresAndWorksetsPanel: React.FC<StoresAndWorksetsPanelProps> = ({
   onRegisterStore,
   onSetupStore,
   onOpenWorkset,
+  onOpenWorksetsPage,
   onCopyFetch,
 }) => {
   const stores = scopes.filter((scope) => scope.source === 'store');
@@ -107,23 +109,22 @@ export const StoresAndWorksetsPanel: React.FC<StoresAndWorksetsPanelProps> = ({
 
         <div>
           <h3 className="mb-1 font-medium">{t('storesWorksets.worksets')}</h3>
-          <p className="mb-1" style={{ color: 'var(--vscode-descriptionForeground)' }}>{t('worksets.description')}</p>
-          {worksets.length === 0 ? (
-            <p style={{ color: 'var(--vscode-descriptionForeground)' }}>{t('storesWorksets.noWorksets')}</p>
-          ) : (
-            worksets.map((workset) => (
-              <button
-                key={workset.name}
-                type="button"
-                onClick={() => onOpenWorkset(workset.name)}
-                className="block w-full rounded border px-2 py-1 text-left"
-                style={{ borderColor: 'var(--vscode-panel-border)' }}
+          <button
+            type="button"
+            onClick={onOpenWorksetsPage}
+            className="block w-full rounded border px-2 py-1 text-left"
+            style={{ borderColor: 'var(--vscode-panel-border)' }}
+          >
+            <span className="font-medium">{t('worksetsPage.openWorksets')}</span>
+            {worksets.length > 0 ? (
+              <span
+                className="ml-2"
+                style={{ color: 'var(--vscode-descriptionForeground)' }}
               >
-                <span className="font-medium">{workset.name}</span>
-                {workset.tool ? <span className="ml-2">({workset.tool})</span> : null}
-              </button>
-            ))
-          )}
+                ({worksets.length})
+              </span>
+            ) : null}
+          </button>
         </div>
       </div>
     </section>

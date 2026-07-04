@@ -130,6 +130,11 @@ export const ScopeBar: React.FC<ScopeBarProps> = ({
   const rootLabel = formatOpenSpecRootLabel(scope);
 
   const showSelector = scopes.length > 1;
+  // Root selector groups: Project roots are local + declared (multi-folder
+  // workspace roots); Store roots are registered stores. Worksets are never
+  // part of `scopes` and therefore never appear here.
+  const projectScopes = scopes.filter((s) => s.source === 'local' || s.source === 'declared');
+  const storeScopes = scopes.filter((s) => s.source === 'store');
   const storeFeaturesAvailable = scope.capabilities?.stores === true;
   const storeFeaturesUnavailable = scope.capabilities?.stores === false;
   const showNoStoresHint = storeFeaturesAvailable && scopes.every((item) => item.source !== 'store');
@@ -184,11 +189,24 @@ export const ScopeBar: React.FC<ScopeBarProps> = ({
               color: 'var(--vscode-dropdown-foreground)',
             }}
           >
-            {scopes.map((item) => (
-              <option key={item.id} value={item.id}>
-                {formatOpenSpecRootLabel(item)}
-              </option>
-            ))}
+            {projectScopes.length > 0 && (
+              <optgroup label={t('scope.group.projects')}>
+                {projectScopes.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {formatOpenSpecRootLabel(item)}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {storeScopes.length > 0 && (
+              <optgroup label={t('scope.group.stores')}>
+                {storeScopes.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {formatOpenSpecRootLabel(item)}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
         ) : (
           <strong className="min-w-0 truncate">{rootLabel}</strong>

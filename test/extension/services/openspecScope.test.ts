@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createLocalScope,
   createStoreScope,
+  createDeclaredScope,
   OpenSpecScopeManager,
 } from '@extension/services/openspecScope';
 
@@ -38,6 +39,22 @@ describe('OpenSpec scope factories', () => {
       storeId: 'team-plans',
       runtimeSource: 'installed',
     });
+  });
+
+  it('creates a declared project-root scope with a distinguishing label', () => {
+    expect(
+      createDeclaredScope('/work/fastgpt', 'FastGPT', defaultCapabilities),
+    ).toMatchObject({
+      id: 'declared:/work/fastgpt',
+      label: 'FastGPT',
+      rootPath: '/work/fastgpt',
+      source: 'declared',
+      runtimeSource: 'installed',
+      capabilities: defaultCapabilities,
+      diagnostics: [],
+    });
+    // No storeId: declared scopes are local project roots, not store-backed.
+    expect(createDeclaredScope('/work/fastgpt', 'FastGPT', defaultCapabilities).storeId).toBeUndefined();
   });
 });
 
@@ -135,5 +152,30 @@ describe('OpenSpecScopeManager', () => {
     await manager.loadScopeOptions();
 
     expect(manager.getSelectedScope().runtimeSource).toBe('installed');
+  });
+
+  it('seeds a declared scope for each additional discovered project root, keeping the activation root local', async () => {
+    const cli = { runJson: vi.fn().mockResolvedValue({ stores: [], status: [] }) };
+    // Activation root is the first discovered project root; the rest become declared scopes.
+    const projectRoots = [
+      { path: '/workspace', label: 'Main' },
+      { path: '/work/fastgpt', label: 'FastGPT' },
+      { path: '/work/server', label: 'Server_DotNetCore' },
+    ];
+    const manager = new OpenSpecScopeManager('/workspace', cli, capabilities, undefined, projectRoots);
+
+    const scopes = await manager.loadScopeOptions();
+
+    // The activation root stays 'local'; the two additional roots are 'declared'.
+    expect(scopes.map((s) => ({ source: s.source, rootPath: s.rootPath }))).toEqual([
+      { source: 'local', rootPath: '/workspace' },
+      { source: 'declared', rootPath: '/work/fastgpt' },
+      { source: 'declared', rootPath: '/work/server' },
+    ]);
+    // Declared scopes carry their distinguishing labels.
+    expect(scopes[1].label).toBe('FastGPT');
+    expect(scopes[2].label).toBe('Server_DotNetCore');
+    // The default selected scope remains the activation (local) root.
+    expect(manager.getSelectedScope().id).toBe('local:/workspace');
   });
 });

@@ -13,6 +13,14 @@ import type { OpenSpecRuntimeSource } from './openspecCliResolver';
 
 export type OpenSpecScopeSource = 'local' | 'store' | 'declared';
 
+/** Normalize a path for comparison: trim trailing separators and collapse to forward slashes. */
+function pathNormalize(p: string): string {
+  if (!p) return p;
+  let n = p.replace(/\\/g, '/');
+  if (n.length > 1 && n.endsWith('/')) n = n.slice(0, -1);
+  return n;
+}
+
 export interface OpenSpecScope {
   id: string;
   label: string;
@@ -64,6 +72,32 @@ export function createStoreScope(
   };
 }
 
+/**
+ * Factory for a declared project-root scope. Declared scopes represent additional
+ * OpenSpec project roots discovered in a multi-folder workspace (beyond the
+ * activation root). They run local OpenSpec commands with cwd = rootPath but are
+ * NOT store-backed, so they never carry a storeId and never append --store.
+ *
+ * The label should be a folder name or path context so users can distinguish
+ * roots like FastGPT from Server_DotNetCore even when basenames collide.
+ */
+export function createDeclaredScope(
+  rootPath: string,
+  label: string,
+  capabilities: OpenSpecCapabilities,
+  runtimeSource: OpenSpecRuntimeSource = 'installed',
+): OpenSpecScope {
+  return {
+    id: `declared:${rootPath}`,
+    label,
+    rootPath,
+    source: 'declared',
+    runtimeSource,
+    capabilities,
+    diagnostics: [],
+  };
+}
+
 // ── Scope Manager ────────────────────────────────────────────────────────────
 
 export interface OpenSpecRuntimeLike {
@@ -82,6 +116,13 @@ export class OpenSpecScopeManager {
     private cli: { runJson: (args: string[]) => Promise<unknown> },
     private capabilities: OpenSpecCapabilities,
     private runtime?: OpenSpecRuntimeLike,
+    /**
+     * Additional OpenSpec project roots discovered in a multi-folder workspace.
+     * The activation root (workspaceRoot) stays the 'local' scope; every entry
+     * here becomes a 'declared' project-root scope. Folders without OpenSpec
+     * config must be filtered out by the caller before passing them in.
+     */
+    private projectRoots: { path: string; label: string }[] = [],
   ) {
     // Default: local root
     this.selectedScopeId = `local:${workspaceRoot}`;
@@ -100,6 +141,16 @@ export class OpenSpecScopeManager {
     const scopes: OpenSpecScope[] = [
       createLocalScope(this.workspaceRoot, this.capabilities, this.cachedRuntimeSource),
     ];
+
+    // Seed declared scopes for additional project roots (activation root stays 'local').
+    for (const root of this.projectRoots) {
+      // Skip a duplicate of the activation root (normalized compare) so it isn't
+      // listed twice.
+      if (pathNormalize(root.path) === pathNormalize(this.workspaceRoot)) continue;
+      scopes.push(
+        createDeclaredScope(root.path, root.label, this.capabilities, this.cachedRuntimeSource),
+      );
+    }
 
     if (this.capabilities.stores) {
       try {

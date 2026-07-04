@@ -96,6 +96,13 @@ export interface ArtifactChangedEvent {
 
 export interface DataManagerOptions {
   cacheService?: OpenSpecCacheService;
+  /**
+   * Additional OpenSpec project roots discovered in a multi-folder workspace.
+   * Each becomes a selectable 'declared' project-root scope (the activation
+   * root passed to the constructor stays the 'local' scope). Folders without an
+   * openspec/config.yaml must be filtered out by the caller.
+   */
+  projectRoots?: { path: string; label: string }[];
 }
 
 export class DataManager {
@@ -118,10 +125,17 @@ export class DataManager {
   private capabilities?: OpenSpecCapabilities;
   private scopedContentAccess = new Map<string, IOpenSpecContentAccess>();
   private scopedStateReaders = new Map<string, StateReader>();
+  /**
+   * Per-scope CLI services for declared (non-store) project roots whose rootPath
+   * differs from the activation root. These run local OpenSpec commands with
+   * cwd = scope.rootPath. Store scopes are NOT here — they keep using the single
+   * activation-root CLI service and append --store instead.
+   */
+  private scopedCliServices = new Map<string, OpenSpecCliService>();
 
   constructor(
     private workspaceRoot: string,
-    options: DataManagerOptions = {}
+    private options: DataManagerOptions = {}
   ) {
     const openspecDir = path.join(workspaceRoot, 'openspec');
 
@@ -176,11 +190,14 @@ export class DataManager {
       this.cliService,
       this.capabilities,
       this.cliService.getResolver(),
+      this.options.projectRoots ?? [],
     );
     await this.scopeManager.loadScopeOptions();
     this.scopeManager.onDidChangeScope(() => {
       this.cachedData = null;
       this.scopedContentAccess.clear();
+      this.scopedCliServices.clear();
+      this.scopedStateReaders.clear();
     });
   }
 
@@ -209,6 +226,34 @@ export class DataManager {
   }
 
   /**
+   * Build (or reuse) a per-scope OpenSpecCliService rooted at scope.rootPath.
+   *
+   * Non-store project scopes (e.g. declared multi-folder roots) MUST run local
+   * OpenSpec commands with cwd = scope.rootPath rather than the activation root.
+   * The CLI service shares the same resolver as the activation-root service so
+   * localSource/customPath/installed resolution stays consistent. Store scopes
+   * never reach this path — they use the single activation-root service + --store.
+   */
+  private createScopedCliService(rootPath: string): OpenSpecCliService {
+    return new OpenSpecCliService(rootPath, this.cliService.getResolver());
+  }
+
+  private getScopedCliService(scope: OpenSpecScope): OpenSpecCliService {
+    // Store scopes always use the single activation-root CLI service (with --store).
+    // The activation root also uses the default service. Only additional non-store
+    // project roots need a cwd override.
+    if (scope.source === 'store' || path.normalize(scope.rootPath) === path.normalize(this.workspaceRoot)) {
+      return this.cliService;
+    }
+    let service = this.scopedCliServices.get(scope.id);
+    if (!service) {
+      service = this.createScopedCliService(scope.rootPath);
+      this.scopedCliServices.set(scope.id, service);
+    }
+    return service;
+  }
+
+  /**
    * Resolve a scope by id. Falls back to the currently selected scope when id is
    * omitted/unknown, then to the local workspace root. Used by message handlers so
    * change-detail panels can bind to a specific store root.
@@ -227,7 +272,9 @@ export class DataManager {
   /**
    * Return the services (StateReader + content access) bound to a scope.
    * Local scope reuses the default instances; store scopes get a scoped
-   * FileManagerService + StateReader rooted at scope.rootPath.
+   * FileManagerService + StateReader rooted at scope.rootPath. Declared
+   * (non-store) project scopes additionally get a per-scope CLI service so
+   * local OpenSpec commands run with cwd = scope.rootPath.
    */
   private getScopedServices(scope?: OpenSpecScope): {
     stateReader: StateReader;
@@ -244,9 +291,10 @@ export class DataManager {
       };
     }
     const contentAccess = this.getContentAccessForScope(scope);
+    const cli = this.getScopedCliService(scope);
     let stateReader = this.scopedStateReaders.get(scope.id);
     if (!stateReader) {
-      stateReader = new StateReader(this.cliService, contentAccess);
+      stateReader = new StateReader(cli, contentAccess);
       this.scopedStateReaders.set(scope.id, stateReader);
     }
     return { stateReader, contentAccess, rootPath: scope.rootPath, scope };
@@ -296,6 +344,7 @@ export class DataManager {
     this.cachedData = null;
     this.scopedContentAccess.clear();
     this.scopedStateReaders.clear();
+    this.scopedCliServices.clear();
   }
 
   private parseStoreMutationPayload(

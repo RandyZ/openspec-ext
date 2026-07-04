@@ -1040,4 +1040,25 @@ describe('argsPrefix and scope support', () => {
     expect(listCall).toBeDefined();
     expect(listCall!.args).toEqual(['list', '--json']);
   });
+
+  it('spawns local OpenSpec commands with cwd equal to the service construction root', async () => {
+    // A per-scope OpenSpecCliService constructed for a declared project root must
+    // spawn with cwd = that root so local OpenSpec commands run from the project.
+    const declaredRoot = '/work/fastgpt';
+    const capturedOptions: Array<{ cwd?: string }> = [];
+    vi.mocked(spawn).mockImplementation((_command: string, args: readonly string[], options?: any) => {
+      if (args[0] === '--version') {
+        return createSpawnSuccessProcess('1.3.1') as any;
+      }
+      capturedOptions.push({ cwd: options?.cwd });
+      return createSpawnSuccessProcess(JSON.stringify({ changes: [] })) as any;
+    });
+
+    const service = new OpenSpecCliService(declaredRoot);
+    await service.listChanges();
+
+    // Every command (list/status) spawned with cwd = the declared project root.
+    expect(capturedOptions.length).toBeGreaterThan(0);
+    expect(capturedOptions.every((o) => o.cwd === declaredRoot)).toBe(true);
+  });
 });

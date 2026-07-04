@@ -653,7 +653,6 @@ describe('DataManager dashboard data loading', () => {
     expect(changes[0].createdAt).toBeUndefined();
   });
 });
-
 describe('DataManager CLI activation diagnostic', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1189,5 +1188,214 @@ describe('DataManager refresh cache', () => {
         archivedChanges,
       })
     );
+  });
+});
+
+describe('DataManager workset data contract', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // Helper: build a DataManager with worksets capability enabled and a CLI that
+  // returns the given payload for `openspec workset list --json`.
+  function createManagerWithWorksetPayload(worksetPayload: unknown) {
+    const manager = new DataManager('/tmp/openspec-ext-test-workspace') as any;
+    const scope = makeLocalScope();
+    Object.assign(manager, {
+      cliAvailable: true,
+      capabilities: { worksets: true },
+      scopeManager: {
+        getSelectedScope: vi.fn(() => scope),
+        getScopeOptions: vi.fn(() => [scope]),
+      },
+      stateReader: {
+        listChanges: vi.fn().mockResolvedValue([]),
+        listSpecs: vi.fn().mockResolvedValue([]),
+        listArchivedChanges: vi.fn().mockResolvedValue([]),
+      },
+      contentAccess: {
+        readArtifact: vi.fn().mockResolvedValue(''),
+      },
+      cliService: {
+        getCliActivationDiagnostic: vi.fn().mockReturnValue(null),
+        runJson: vi.fn(async (args: string[]) => {
+          if (args[0] === 'workset') return worksetPayload;
+          return {};
+        }),
+      },
+    });
+    return manager;
+  }
+
+  it('preserves workset member order, name, tool, and member name/path from the CLI payload', async () => {
+    const manager = createManagerWithWorksetPayload({
+      worksets: [
+        {
+          name: 'platform',
+          tool: 'code',
+          members: [
+            { name: 'team-plans', path: '/stores/team-plans' },
+            { name: 'fastgpt', path: '/work/fastgpt' },
+          ],
+        },
+      ],
+    });
+
+    const data = await manager.refresh();
+
+    expect(data.worksets).toEqual([
+      {
+        name: 'platform',
+        tool: 'code',
+        members: [
+          { name: 'team-plans', path: '/stores/team-plans' },
+          { name: 'fastgpt', path: '/work/fastgpt' },
+        ],
+      },
+    ]);
+    // The first member is the primary member (order preserved from CLI).
+    expect(data.worksets?.[0].members[0]).toEqual({
+      name: 'team-plans',
+      path: '/stores/team-plans',
+    });
+  });
+
+  it('safely parses a workset with zero members and keeps it renderable', async () => {
+    const manager = createManagerWithWorksetPayload({
+      worksets: [{ name: 'empty-workset', members: [] }],
+    });
+
+    const data = await manager.refresh();
+
+    expect(data.worksets).toEqual([{ name: 'empty-workset', members: [] }]);
+  });
+
+  it('omits tool when the CLI payload omits it, without throwing', async () => {
+    const manager = createManagerWithWorksetPayload({
+      worksets: [{ name: 'no-tool', members: [{ name: 'm1', path: '/p' }] }],
+    });
+
+    const data = await manager.refresh();
+
+    // toEqual ignores undefined-valued keys, so the omitted tool compares equal.
+    expect(data.worksets).toEqual([
+      { name: 'no-tool', members: [{ name: 'm1', path: '/p' }] },
+    ]);
+    // tool is never surfaced as a concrete string when missing.
+    expect(data.worksets?.[0].tool).toBeUndefined();
+  });
+
+  it('coerces a non-array members field to an empty array without throwing', async () => {
+    const manager = createManagerWithWorksetPayload({
+      worksets: [{ name: 'bad-members', tool: 'code', members: 'not-an-array' }],
+    });
+
+    const data = await manager.refresh();
+
+    expect(data.worksets).toEqual([{ name: 'bad-members', tool: 'code', members: [] }]);
+  });
+
+  it('coerces a missing member name/path to safe empty strings without throwing', async () => {
+    const manager = createManagerWithWorksetPayload({
+      worksets: [
+        {
+          name: 'sparse-members',
+          members: [{}, { path: '/only-path' }],
+        },
+      ],
+    });
+
+    const data = await manager.refresh();
+
+    expect(data.worksets).toEqual([
+      {
+        name: 'sparse-members',
+        members: [
+          { name: '', path: '' },
+          { name: '', path: '/only-path' },
+        ],
+      },
+    ]);
+  });
+
+  it('returns an empty worksets list (undefined on dashboard) when the CLI payload omits worksets', async () => {
+    const manager = createManagerWithWorksetPayload({ status: [] });
+
+    const data = await manager.refresh();
+
+    // No worksets key → parser yields []; dashboard omits the field (no panel).
+    expect(data.worksets).toBeUndefined();
+  });
+
+  it('never throws when the CLI returns a malformed worksets payload', async () => {
+    const manager = createManagerWithWorksetPayload({ worksets: 'totally-malformed' });
+
+    const data = await manager.refresh();
+
+    // Malformed payload must degrade to an empty/hidden panel, never throw.
+    expect(data.worksets).toBeUndefined();
+  });
+});
+
+describe('DataManager declared project-root scopes', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('runs local OpenSpec commands with cwd = scope.rootPath for a selected declared project root', async () => {
+    const activationRoot = '/tmp/openspec-ext-test-workspace';
+    const declaredRoot = '/work/fastgpt';
+    const manager = new DataManager(activationRoot) as any;
+
+    // Track the workspaceRoot used to construct each OpenSpecCliService so we can
+    // prove a per-scope service rooted at the declared root is created.
+    const constructedRoots: string[] = [];
+    const scopedCliGateway = {
+      listChanges: vi.fn().mockResolvedValue([
+        { name: 'fastgpt-change', completedTasks: 0, totalTasks: 1, lastModified: '2026-01-02', status: 'draft' },
+      ]),
+      listSpecs: vi.fn().mockResolvedValue([]),
+      listArchivedChanges: vi.fn().mockResolvedValue([]),
+    };
+
+    // A declared (non-store, non-local) scope pointing at a different project root.
+    const declaredScope = {
+      id: 'declared:/work/fastgpt',
+      label: 'FastGPT',
+      rootPath: declaredRoot,
+      source: 'declared',
+      runtimeSource: 'installed',
+      capabilities: { worksets: false, diagnostics: [] },
+    };
+
+    Object.assign(manager, {
+      cliAvailable: true,
+      capabilities: { worksets: false },
+      scopeManager: {
+        getSelectedScope: vi.fn(() => declaredScope),
+        getScopeOptions: vi.fn(() => [declaredScope]),
+      },
+      // Factory the implementation uses to build per-scope CLI services.
+      createScopedCliService: vi.fn((root: string) => {
+        constructedRoots.push(root);
+        return scopedCliGateway;
+      }),
+      contentAccess: {
+        readArtifact: vi.fn().mockResolvedValue(''),
+      },
+      cliService: {
+        getCliActivationDiagnostic: vi.fn().mockReturnValue(null),
+        runJson: vi.fn().mockResolvedValue({}),
+      },
+    });
+
+    const data = await manager.refresh();
+
+    // A per-scope CLI service must be constructed for the declared root (cwd override).
+    expect(manager.createScopedCliService).toHaveBeenCalledWith(declaredRoot);
+    expect(constructedRoots).toContain(declaredRoot);
+    // Changes were read through the scoped gateway, not the activation-root reader.
+    expect(scopedCliGateway.listChanges).toHaveBeenCalled();
+    expect(data.changes[0].name).toBe('fastgpt-change');
   });
 });

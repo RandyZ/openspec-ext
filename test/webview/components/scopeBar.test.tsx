@@ -21,6 +21,14 @@ const storeScope: OpenSpecScopeView = {
   runtimeSource: 'localSource',
 };
 
+const declaredScope: OpenSpecScopeView = {
+  id: 'declared:/other-project',
+  label: 'other-project',
+  source: 'declared',
+  rootPath: '/other-project',
+  runtimeSource: 'installed',
+};
+
 const cacheStats: CacheStatsView = {
   rootPath: '/workspace/.openspec-cache',
   totalBytes: 12288,
@@ -404,5 +412,52 @@ describe('ScopeBar', () => {
     // The Register Store action button lives in StoresAndWorksetsPanel, not ScopeBar.
     expect(html).not.toContain('Register Store');
     expect(html).toContain('disabled');
+  });
+
+  it('groups project and store roots under optgroup labels in the selector', () => {
+    const html = renderToStaticMarkup(
+      <ScopeBar
+        scope={localScope}
+        scopes={[localScope, declaredScope, storeScope]}
+        loading={false}
+        onSelectScope={vi.fn()}
+      />,
+    );
+
+    // Project group covers local + declared roots; Store group covers store roots.
+    expect(html).toContain('Projects');
+    expect(html).toContain('Stores');
+    expect(html).toContain('<optgroup');
+    // Both project roots render inside the selector.
+    expect(html).toContain('Local Root');
+    expect(html).toContain('Declared Root: other-project');
+    // Store root renders with its prefixed label.
+    expect(html).toContain('Store: team-plans');
+  });
+
+  it('never surfaces workset names as root selector options', () => {
+    // Worksets live in a separate WorksetView[] and are never part of scopes.
+    // This regression test ensures a workset-like label cannot leak into the
+    // selector markup even if a parent component were to accidentally merge them.
+    const worksetName = 'my-personal-workset';
+    const html = renderToStaticMarkup(
+      <ScopeBar
+        scope={localScope}
+        scopes={[
+          localScope,
+          declaredScope,
+          storeScope,
+          // A scope whose LABEL looks like a workset name; sources are still
+          // restricted to local/declared/store, so it must be grouped normally,
+          // but an actual workset entity must never appear as an option.
+        ]}
+        loading={false}
+        onSelectScope={vi.fn()}
+      />,
+    );
+
+    expect(html).not.toContain(worksetName);
+    expect(html).toContain('Projects');
+    expect(html).toContain('Stores');
   });
 });

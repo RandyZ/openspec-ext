@@ -10,6 +10,7 @@ import { SpecsSection } from './SpecsSection';
 import { CliActivationDiagnosticCard } from './CliActivationDiagnosticCard';
 import { ScopeBar } from './ScopeBar';
 import { StoresAndWorksetsPanel } from './StoresAndWorksetsPanel';
+import { WorksetsPage } from './WorksetsPage';
 import { formatOpenSpecRootLabel } from '../utils/scopeLabels';
 import { t } from '../../i18n';
 import {
@@ -65,6 +66,7 @@ export function requestInitialDashboardData(
 export const Dashboard: React.FC = () => {
   const { postMessage, onMessage } = useVscode();
   const { state, dispatch } = useAppState();
+  const [dashboardView, setDashboardView] = useState<'overview' | 'worksets'>('overview');
   const [archivedExpanded, setArchivedExpanded] = useState(false);
   const [archivedItems, setArchivedItems] = useState<ArchivedChangeInfo[]>([]);
   const [archivedLoading, setArchivedLoading] = useState(false);
@@ -313,46 +315,64 @@ export const Dashboard: React.FC = () => {
               </div>
             )}
 
-            {/* Stores & Worksets maintenance panel */}
-            <StoresAndWorksetsPanel
-              scopes={data.scopes ?? []}
-              currentScopeId={data.scope?.id}
-              references={data.relationships?.references ?? []}
-              worksets={data.worksets ?? []}
-              pending={loadingReason === 'store-register' || loadingReason === 'store-setup'}
-              onSelectStore={handleSelectScope}
-              onRegisterStore={handleRegisterStore}
-              onSetupStore={handleSetupStore}
-              onOpenWorkset={(name) => {
-                postMessage(sendMessage.openWorkset(name));
-              }}
-              onCopyFetch={(text) => {
-                navigator.clipboard.writeText(text).catch(() => {});
-              }}
-            />
+            {dashboardView === 'worksets' ? (
+              // Worksets workspace page. ScopeBar stays visible above so the
+              // current OpenSpec root remains selectable/recoverable. Opening a
+              // workset launches an editor workspace view only; it does NOT call
+              // onSelectScope or change the dashboard's selected root.
+              <WorksetsPage
+                worksets={data.worksets ?? []}
+                onOpenWorkset={(name) => {
+                  postMessage(sendMessage.openWorkset(name));
+                }}
+                onBack={() => setDashboardView('overview')}
+                currentRootLabel={selectedRootLabel}
+              />
+            ) : (
+              <>
+                {/* Stores & Worksets maintenance panel */}
+                <StoresAndWorksetsPanel
+                  scopes={data.scopes ?? []}
+                  currentScopeId={data.scope?.id}
+                  references={data.relationships?.references ?? []}
+                  worksets={data.worksets ?? []}
+                  pending={loadingReason === 'store-register' || loadingReason === 'store-setup'}
+                  onSelectStore={handleSelectScope}
+                  onRegisterStore={handleRegisterStore}
+                  onSetupStore={handleSetupStore}
+                  onOpenWorkset={(name) => {
+                    postMessage(sendMessage.openWorkset(name));
+                  }}
+                  onOpenWorksetsPage={() => setDashboardView('worksets')}
+                  onCopyFetch={(text) => {
+                    navigator.clipboard.writeText(text).catch(() => {});
+                  }}
+                />
 
-            <ChangesSection
-              changes={data.changes}
-              onOpenChange={handleOpenChange}
-              onRequestNewChange={handleRequestNewChange}
-              onCopyFf={handleCopyFf}
-              onCopyApply={handleCopyApply}
-              onLaunchWorkflow={handleLaunchWorkflow}
-              archivedExpanded={archivedExpanded}
-              onArchivedToggle={handleArchivedToggle}
-              archivedItems={archivedItems}
-              archivedLoading={archivedLoading}
-              onOpenArchivedChange={handleOpenArchivedChange}
-              workflowLaunchConfig={workflowLaunchConfig}
-              rootLabel={selectedRootLabel}
-            />
-            <SpecsSection
-              specs={data.specs}
-              specRequirements={specRequirements}
-              onOpenSpec={handleOpenSpec}
-              onRequirementClick={handleRequirementClick}
-              rootLabel={selectedRootLabel}
-            />
+                <ChangesSection
+                  changes={data.changes}
+                  onOpenChange={handleOpenChange}
+                  onRequestNewChange={handleRequestNewChange}
+                  onCopyFf={handleCopyFf}
+                  onCopyApply={handleCopyApply}
+                  onLaunchWorkflow={handleLaunchWorkflow}
+                  archivedExpanded={archivedExpanded}
+                  onArchivedToggle={handleArchivedToggle}
+                  archivedItems={archivedItems}
+                  archivedLoading={archivedLoading}
+                  onOpenArchivedChange={handleOpenArchivedChange}
+                  workflowLaunchConfig={workflowLaunchConfig}
+                  rootLabel={selectedRootLabel}
+                />
+                <SpecsSection
+                  specs={data.specs}
+                  specRequirements={specRequirements}
+                  onOpenSpec={handleOpenSpec}
+                  onRequirementClick={handleRequirementClick}
+                  rootLabel={selectedRootLabel}
+                />
+              </>
+            )}
           </>
         ) : loading ? (
           <div className="text-xs py-4" style={{ 

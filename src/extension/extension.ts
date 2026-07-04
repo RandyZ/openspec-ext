@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { initLogger, logger } from './utils/logger';
-import { getOpenSpecWorkspaceRoot } from './utils/workspaceRoot';
+import { getOpenSpecWorkspaceRoot, getOpenSpecProjectRoots } from './utils/workspaceRoot';
 import { DataManager } from './services/dataManager';
 import { CommandManager } from './commands/commandManager';
 import { DashboardViewProvider } from './providers/dashboardViewProvider';
@@ -26,12 +26,17 @@ export async function activate(context: vscode.ExtensionContext) {
     }
     logger.info(`[archived] activate: using workspaceRoot=${workspaceRoot}`);
 
+    // Discover ALL OpenSpec project roots so multi-folder workspaces expose every
+    // project (e.g. FastGPT + Server_DotNetCore) in the root selector. The
+    // activation root stays the 'local' scope; additional roots become 'declared'.
+    const projectRoots = await getOpenSpecProjectRoots();
+
     // Initialize data manager
     const cacheService = new OpenSpecCacheService(context.globalStorageUri, {
       workspaceRoot,
       extensionVersion: context.extension.packageJSON.version ?? '0.0.0',
     });
-    dataManager = new DataManager(workspaceRoot, { cacheService });
+    dataManager = new DataManager(workspaceRoot, { cacheService, projectRoots });
     await dataManager.initialize();
 
     let dashboardViewProviderRef: DashboardViewProvider | null = null;

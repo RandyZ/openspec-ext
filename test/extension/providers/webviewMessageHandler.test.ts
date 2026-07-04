@@ -1169,4 +1169,28 @@ describe('handleWebviewMessage toggleTask', () => {
     expect(dataManager.listArchivedChanges).toHaveBeenCalledWith(storeScope);
     expect(webview.postMessage).toHaveBeenCalledWith({ type: 'archivedChanges', items: [], scopeId: 'store:team-plans' });
   });
+
+  // Workset launching and root selection MUST stay separate: opening a workset
+  // launches an editor workspace view and must NOT call selectScope or otherwise
+  // change the selected OpenSpec root. (Task 4.2 regression coverage.)
+  it('openWorkset launches the workset without selecting a scope or refreshing dashboard data', async () => {
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      openWorkset: vi.fn().mockResolvedValue(undefined),
+      selectScope: vi.fn(),
+      refresh: vi.fn(),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'openWorkset', name: 'platform' },
+      webview as any,
+      dataManager as any,
+    );
+
+    expect(dataManager.openWorkset).toHaveBeenCalledWith('platform');
+    // Opening a workset must not touch root selection or dashboard data.
+    expect(dataManager.selectScope).not.toHaveBeenCalled();
+    expect(dataManager.refresh).not.toHaveBeenCalled();
+  });
 });
