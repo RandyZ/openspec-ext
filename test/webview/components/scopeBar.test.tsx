@@ -60,6 +60,25 @@ describe('ScopeBar', () => {
     expect(html).not.toContain('editor-inactiveSelectionBackground');
   });
 
+  it('does not own the root selector; the selector lives in the primary action rail', () => {
+    const html = renderToStaticMarkup(
+      <ScopeBar
+        scope={localScope}
+        scopes={[localScope, storeScope]}
+        health={{ status: 'ok', label: 'Healthy' }}
+        loading={false}
+        cacheStats={cacheStats}
+        onSelectScope={vi.fn()}
+        onCacheAction={vi.fn()}
+      />,
+    );
+
+    // The root selector has moved into the Header action rail; the ScopeBar is
+    // now strictly the CLI/cache status row and MUST NOT render a selector.
+    expect(html).not.toContain('<select');
+    expect(html).not.toContain('aria-label="OpenSpec Root"');
+  });
+
   it('renders accessible cache action controls behind a menu trigger', () => {
     const html = renderToStaticMarkup(
       <ScopeBar
@@ -79,7 +98,7 @@ describe('ScopeBar', () => {
     expect(html).toContain('aria-expanded="false"');
   });
 
-  it('labels the selector as OpenSpec Root and prefixes store roots', () => {
+  it('shows the current root label as a non-interactive label instead of a selector', () => {
     const html = renderToStaticMarkup(
       <ScopeBar
         scope={storeScope}
@@ -92,10 +111,10 @@ describe('ScopeBar', () => {
       />,
     );
 
-    expect(html).toContain('OpenSpec Root');
-    expect(html).toContain('aria-label="OpenSpec Root"');
-    expect(html).toContain('Local Root');
+    // The selector now lives in the action rail; ScopeBar surfaces the current
+    // root as a plain label alongside runtime/health/cache status.
     expect(html).toContain('Store: team-plans');
+    expect(html).not.toContain('<select');
   });
 
   it('renders cache actions behind a menu trigger without inline details markup', () => {
@@ -169,7 +188,7 @@ describe('ScopeBar', () => {
     expect(html).toContain('Healthy');
   });
 
-  it('shows scope selector when multiple scopes available', () => {
+  it('shows the current root label rather than a selector even with multiple scopes', () => {
     const html = renderToStaticMarkup(
       <ScopeBar
         scope={{
@@ -201,9 +220,9 @@ describe('ScopeBar', () => {
       />,
     );
 
-    expect(html).toContain('<select');
+    // Selector moved to the action rail; ScopeBar shows the current root label.
     expect(html).toContain('Local Root');
-    expect(html).toContain('team-plans');
+    expect(html).not.toContain('<select');
   });
 
   it('explains when store features are available but no stores are registered', () => {
@@ -280,7 +299,42 @@ describe('ScopeBar', () => {
     expect(html).toBe('');
   });
 
-  it('disables selector when loading', () => {
+  it('does not show a store-unavailable hint when stores are supported but worksets are not', () => {
+    // Independent gating: the ScopeBar store hint depends only on the stores
+    // capability, not the worksets capability. When stores are supported, the
+    // store-unavailable hint MUST NOT render even if worksets are unsupported.
+    const html = renderToStaticMarkup(
+      <ScopeBar
+        scope={{
+          ...localScope,
+          capabilities: {
+            stores: true,
+            context: true,
+            doctor: true,
+            worksets: false,
+            diagnostics: [],
+          },
+        }}
+        scopes={[localScope]}
+        loading={false}
+        onSelectScope={vi.fn()}
+      />,
+    );
+
+    expect(html).not.toContain('Store-aware features are unavailable');
+  });
+
+  it('treats omitted capabilities as not gated so the status row stays permissive', () => {
+    // Legacy runtime with no capabilities object: the store-unavailable hint
+    // MUST NOT render (capabilities are unknown, not explicitly unsupported).
+    const html = renderToStaticMarkup(
+      <ScopeBar scope={localScope} scopes={[localScope]} loading={false} onSelectScope={vi.fn()} />,
+    );
+
+    expect(html).not.toContain('Store-aware features are unavailable');
+  });
+
+  it('keeps showing the current root label and health while loading', () => {
     const html = renderToStaticMarkup(
       <ScopeBar
         scope={{
@@ -313,8 +367,10 @@ describe('ScopeBar', () => {
       />,
     );
 
-    expect(html).toContain('disabled');
+    // Selector moved to the action rail; ScopeBar surfaces health + label only.
+    expect(html).toContain('Local Root');
     expect(html).toContain('Issues');
+    expect(html).not.toContain('<select');
   });
 
   it('shows a scope switching indicator and disables selector while switching', () => {
@@ -414,50 +470,8 @@ describe('ScopeBar', () => {
     expect(html).toContain('disabled');
   });
 
-  it('groups project and store roots under optgroup labels in the selector', () => {
-    const html = renderToStaticMarkup(
-      <ScopeBar
-        scope={localScope}
-        scopes={[localScope, declaredScope, storeScope]}
-        loading={false}
-        onSelectScope={vi.fn()}
-      />,
-    );
-
-    // Project group covers local + declared roots; Store group covers store roots.
-    expect(html).toContain('Projects');
-    expect(html).toContain('Stores');
-    expect(html).toContain('<optgroup');
-    // Both project roots render inside the selector.
-    expect(html).toContain('Local Root');
-    expect(html).toContain('Declared Root: other-project');
-    // Store root renders with its prefixed label.
-    expect(html).toContain('Store: team-plans');
-  });
-
-  it('never surfaces workset names as root selector options', () => {
-    // Worksets live in a separate WorksetView[] and are never part of scopes.
-    // This regression test ensures a workset-like label cannot leak into the
-    // selector markup even if a parent component were to accidentally merge them.
-    const worksetName = 'my-personal-workset';
-    const html = renderToStaticMarkup(
-      <ScopeBar
-        scope={localScope}
-        scopes={[
-          localScope,
-          declaredScope,
-          storeScope,
-          // A scope whose LABEL looks like a workset name; sources are still
-          // restricted to local/declared/store, so it must be grouped normally,
-          // but an actual workset entity must never appear as an option.
-        ]}
-        loading={false}
-        onSelectScope={vi.fn()}
-      />,
-    );
-
-    expect(html).not.toContain(worksetName);
-    expect(html).toContain('Projects');
-    expect(html).toContain('Stores');
-  });
+  // NOTE: The optgroup Projects/Stores grouping assertions and the
+  // "never surfaces workset names" regression have moved to the dashboard
+  // action-rail test, since the root selector now lives in the primary
+  // action area (Header) rather than in this CLI/cache status bar.
 });

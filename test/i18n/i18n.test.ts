@@ -185,5 +185,18 @@ describe('i18n', () => {
       expect(zhCn['cache.showDetails']).toBe('查看详情');
       expect(zhCn['dashboard.refreshing']).toBe('正在刷新 OpenSpec 数据...');
     });
+
+    it('contains workset card member-type labels and upgrade notice in both locales', () => {
+      const requiredKeys = [
+        'worksetsPage.memberTypeStoreRoot',
+        'worksetsPage.memberTypeProject',
+        'scope.featureGated.upgradeNotice',
+      ];
+
+      for (const key of requiredKeys) {
+        expect(en[key as keyof typeof en]).toBeTruthy();
+        expect(zhCn[key as keyof typeof zhCn]).toBeTruthy();
+      }
+    });
   });
 });

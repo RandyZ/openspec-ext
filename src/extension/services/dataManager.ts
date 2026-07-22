@@ -304,6 +304,19 @@ export class DataManager {
     await this.cliService.runJson(['workset', 'open', name]);
   }
 
+  /**
+   * Remove a saved workset via the OpenSpec CLI. This deletes ONLY the saved
+   * workset record — member folders, repos, and stores are never touched.
+   * Invalidates the cached dashboard data and refreshes so the removed workset
+   * disappears from the panel. Scopes are unaffected, so (unlike register/setup
+   * store) there is no need to reload scope options.
+   */
+  async removeWorkset(name: string): Promise<DashboardData> {
+    await this.cliService.runJson(['workset', 'remove', name, '--yes', '--json']);
+    await this.invalidateDashboardCache();
+    return await this.refresh();
+  }
+
   async registerStore(rootPath: string): Promise<DashboardData> {
     const payload = await this.cliService.runJson([
       'store',

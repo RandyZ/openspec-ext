@@ -1194,3 +1194,238 @@ describe('handleWebviewMessage toggleTask', () => {
     expect(dataManager.refresh).not.toHaveBeenCalled();
   });
 });
+
+describe('handleWebviewMessage removeWorkset message contract', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setLocale('en');
+  });
+
+  it('sendMessage.removeWorkset builds a { type: "removeWorkset", name } message', async () => {
+    const { sendMessage } = await import('../../../src/webview/types/messages');
+    const message = sendMessage.removeWorkset('platform');
+    expect(message).toEqual({ type: 'removeWorkset', name: 'platform' });
+  });
+
+  it('accepts a removeWorkset message variant with a name field (type-level regression)', async () => {
+    // The handler should at least recognize the type and not fall through to
+    // the "Unknown message type" branch.
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      removeWorkset: vi.fn().mockResolvedValue({ changes: [], specs: [], lastRefresh: 1 }),
+      refresh: vi.fn().mockResolvedValue({ changes: [], specs: [], lastRefresh: 1 }),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce(undefined as any);
+
+    await handleWebviewMessage(
+      { type: 'removeWorkset', name: 'platform' },
+      webview as any,
+      dataManager as any,
+    );
+
+    // Cancel => no removal call, but the message must be a recognized variant
+    // (no exception thrown, handler returns normally).
+    expect(dataManager.removeWorkset).not.toHaveBeenCalled();
+  });
+});
+
+describe('handleWebviewMessage removeWorkset confirmation flow', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setLocale('en');
+  });
+
+  it('asks for modal confirmation naming the workset before removing it', async () => {
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      removeWorkset: vi.fn().mockResolvedValue({ changes: [], specs: [], lastRefresh: 1 }),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce(
+      t('worksetsPage.removeConfirm') as any
+    );
+
+    await handleWebviewMessage(
+      { type: 'removeWorkset', name: 'platform' },
+      webview as any,
+      dataManager as any,
+    );
+
+    // A modal warning MUST be shown, naming the workset, with the confirm button.
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      expect.stringContaining('platform'),
+      { modal: true },
+      t('worksetsPage.removeConfirm'),
+    );
+  });
+
+  it('the confirmation message states member folders/repos/stores are not deleted (non-destructive copy)', async () => {
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      removeWorkset: vi.fn().mockResolvedValue({ changes: [], specs: [], lastRefresh: 1 }),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce(
+      t('worksetsPage.removeConfirm') as any
+    );
+
+    await handleWebviewMessage(
+      { type: 'removeWorkset', name: 'platform' },
+      webview as any,
+      dataManager as any,
+    );
+
+    const callArgs = vi.mocked(vscode.window.showWarningMessage).mock.calls[0];
+    const message = String(callArgs[0]);
+    // Non-destructive: the copy MUST reassure that member folders/repos/stores survive.
+    expect(message.toLowerCase()).toContain('not be deleted');
+  });
+
+  it('on confirm, calls removeWorkset and posts refreshed dashboard data', async () => {
+    const refreshedData = { changes: [], specs: [], lastRefresh: 5, worksets: [] };
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      removeWorkset: vi.fn().mockResolvedValue(refreshedData),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce(
+      t('worksetsPage.removeConfirm') as any
+    );
+
+    await handleWebviewMessage(
+      { type: 'removeWorkset', name: 'platform' },
+      webview as any,
+      dataManager as any,
+    );
+
+    expect(dataManager.removeWorkset).toHaveBeenCalledWith('platform');
+    // The handler MUST post the refreshed dashboard data returned by removeWorkset.
+    expect(webview.postMessage).toHaveBeenCalledWith({
+      type: 'dashboardData',
+      data: refreshedData,
+    });
+  });
+
+  it('on cancel, does NOT call removeWorkset and does NOT post dashboard data', async () => {
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      removeWorkset: vi.fn(),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    // Cancel = showWarningMessage resolves to undefined (dismiss / Escape in a modal).
+    vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce(undefined as any);
+
+    await handleWebviewMessage(
+      { type: 'removeWorkset', name: 'platform' },
+      webview as any,
+      dataManager as any,
+    );
+
+    expect(dataManager.removeWorkset).not.toHaveBeenCalled();
+    expect(webview.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('on error, shows an error message and does NOT post dashboard data', async () => {
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      removeWorkset: vi.fn().mockRejectedValue(new Error('boom')),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce(
+      t('worksetsPage.removeConfirm') as any
+    );
+
+    await handleWebviewMessage(
+      { type: 'removeWorkset', name: 'platform' },
+      webview as any,
+      dataManager as any,
+    );
+
+    expect(dataManager.removeWorkset).toHaveBeenCalledWith('platform');
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      expect.stringContaining('platform'),
+    );
+    // Failed removal must not post a dashboardData refresh.
+    expect(webview.postMessage).not.toHaveBeenCalled();
+  });
+
+  // Regression (Task 1.4): the confirmation modal copy is exactly the spec'd
+  // non-destructive phrasing — member folders/repos/stores are NOT deleted.
+  it('uses the exact non-destructive confirmation title and message copy', async () => {
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      removeWorkset: vi.fn().mockResolvedValue({ changes: [], specs: [], lastRefresh: 1 }),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce(
+      t('worksetsPage.removeConfirm') as any
+    );
+
+    await handleWebviewMessage(
+      { type: 'removeWorkset', name: 'platform' },
+      webview as any,
+      dataManager as any,
+    );
+
+    const shown = String(vi.mocked(vscode.window.showWarningMessage).mock.calls[0][0]);
+    // Title interpolates the workset name; message is the non-destructive guarantee.
+    expect(shown).toContain(t('worksetsPage.removeConfirmTitle', { name: 'platform' }));
+    expect(shown).toContain(t('worksetsPage.removeConfirmMessage'));
+  });
+
+  // Regression (Task 1.4): the refreshed dashboardData is posted exactly once
+  // and the post contract is { type: 'dashboardData', data }.
+  it('posts refreshed dashboardData exactly once on success with the dashboardData contract', async () => {
+    const refreshedData = { changes: [], specs: [], lastRefresh: 9, worksets: [] };
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      removeWorkset: vi.fn().mockResolvedValue(refreshedData),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce(
+      t('worksetsPage.removeConfirm') as any
+    );
+
+    await handleWebviewMessage(
+      { type: 'removeWorkset', name: 'platform' },
+      webview as any,
+      dataManager as any,
+    );
+
+    expect(webview.postMessage).toHaveBeenCalledTimes(1);
+    expect(webview.postMessage).toHaveBeenCalledWith({
+      type: 'dashboardData',
+      data: refreshedData,
+    });
+  });
+
+  // Regression (Task 1.4): cancelling the modal must not show any error/info
+  // message — the user simply backed out.
+  it('on cancel, shows no informational or error messages', async () => {
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      removeWorkset: vi.fn(),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce(undefined as any);
+
+    await handleWebviewMessage(
+      { type: 'removeWorkset', name: 'platform' },
+      webview as any,
+      dataManager as any,
+    );
+
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+  });
+});

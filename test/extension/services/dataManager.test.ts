@@ -1335,6 +1335,93 @@ describe('DataManager workset data contract', () => {
     // Malformed payload must degrade to an empty/hidden panel, never throw.
     expect(data.worksets).toBeUndefined();
   });
+
+  it('removeWorkset calls `openspec workset remove <name> --yes --json`, invalidates the dashboard cache, and returns refreshed data', async () => {
+    const manager = createManagerWithWorksetPayload({ worksets: [] });
+    const runJson = (manager as any).cliService.runJson;
+    const refreshedData = {
+      changes: [],
+      specs: [],
+      lastRefresh: 1,
+      worksets: [],
+    };
+    const refreshSpy = vi.spyOn(manager, 'refresh').mockResolvedValue({
+      ...refreshedData,
+    });
+    const invalidateSpy = vi.spyOn(manager as any, 'invalidateDashboardCache').mockResolvedValue(undefined);
+    const loadScopeOptionsSpy = vi.fn();
+    (manager as any).scopeManager = { loadScopeOptions: loadScopeOptionsSpy, getSelectedScope: vi.fn(), getScopeOptions: vi.fn(() => []) };
+
+    runJson.mockReset();
+    runJson.mockResolvedValue({});
+
+    const result = await manager.removeWorkset('platform');
+
+    expect(runJson).toHaveBeenCalledWith([
+      'workset',
+      'remove',
+      'platform',
+      '--yes',
+      '--json',
+    ]);
+    // Removal is non-destructive to scopes: it must NOT reload scopes.
+    expect(loadScopeOptionsSpy).not.toHaveBeenCalled();
+    // ...but it MUST invalidate the dashboard cache and refresh so the removed workset disappears.
+    expect(invalidateSpy).toHaveBeenCalled();
+    expect(refreshSpy).toHaveBeenCalled();
+    expect(result).toEqual(refreshedData);
+  });
+
+  it('removeWorkset surfaces errors from the CLI without masking them', async () => {
+    const manager = createManagerWithWorksetPayload({ worksets: [] });
+    const runJson = (manager as any).cliService.runJson;
+    vi.spyOn(manager, 'refresh').mockResolvedValue({
+      changes: [],
+      specs: [],
+      lastRefresh: 1,
+    });
+
+    runJson.mockReset();
+    runJson.mockRejectedValue(new Error('workset not found'));
+
+    await expect(manager.removeWorkset('missing')).rejects.toThrow('workset not found');
+  });
+
+  // Regression (Task 1.4): removal must invoke exactly one CLI command with the
+  // exact arg vector, and must not run any destructive store/scope mutation.
+  it('removeWorkset runs exactly one `workset remove` command and no store/scope mutations', async () => {
+    const manager = createManagerWithWorksetPayload({ worksets: [] });
+    const runJson = (manager as any).cliService.runJson;
+    vi.spyOn(manager, 'refresh').mockResolvedValue({
+      changes: [],
+      specs: [],
+      lastRefresh: 1,
+    });
+    const loadScopeOptionsSpy = vi.fn();
+    (manager as any).scopeManager = {
+      loadScopeOptions: loadScopeOptionsSpy,
+      getSelectedScope: vi.fn(),
+      getScopeOptions: vi.fn(() => []),
+    };
+
+    runJson.mockReset();
+    runJson.mockResolvedValue({});
+
+    await manager.removeWorkset('platform');
+
+    // Exactly one CLI invocation.
+    expect(runJson).toHaveBeenCalledTimes(1);
+    // And it is the exact remove arg vector (with --yes for non-interactive + --json).
+    expect(runJson).toHaveBeenCalledWith([
+      'workset',
+      'remove',
+      'platform',
+      '--yes',
+      '--json',
+    ]);
+    // No scope reload — removal is scope-invariant.
+    expect(loadScopeOptionsSpy).not.toHaveBeenCalled();
+  });
 });
 
 describe('DataManager declared project-root scopes', () => {

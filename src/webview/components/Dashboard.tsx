@@ -3,7 +3,7 @@ import { useVscode } from '../hooks/useVscode';
 import { useAppState } from '../context/AppContext';
 import type { AppAction } from '../context/AppContext';
 import { sendMessage } from '../types/messages';
-import type { ArchivedChangeInfo, SpecInfo, WebviewMessage } from '../types/messages';
+import type { ArchivedChangeInfo, DashboardData, SpecInfo, WebviewMessage } from '../types/messages';
 import { Header } from './Header';
 import { ChangesSection } from './ChangesSection';
 import { SpecsSection } from './SpecsSection';
@@ -61,6 +61,21 @@ export function requestInitialDashboardData(
   postMessage(sendMessage.getDashboardData());
   postMessage(sendMessage.getWorkflowLaunchConfig());
   postMessage(sendMessage.getCacheStats());
+}
+
+/**
+ * A plain Local Root with no read-only references, no registered stores, and no
+ * saved worksets stays lightweight: the Changes/Specs areas remain similar to
+ * the original single-project dashboard instead of being dominated by an empty
+ * management panel. Register Store stays reachable from the primary action rail.
+ */
+export function isLightweightLocalRoot(data: DashboardData | null | undefined): boolean {
+  if (!data) return false;
+  if (!data.scope || data.scope.source !== 'local') return false;
+  const hasStores = (data.scopes ?? []).some((s) => s.source === 'store');
+  const hasReferences = (data.relationships?.references ?? []).length > 0;
+  const hasWorksets = (data.worksets ?? []).length > 0;
+  return !hasStores && !hasReferences && !hasWorksets;
 }
 
 export const Dashboard: React.FC = () => {
@@ -256,12 +271,20 @@ export const Dashboard: React.FC = () => {
           onRefresh={handleRefresh}
           onNewChange={handleRequestNewChange}
           loading={loading}
+          scope={data?.scope}
+          scopes={data?.scopes}
+          loadingReason={loadingReason}
+          activity={activity}
+          pendingScopeId={pendingScopeId}
+          onSelectScope={data?.scope ? handleSelectScope : undefined}
+          onRegisterStore={data?.scope?.capabilities?.stores ? handleRegisterStore : undefined}
+          onSetupStore={data?.scope?.capabilities?.stores ? handleSetupStore : undefined}
         />
 
         {error && (
-          <div 
+          <div
             className="mb-4 p-2 rounded text-xs"
-            style={{ 
+            style={{
               background: 'var(--vscode-inputValidation-errorBackground)',
               color: 'var(--vscode-errorForeground)',
             }}
@@ -280,7 +303,8 @@ export const Dashboard: React.FC = () => {
 
         {data ? (
           <>
-            {/* Scope Bar */}
+            {/* CLI / cache status row. Root selection now lives in the Header
+                action rail above; this bar is operational status only. */}
             <ScopeBar
               scope={data.scope}
               scopes={data.scopes}
@@ -299,9 +323,6 @@ export const Dashboard: React.FC = () => {
               cacheStats={cacheStats}
               cacheActionMessage={cacheActionMessage}
               pendingCacheAction={pendingCacheAction}
-              onSelectScope={handleSelectScope}
-              onRegisterStore={handleRegisterStore}
-              onSetupStore={handleSetupStore}
               onCacheAction={handleCacheAction}
             />
 
@@ -315,35 +336,72 @@ export const Dashboard: React.FC = () => {
               </div>
             )}
 
+            {/* OpenSpec 1.5 feature gating notice. Stores and worksets are gated
+                independently; the concise upgrade message appears whenever either
+                is explicitly unsupported. It never blocks Local Root Changes or
+                Specs (rendered below), which stay fully usable. */}
+            {(data.scope?.capabilities?.stores === false ||
+              data.scope?.capabilities?.worksets === false) && (
+              <div
+                role="status"
+                className="mb-3 text-xs leading-snug"
+                style={{ color: 'var(--vscode-descriptionForeground)' }}
+              >
+                {t('scope.featureGated.upgradeNotice')}
+              </div>
+            )}
+
             {dashboardView === 'worksets' ? (
               // Worksets workspace page. ScopeBar stays visible above so the
               // current OpenSpec root remains selectable/recoverable. Opening a
               // workset launches an editor workspace view only; it does NOT call
-              // onSelectScope or change the dashboard's selected root.
+              // onSelectScope or change the dashboard's selected root. Removing
+              // a workset posts a confirmed removeWorkset message (the host
+              // shows the modal confirmation and refreshes dashboard data).
               <WorksetsPage
                 worksets={data.worksets ?? []}
                 onOpenWorkset={(name) => {
                   postMessage(sendMessage.openWorkset(name));
                 }}
+                onRemoveWorkset={(name) => {
+                  postMessage(sendMessage.removeWorkset(name));
+                }}
                 onBack={() => setDashboardView('overview')}
                 currentRootLabel={selectedRootLabel}
+                worksetsSupported={data.scope?.capabilities?.worksets}
+                storeRootPaths={(data.scopes ?? [])
+                  .filter((s) => s.source === 'store')
+                  .map((s) => s.rootPath)}
               />
             ) : (
               <>
-                {/* Stores & Worksets maintenance panel */}
+                {/* Stores & Worksets maintenance panel.
+                    For a plain Local Root with no stores, references, or
+                    worksets, stay lightweight (render nothing) so the
+                    Changes/Specs areas keep the original single-project shape.
+                    Register Store stays reachable from the Header action rail. */}
                 <StoresAndWorksetsPanel
                   scopes={data.scopes ?? []}
                   currentScopeId={data.scope?.id}
                   references={data.relationships?.references ?? []}
                   worksets={data.worksets ?? []}
                   pending={loadingReason === 'store-register' || loadingReason === 'store-setup'}
+                  capabilities={{
+                    stores: data.scope?.capabilities?.stores,
+                    worksets: data.scope?.capabilities?.worksets,
+                  }}
+                  lightweight={isLightweightLocalRoot(data)}
                   onSelectStore={handleSelectScope}
                   onRegisterStore={handleRegisterStore}
                   onSetupStore={handleSetupStore}
                   onOpenWorkset={(name) => {
                     postMessage(sendMessage.openWorkset(name));
                   }}
-                  onOpenWorksetsPage={() => setDashboardView('worksets')}
+                  onOpenWorksetsPage={
+                    data.scope?.capabilities?.worksets === false
+                      ? undefined
+                      : () => setDashboardView('worksets')
+                  }
                   onCopyFetch={(text) => {
                     navigator.clipboard.writeText(text).catch(() => {});
                   }}

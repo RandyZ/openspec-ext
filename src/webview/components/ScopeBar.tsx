@@ -55,6 +55,12 @@ function cacheSummary(stats?: CacheStatsView | null): string {
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
+//
+// ScopeBar is now strictly the CLI/cache status row. Root selection has moved
+// into the primary action rail (Header) so the selected OpenSpec root stays
+// visually associated with Refresh/New Change rather than with cache status.
+// This component keeps the runtime label, current root label (read-only),
+// health, activity/status, cache menu, and store availability hints.
 
 export interface ScopeBarProps {
   scope?: OpenSpecScopeView;
@@ -67,7 +73,7 @@ export interface ScopeBarProps {
   cacheStats?: CacheStatsView | null;
   cacheActionMessage?: string | null;
   pendingCacheAction?: CacheAction | null;
-  onSelectScope: (scopeId: string) => void;
+  onSelectScope?: (scopeId: string) => void;
   onRegisterStore?: () => void;
   onSetupStore?: () => void;
   onCacheAction?: (action: CacheAction) => void;
@@ -83,9 +89,6 @@ export const ScopeBar: React.FC<ScopeBarProps> = ({
   cacheStats,
   cacheActionMessage,
   pendingCacheAction = null,
-  onSelectScope,
-  onRegisterStore,
-  onSetupStore,
   onCacheAction,
 }) => {
   const [cacheMenuOpen, setCacheMenuOpen] = useState(false);
@@ -127,14 +130,6 @@ export const ScopeBar: React.FC<ScopeBarProps> = ({
 
   if (!scope) return null;
 
-  const rootLabel = formatOpenSpecRootLabel(scope);
-
-  const showSelector = scopes.length > 1;
-  // Root selector groups: Project roots are local + declared (multi-folder
-  // workspace roots); Store roots are registered stores. Worksets are never
-  // part of `scopes` and therefore never appear here.
-  const projectScopes = scopes.filter((s) => s.source === 'local' || s.source === 'declared');
-  const storeScopes = scopes.filter((s) => s.source === 'store');
   const storeFeaturesAvailable = scope.capabilities?.stores === true;
   const storeFeaturesUnavailable = scope.capabilities?.stores === false;
   const showNoStoresHint = storeFeaturesAvailable && scopes.every((item) => item.source !== 'store');
@@ -168,7 +163,7 @@ export const ScopeBar: React.FC<ScopeBarProps> = ({
         borderColor: 'var(--vscode-panel-border)',
       }}
     >
-      <div className="flex min-w-0 items-center justify-between gap-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
         <span
           className="min-w-0 truncate"
           style={{ color: 'var(--vscode-descriptionForeground)' }}
@@ -176,44 +171,8 @@ export const ScopeBar: React.FC<ScopeBarProps> = ({
           {runtimeLabel(scope.runtimeSource)}
         </span>
 
-        {showSelector ? (
-          <select
-            disabled={disableScopeActions}
-            value={scope.id}
-            onChange={(event) => onSelectScope(event.currentTarget.value)}
-            aria-label={t('scope.root.selectorLabel')}
-            className="min-w-0 max-w-[60%] truncate rounded border px-1 py-0.5 text-xs"
-            style={{
-              borderColor: 'var(--vscode-dropdown-border)',
-              background: 'var(--vscode-dropdown-background)',
-              color: 'var(--vscode-dropdown-foreground)',
-            }}
-          >
-            {projectScopes.length > 0 && (
-              <optgroup label={t('scope.group.projects')}>
-                {projectScopes.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {formatOpenSpecRootLabel(item)}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-            {storeScopes.length > 0 && (
-              <optgroup label={t('scope.group.stores')}>
-                {storeScopes.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {formatOpenSpecRootLabel(item)}
-                  </option>
-                ))}
-              </optgroup>
-            )}
-          </select>
-        ) : (
-          <strong className="min-w-0 truncate">{rootLabel}</strong>
-        )}
-      </div>
+        <strong className="min-w-0 truncate">{formatOpenSpecRootLabel(scope)}</strong>
 
-      <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
         {health && (
           <span
             className="inline-flex min-w-0 items-center gap-1 truncate"

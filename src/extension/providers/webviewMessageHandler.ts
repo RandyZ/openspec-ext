@@ -1093,6 +1093,33 @@ export async function handleWebviewMessage(
       break;
     }
 
+    case 'removeWorkset': {
+      // Non-destructive: removal deletes ONLY the saved workset record. Member
+      // folders, repos, and stores are never touched. Confirm via a modal so
+      // the user understands what is (and isn't) deleted before proceeding.
+      const confirmLabel = t('worksetsPage.removeConfirm');
+      const messageText = `${t('worksetsPage.removeConfirmTitle', { name: message.name })}\n${t('worksetsPage.removeConfirmMessage')}`;
+      const choice = await vscode.window.showWarningMessage(
+        messageText,
+        { modal: true },
+        confirmLabel,
+      );
+      if (choice !== confirmLabel) {
+        // Cancelled (dismiss / Escape): keep the workset, do nothing.
+        break;
+      }
+      try {
+        const data = await dataManager.removeWorkset(message.name);
+        webview.postMessage({ type: 'dashboardData', data });
+      } catch (error) {
+        logger.error('removeWorkset failed', error as Error);
+        vscode.window.showErrorMessage(
+          t('worksetsPage.removeFailed', { name: message.name }),
+        );
+      }
+      break;
+    }
+
     default:
       logger.warn(`Unknown message type: ${message.type}`);
   }

@@ -64,6 +64,7 @@ export type WebviewMessage =
   | { type: 'openCliInstallDocs' }
   | { type: 'selectScope'; scopeId: string }
   | { type: 'openWorkset'; name: string }
+  | { type: 'removeWorkset'; name: string }
   | { type: 'requestRegisterStore' }
   | { type: 'requestSetupStore' };
 
@@ -452,6 +453,11 @@ export const sendMessage = {
 
   openWorkset: (name: string): WebviewMessage => ({
     type: 'openWorkset',
+    name,
+  }),
+
+  removeWorkset: (name: string): WebviewMessage => ({
+    type: 'removeWorkset',
     name,
   }),
 

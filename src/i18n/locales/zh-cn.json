@@ -237,6 +237,7 @@
   "scope.settingUpStore": "正在创建 store...",
   "scope.noStoresRegistered": "未注册 store",
   "scope.noStoresHint": "运行 openspec store setup <id> --path <path> 或 openspec store register <path> 后刷新。",
+  "scope.featureGated.upgradeNotice": "Stores 与工作集需要 OpenSpec 1.5.0 或更高版本。",
   "scope.action.registerStore": "注册 Store",
   "scope.action.setupStore": "新建 Store",
   "scope.storeUnavailable": "Store 多工程能力不可用",
@@ -259,6 +260,8 @@
   "storesWorksets.stores": "已注册 Stores",
   "storesWorksets.noStores": "还没有注册 store。",
   "storesWorksets.openStore": "打开",
+  "storesWorksets.currentStore": "当前",
+  "storesWorksets.switchStore": "切换",
   "storesWorksets.references": "只读 References",
   "storesWorksets.referencesDescription": "References 提供上游上下文，不是当前可写规划根。",
   "storesWorksets.noReferences": "还没有配置 reference。",
@@ -270,7 +273,15 @@
   "worksetsPage.currentRoot": "当前根：{root}",
   "worksetsPage.memberCount": "{count} 个成员",
   "worksetsPage.primaryMember": "主成员",
+  "worksetsPage.memberTypeStoreRoot": "Store 根",
+  "worksetsPage.memberTypeProject": "项目",
   "worksetsPage.open": "打开",
   "worksetsPage.empty": "暂无工作集。使用 `openspec workset` CLI 创建一个，以便同时打开相关文件夹。",
-  "worksetsPage.openWorksets": "管理工作集"
+  "worksetsPage.openWorksets": "管理工作集",
+  "worksetsPage.remove": "移除",
+  "worksetsPage.removeConfirmTitle": "移除工作集「{name}」？",
+  "worksetsPage.removeConfirmMessage": "此操作仅移除已保存的工作集，不会删除成员文件夹、仓库或存储。",
+  "worksetsPage.removeConfirm": "移除工作集",
+  "worksetsPage.removeSuccess": "已移除工作集「{name}」。",
+  "worksetsPage.removeFailed": "移除工作集「{name}」失败。"
 }

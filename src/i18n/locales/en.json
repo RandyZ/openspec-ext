@@ -237,6 +237,7 @@
   "scope.settingUpStore": "Setting up store...",
   "scope.noStoresRegistered": "No stores registered",
   "scope.noStoresHint": "Run openspec store setup <id> --path <path> or openspec store register <path>, then refresh.",
+  "scope.featureGated.upgradeNotice": "Stores and worksets require OpenSpec 1.5.0 or newer.",
   "scope.action.registerStore": "Register Store",
   "scope.action.setupStore": "Create Store",
   "scope.storeUnavailable": "Store-aware features are unavailable",
@@ -259,6 +260,8 @@
   "storesWorksets.stores": "Registered stores",
   "storesWorksets.noStores": "No stores registered.",
   "storesWorksets.openStore": "Open",
+  "storesWorksets.currentStore": "Current",
+  "storesWorksets.switchStore": "Switch",
   "storesWorksets.references": "Read-only references",
   "storesWorksets.referencesDescription": "References provide upstream context and are not the writable planning root.",
   "storesWorksets.noReferences": "No references configured.",
@@ -270,7 +273,15 @@
   "worksetsPage.currentRoot": "Current root: {root}",
   "worksetsPage.memberCount": "{count} members",
   "worksetsPage.primaryMember": "Primary",
+  "worksetsPage.memberTypeStoreRoot": "Store root",
+  "worksetsPage.memberTypeProject": "Project",
   "worksetsPage.open": "Open",
   "worksetsPage.empty": "No worksets saved yet. Create one with `openspec workset` CLI to open related folders together.",
-  "worksetsPage.openWorksets": "Manage Worksets"
+  "worksetsPage.openWorksets": "Manage Worksets",
+  "worksetsPage.remove": "Remove",
+  "worksetsPage.removeConfirmTitle": "Remove workset '{name}'?",
+  "worksetsPage.removeConfirmMessage": "This removes the saved workset. Member folders, repos, and stores will not be deleted.",
+  "worksetsPage.removeConfirm": "Remove workset",
+  "worksetsPage.removeSuccess": "Removed workset '{name}'.",
+  "worksetsPage.removeFailed": "Failed to remove workset '{name}'."
 }
