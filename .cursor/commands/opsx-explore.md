@@ -1,7 +1,7 @@
 ---
-name: /opsx-explore
-id: opsx-explore
-category: Workflow
+name: "/opsx-explore"
+id: "opsx-explore"
+category: "Workflow"
 description: "Enter explore mode - think through ideas, investigate problems, clarify requirements"
 ---
 
@@ -11,7 +11,9 @@ Enter explore mode. Think deeply. Visualize freely. Follow the conversation wher
 
 **This is a stance, not a workflow.** There are no fixed steps, no required sequence, no mandatory outputs. You're a thinking partner helping the user explore.
 
-**Input**: The argument after `/opsx:explore` is whatever the user wants to think about. Could be:
+**Store selection:** If the user names a store (a store is a standalone OpenSpec repo registered on this machine) or the work lives in one, run `openspec store list --json` to discover registered store ids, then pass `--store <id>` on the commands that read or write specs and changes (`new change`, `status`, `instructions`, `list`, `show`, `validate`, `archive`, `doctor`, `context`, `view`). Other commands do not take the flag. Hints printed by commands already carry the flag; keep it on follow-ups. Without a store, commands act on the nearest local `openspec/` root.
+
+**Input**: The argument after `/opsx-explore` is whatever the user wants to think about. Could be:
 - A vague idea: "real-time collaboration"
 - A specific problem: "the auth system is getting unwieldy"
 - A change name: "add-dark-mode" (to explore in context of that change)
@@ -93,6 +95,12 @@ This tells you:
 - If there are active changes
 - Their names, schemas, and status
 - What the user might be working on
+
+Then read the project's own context from the resolved root - `<root.path>/openspec/config.yaml` (or `config.yml`). Use the `root.path` returned above, and skip this if neither file exists:
+- `context`: project background - tech stack, conventions, constraints
+- `rules`: keyed by artifact id - the entries for an artifact apply only when you write that artifact
+
+Ground your thinking in these. They are constraints for you to follow, not content to reproduce: do NOT copy them into the conversation or into any artifact you create.
 
 If the user mentioned a specific change name, read its artifacts for context.
 
