@@ -287,6 +287,10 @@ export class OpenSpecCliService {
   /**
    * Show details for a specific change.
    * If CLI returns non-JSON or command fails (e.g. exit 1), returns minimal ChangeDetails so callers can fallback to Content Access.
+   *
+   * OpenSpec 1.8+ `show --json` returns delta content rather than a ChangeDetails-shaped
+   * payload. When `artifacts` is missing, fall back to `status --change --json` which still
+   * exposes the Schema artifact list and output paths.
    */
   async showChange(name: string, scope?: ScopeOption | OpenSpecScope): Promise<ChangeDetails> {
     try {
@@ -298,10 +302,25 @@ export class OpenSpecCliService {
       if (!data) {
         return this.minimalChangeDetails(name);
       }
+
+      let artifacts = this.normalizeArtifactInfos(data.artifacts ?? []);
+      let schema = data.schema || 'unknown';
+      if (artifacts.length === 0) {
+        try {
+          const status = await this.getChangeStatus(name, scope);
+          artifacts = this.normalizeArtifactInfos(status.artifacts ?? []);
+          if (typeof status.schemaName === 'string' && status.schemaName) {
+            schema = status.schemaName;
+          }
+        } catch {
+          // Keep empty artifacts; callers may still fall back to Content Access.
+        }
+      }
+
       return {
         name: data.name || name,
-        schema: data.schema || 'unknown',
-        artifacts: this.normalizeArtifactInfos(data.artifacts ?? []),
+        schema,
+        artifacts,
         tasks: this.normalizeTaskInfos(data.tasks ?? []),
         metadata: data.metadata && typeof data.metadata === 'object' ? data.metadata : {},
       };
@@ -310,6 +329,8 @@ export class OpenSpecCliService {
         logger.warn(
           `openspec show ${name} failed (exit ${error.exitCode}): ${error.stderr || error.message}. Returning minimal details.`
         );
+        // Hard show failures (e.g. change not found) should not also hammer `status`
+        // with retries — callers fall back to Content Access / filesystem inventory.
         return this.minimalChangeDetails(name);
       }
       logger.error(`Failed to show change: ${name}`, error as Error);

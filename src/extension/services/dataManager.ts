@@ -16,6 +16,8 @@ import type { CliActivationDiagnostic } from './cliActivationDiagnostic';
 import { OpenSpecScopeManager, loadScopeRelationships, type OpenSpecScope } from './openspecScope';
 import { detectOpenSpecFeatures, type OpenSpecCapabilities } from './openspecFeatures';
 import type { CacheStats, CacheStatsOptions, OpenSpecCacheService } from './openSpecCacheService';
+import { buildOtherArtifacts } from './artifactInventory';
+import { getChangesBasePath } from '../utils/workspaceRoot';
 
 export interface ScopeInfo {
   id: string;
@@ -994,10 +996,39 @@ export class DataManager {
   }
 
   /**
-   * Get change details (from State Reader / CLI show)
+   * Get change details (from State Reader / CLI show), enriched with Other Artifacts
+   * scanned from the change directory against Schema-declared output paths.
    */
-  async getChangeDetails(changeName: string): Promise<ChangeDetails> {
-    return await this.stateReader.getChangeDetails(changeName);
+  async getChangeDetails(changeName: string, scope?: OpenSpecScope): Promise<ChangeDetails> {
+    const services = this.getScopedServices(scope);
+    const details = await services.stateReader.getChangeDetails(changeName, scope);
+
+    let artifacts = details.artifacts ?? [];
+    // Filesystem fallback when CLI returned no Schema artifacts (older show / empty status).
+    if (artifacts.length === 0) {
+      artifacts = (await this.getFilesystemArtifactStatuses(changeName, services.contentAccess)) ?? [];
+    }
+
+    const changeDir = getChangesBasePath(services.rootPath, changeName);
+    const knownPaths = artifacts.map((a) => a.outputPath).filter(Boolean);
+    // When Schema list is empty, still treat the fixed fallback set as known so we
+    // don't classify proposal/design/tasks/specs as "other".
+    const knownForScan =
+      knownPaths.length > 0
+        ? knownPaths
+        : [
+            `openspec/changes/${changeName}/proposal.md`,
+            `openspec/changes/${changeName}/design.md`,
+            `openspec/changes/${changeName}/tasks.md`,
+            `openspec/changes/${changeName}/specs`,
+          ];
+    const otherArtifacts = await buildOtherArtifacts(changeDir, knownForScan, changeName);
+
+    return {
+      ...details,
+      artifacts,
+      otherArtifacts,
+    };
   }
 
   /**

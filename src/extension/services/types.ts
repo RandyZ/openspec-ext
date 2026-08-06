@@ -1,3 +1,5 @@
+import type { OtherArtifactEntry } from './artifactInventory';
+
 export interface ChangeInfo {
   name: string;
   completedTasks: number;
@@ -34,6 +36,8 @@ export interface ChangeDetails {
   name: string;
   schema: string;
   artifacts: ArtifactInfo[];
+  /** Files/dirs present in the change directory but not declared by the current Schema. */
+  otherArtifacts?: OtherArtifactEntry[];
   tasks?: TaskInfo[];
   metadata?: ChangeMetadata;
 }

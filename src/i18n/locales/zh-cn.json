@@ -5,6 +5,9 @@
   "artifact.needProposal": "需要先创建 Proposal",
   "artifact.needBefore": "需要先创建 {items}",
   "artifact.and": " 和 ",
+  "artifact.otherArtifacts": "其他工件",
+  "artifact.otherArtifactOpenTooltip": "在资源管理器中定位并打开",
+  "artifact.otherArtifactDirLabel": "{name} · {count} 个文件",
 
   "task.execute": "执行",
   "task.executing": "执行中...",

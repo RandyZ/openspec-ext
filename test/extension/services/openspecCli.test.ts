@@ -324,6 +324,53 @@ describe('OpenSpecCliService', () => {
       expect(result.artifacts).toEqual([]);
       expect(result.tasks).toEqual([]);
     });
+
+    it('falls back to status artifacts when show JSON has no artifacts (OpenSpec 1.8+)', async () => {
+      let call = 0;
+      vi.mocked(spawn).mockImplementation((_cmd, args: readonly string[]) => {
+        if (args[0] === '--version') {
+          return {
+            stdout: {
+              on: (_e: string, fn: (d: Buffer) => void) => {
+                setImmediate(() => fn(Buffer.from('1.8.0')));
+              },
+            },
+            stderr: { on: vi.fn() },
+            on: (_e: string, fn: (...args: any[]) => void) => {
+              if (_e === 'close') setImmediate(() => fn(0));
+            },
+            kill: vi.fn(),
+          } as any;
+        }
+        call += 1;
+        const stdout =
+          call === 1
+            ? JSON.stringify({ name: 'add-foo', deltas: [] })
+            : JSON.stringify({
+                schemaName: 'spec-driven',
+                artifacts: [{ id: 'proposal', outputPath: 'proposal.md', status: 'done' }],
+              });
+        return {
+          stdout: {
+            on: (_e: string, fn: (d: Buffer) => void) => {
+              setImmediate(() => fn(Buffer.from(stdout)));
+            },
+          },
+          stderr: { on: vi.fn() },
+          on: (_e: string, fn: (...args: any[]) => void) => {
+            if (_e === 'close') setImmediate(() => fn(0));
+          },
+          kill: vi.fn(),
+        } as any;
+      });
+      const service = new OpenSpecCliService(workspaceRoot);
+      const result = await service.showChange('add-foo');
+      expect(result.name).toBe('add-foo');
+      expect(result.schema).toBe('spec-driven');
+      expect(result.artifacts).toHaveLength(1);
+      expect(result.artifacts[0].id).toBe('proposal');
+      expect(result.artifacts[0].outputPath).toBe('proposal.md');
+    });
   });
 
   describe('validateChange', () => {

@@ -22,7 +22,9 @@ export type WebviewMessage =
   | { type: 'refresh' }
   | { type: 'toggleTask'; changeName: string; taskIndex: number; scopeId?: string }
   | { type: 'openChange'; changeName: string }
-  | { type: 'openArtifact'; changeName: string; artifactType: string; scopeId?: string }
+  | { type: 'openArtifact'; changeName: string; artifactType: string; outputPath?: string; scopeId?: string }
+  | { type: 'openOtherArtifact'; changeName: string; entryId: string; scopeId?: string }
+  | { type: 'getChangeDetails'; changeName: string; scopeId?: string }
   | { type: 'createChange'; name: string }
   | { type: 'requestNewChange' }
   | { type: 'copyToClipboard'; text: string }
@@ -118,7 +120,15 @@ export type ExtensionMessage =
   | { type: 'specRequirements'; specId: string; requirements: string[] }
   | { type: 'artifactInvalidated'; changeName: string; artifactTypes: string[] }
   | { type: 'interactiveWorkflowState'; changeName: string; state: InteractiveWorkflowState }
-  | { type: 'cliActivationDiagnostic'; diagnostic: CliActivationDiagnosticView; mode: 'blocking' | 'warning' };
+  | { type: 'cliActivationDiagnostic'; diagnostic: CliActivationDiagnosticView; mode: 'blocking' | 'warning' }
+  | {
+    type: 'changeDetails';
+    changeName: string;
+    schema: string;
+    artifacts: ArtifactStatus[];
+    otherArtifacts: OtherArtifactEntry[];
+  }
+  | { type: 'changeDetailsError'; changeName: string; message: string };
 
 // Data types
 export interface CliActivationDiagnosticView {
@@ -202,6 +212,13 @@ export interface ArtifactStatus {
   status: 'done' | 'ready' | 'blocked';
 }
 
+export interface OtherArtifactEntry {
+  id: string;
+  relativePath: string;
+  isDirectory: boolean;
+  fileCount: number;
+}
+
 export interface SpecInfo {
   id: string;
   requirementCount: number;
@@ -245,10 +262,29 @@ export const sendMessage = {
     changeName,
   }),
 
-  openArtifact: (changeName: string, artifactType: string, scopeId?: string): WebviewMessage => ({
+  openArtifact: (
+    changeName: string,
+    artifactType: string,
+    scopeId?: string,
+    outputPath?: string
+  ): WebviewMessage => ({
     type: 'openArtifact',
     changeName,
     artifactType,
+    ...(scopeId ? { scopeId } : {}),
+    ...(outputPath ? { outputPath } : {}),
+  }),
+
+  openOtherArtifact: (changeName: string, entryId: string, scopeId?: string): WebviewMessage => ({
+    type: 'openOtherArtifact',
+    changeName,
+    entryId,
+    ...(scopeId ? { scopeId } : {}),
+  }),
+
+  getChangeDetails: (changeName: string, scopeId?: string): WebviewMessage => ({
+    type: 'getChangeDetails',
+    changeName,
     ...(scopeId ? { scopeId } : {}),
   }),
 

@@ -14,8 +14,17 @@ describe('ChangeDetail workflow routing', () => {
   });
 
   it('uses the Verify & Archive tab instead of the legacy verify-only tab', () => {
-    expect(source).toContain("label: 'Verify & Archive'");
-    expect(source).toContain("activeTab === 'verifyArchive'");
+    expect(source).toContain('VERIFY_ARCHIVE_TAB_ID');
+    expect(source).toContain('activeTab === VERIFY_ARCHIVE_TAB_ID');
+    expect(source).toContain('buildTabs');
+  });
+
+  it('renders Other Artifacts strip with openOtherArtifact click handler', () => {
+    expect(source).toContain('data-testid="other-artifacts"');
+    expect(source).toContain("t('artifact.otherArtifacts')");
+    expect(source).toContain("t('artifact.otherArtifactDirLabel'");
+    expect(source).toContain('sendMessage.openOtherArtifact(changeName, entry.id, scopeId)');
+    expect(source).toContain('otherArtifacts.length > 0');
   });
 
   it('does not use direct archiveChange from the detail action bar', () => {

@@ -5,6 +5,9 @@
   "artifact.needProposal": "Proposal must be created first",
   "artifact.needBefore": "{items} must be created first",
   "artifact.and": " and ",
+  "artifact.otherArtifacts": "Other Artifacts",
+  "artifact.otherArtifactOpenTooltip": "Reveal in Explorer and open",
+  "artifact.otherArtifactDirLabel": "{name} · {count} files",
 
   "task.execute": "Execute",
   "task.executing": "Executing...",

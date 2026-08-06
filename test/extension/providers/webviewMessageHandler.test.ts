@@ -26,7 +26,10 @@ vi.mock('vscode', () => ({
       get: vi.fn(() => false),
       inspect: vi.fn(() => undefined),
     })),
-    openTextDocument: vi.fn(() => Promise.resolve({})),
+    openTextDocument: vi.fn((input: string | { fsPath?: string }) => {
+      const fsPath = typeof input === 'string' ? input : input?.fsPath ?? String(input);
+      return Promise.resolve({ uri: { fsPath, path: fsPath, scheme: 'file' } });
+    }),
     fs: {
       createDirectory: vi.fn(() => Promise.resolve()),
     },
@@ -704,9 +707,18 @@ describe('handleWebviewMessage toggleTask', () => {
   });
 
   it('openArtifact resolves the artifact path against the panel-bound store root', async () => {
+    const fs = await import('fs');
+    const os = await import('os');
+    const path = await import('path');
+    const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openspec-store-'));
+    const changeDir = path.join(storeRoot, 'openspec', 'changes', 'demo-change');
+    fs.mkdirSync(changeDir, { recursive: true });
+    const proposalPath = path.join(changeDir, 'proposal.md');
+    fs.writeFileSync(proposalPath, '# Proposal\n');
+
     const storeScope = {
       id: 'store:team-plans',
-      rootPath: '/stores/team-plans',
+      rootPath: storeRoot,
       source: 'store',
       storeId: 'team-plans',
       runtimeSource: 'installed',
@@ -714,6 +726,12 @@ describe('handleWebviewMessage toggleTask', () => {
     const dataManager = {
       getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
       resolveScope: vi.fn().mockReturnValue(storeScope),
+      getChangeDetails: vi.fn().mockResolvedValue({
+        name: 'demo-change',
+        schema: 'spec-driven',
+        artifacts: [{ id: 'proposal', outputPath: 'proposal.md', status: 'done' }],
+        otherArtifacts: [],
+      }),
     };
     const webview = { postMessage: vi.fn() };
 
@@ -724,10 +742,80 @@ describe('handleWebviewMessage toggleTask', () => {
     );
 
     // Path must be derived from the store root, not the workspace root.
-    expect(vscode.workspace.openTextDocument).toHaveBeenCalledWith(
-      expect.stringContaining('/stores/team-plans/openspec/changes/demo-change/proposal.md')
+    expect(vscode.workspace.openTextDocument).toHaveBeenCalledWith(proposalPath);
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
+      'revealInExplorer',
+      expect.objectContaining({ fsPath: proposalPath })
     );
     expect(dataManager.resolveScope).toHaveBeenCalledWith('store:team-plans');
+  });
+
+  it('openOtherArtifact opens an undeclared entry under the change directory', async () => {
+    const fs = await import('fs');
+    const os = await import('os');
+    const path = await import('path');
+    const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'openspec-ws-'));
+    const changeDir = path.join(workspaceRoot, 'openspec', 'changes', 'demo-change');
+    fs.mkdirSync(path.join(changeDir, 'task-details'), { recursive: true });
+    const notePath = path.join(changeDir, 'task-details', '01.md');
+    fs.writeFileSync(notePath, '# Note\n');
+    fs.writeFileSync(path.join(changeDir, 'proposal.md'), '# Proposal\n');
+
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue(workspaceRoot),
+      resolveScope: vi.fn().mockReturnValue(undefined),
+      getChangeDetails: vi.fn().mockResolvedValue({
+        name: 'demo-change',
+        schema: 'spec-driven',
+        artifacts: [{ id: 'proposal', outputPath: 'proposal.md', status: 'done' }],
+        otherArtifacts: [],
+      }),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'openOtherArtifact', changeName: 'demo-change', entryId: 'task-details' },
+      webview as any,
+      dataManager as any
+    );
+
+    expect(vscode.workspace.openTextDocument).toHaveBeenCalledWith(notePath);
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
+      'revealInExplorer',
+      expect.objectContaining({ fsPath: notePath })
+    );
+  });
+
+  it('getChangeDetails posts schema artifacts and otherArtifacts to the webview', async () => {
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      resolveScope: vi.fn().mockReturnValue(undefined),
+      getChangeDetails: vi.fn().mockResolvedValue({
+        name: 'demo-change',
+        schema: 'spec-driven',
+        artifacts: [{ id: 'proposal', outputPath: 'proposal.md', status: 'done' }],
+        otherArtifacts: [
+          { id: 'task-details', relativePath: 'task-details', isDirectory: true, fileCount: 2 },
+        ],
+      }),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'getChangeDetails', changeName: 'demo-change' },
+      webview as any,
+      dataManager as any
+    );
+
+    expect(webview.postMessage).toHaveBeenCalledWith({
+      type: 'changeDetails',
+      changeName: 'demo-change',
+      schema: 'spec-driven',
+      artifacts: [{ id: 'proposal', outputPath: 'proposal.md', status: 'done' }],
+      otherArtifacts: [
+        { id: 'task-details', relativePath: 'task-details', isDirectory: true, fileCount: 2 },
+      ],
+    });
   });
 
   it('getSpecRequirements reads requirements against the store scope', async () => {

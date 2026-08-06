@@ -6,6 +6,8 @@ import { getChangesBasePath } from '../utils/workspaceRoot';
 import { isPathUnderRoot } from '../utils/pathSafety';
 import { getAdapterById, getCurrentAdapter } from '../adapters';
 import type { CacheStatsView, WebviewMessage } from '../../webview/types/messages';
+import { buildOtherArtifacts } from '../services/artifactInventory';
+import { openAndRevealPath } from '../utils/openAndReveal';
 import { t } from '../../i18n';
 import { buildWorkflowLaunchPayload } from '../../shared/workflowCommand';
 import { getWorkflowLaunchConfig } from '../services/workflowLaunchConfig';
@@ -430,6 +432,11 @@ export async function handleWebviewMessage(
       try {
         const doc = await vscode.workspace.openTextDocument(absPath);
         await vscode.window.showTextDocument(doc);
+        try {
+          await vscode.commands.executeCommand('revealInExplorer', doc.uri);
+        } catch {
+          // Best-effort for external store roots.
+        }
       } catch (err) {
         logger.error(`Failed to open delta spec: ${changeName}/specs/${specId}`, err as Error);
         vscode.window.showErrorMessage(t('file.cannotOpenSpec', { id: specId }));
@@ -438,23 +445,100 @@ export async function handleWebviewMessage(
     }
 
     case 'openArtifact': {
-      const { rootPath } = resolveScopeRoot(dataManager, message.scopeId);
+      const { rootPath, scope } = resolveScopeRoot(dataManager, message.scopeId);
       const changesBase = path.normalize(getChangesBasePath(rootPath, message.changeName));
-      const artifactPath = path.normalize(path.join(changesBase, `${message.artifactType}.md`));
-      logger.info(`[archived] openArtifact: changeName=${message.changeName}, artifactType=${message.artifactType}, root=${rootPath}, artifactPath=${artifactPath}`);
-      // Gate against the resolved scope root (which may be a store root outside the
-      // workspace) rather than the workspace root, so store artifacts can be opened.
-      if (!isPathUnderRoot(changesBase, rootPath) || !isPathUnderRoot(artifactPath, rootPath)) {
+      if (!isPathUnderRoot(changesBase, rootPath)) {
         vscode.window.showErrorMessage(t('file.outsideWorkspaceShort'));
         break;
       }
-      try {
-        const doc = await vscode.workspace.openTextDocument(artifactPath);
-        await vscode.window.showTextDocument(doc);
-        logger.info(`[archived] openArtifact: opened OK`);
-      } catch (err) {
-        logger.error(`Failed to open artifact: ${artifactPath}`, err as Error);
+
+      let relative = typeof message.outputPath === 'string' ? message.outputPath : '';
+      if (!relative) {
+        // Resolve from ChangeDetails inventory when the webview did not send outputPath.
+        try {
+          const details = await dataManager.getChangeDetails(message.changeName, scope);
+          const match = details.artifacts?.find(
+            (a) => (a.id ?? '').toLowerCase() === String(message.artifactType ?? '').toLowerCase()
+          );
+          relative = match?.outputPath ?? `${message.artifactType}.md`;
+        } catch {
+          relative = `${message.artifactType}.md`;
+        }
+      }
+
+      // Gate against path escape using the top-level resolved entry under the change dir.
+      const topLevel = relative.replace(/\\/g, '/').split('*')[0].replace(/\/+$/, '').split('/').filter(Boolean)[0] ?? relative;
+      const gatePath = path.normalize(path.join(changesBase, topLevel));
+      if (!isPathUnderRoot(gatePath, rootPath)) {
+        vscode.window.showErrorMessage(t('file.outsideWorkspaceShort'));
+        break;
+      }
+
+      logger.info(
+        `[archived] openArtifact: changeName=${message.changeName}, artifactType=${message.artifactType}, root=${rootPath}, relative=${relative}`
+      );
+      const result = await openAndRevealPath(changesBase, relative);
+      if (!result.opened && result.reason === 'missing') {
         vscode.window.showErrorMessage(t('file.cannotOpen', { name: message.artifactType }));
+      }
+      break;
+    }
+
+    case 'openOtherArtifact': {
+      const { changeName, entryId } = message;
+      if (!changeName || !entryId) break;
+      const { rootPath, scope } = resolveScopeRoot(dataManager, message.scopeId);
+      const changesBase = path.normalize(getChangesBasePath(rootPath, changeName));
+      if (!isPathUnderRoot(changesBase, rootPath)) {
+        vscode.window.showErrorMessage(t('file.outsideWorkspaceShort'));
+        break;
+      }
+
+      try {
+        const details = await dataManager.getChangeDetails(changeName, scope);
+        const knownPaths = (details.artifacts ?? []).map((a) => a.outputPath).filter(Boolean);
+        const others = await buildOtherArtifacts(changesBase, knownPaths, changeName);
+        const entry = others.find((e) => e.id === entryId);
+        if (!entry) {
+          vscode.window.showErrorMessage(t('file.cannotOpen', { name: entryId }));
+          break;
+        }
+        const abs = path.normalize(path.join(changesBase, entry.relativePath));
+        if (!isPathUnderRoot(abs, rootPath)) {
+          vscode.window.showErrorMessage(t('file.outsideWorkspaceShort'));
+          break;
+        }
+        const result = await openAndRevealPath(changesBase, entry.relativePath);
+        if (!result.opened && result.reason === 'missing') {
+          vscode.window.showErrorMessage(t('file.cannotOpen', { name: entry.relativePath }));
+        }
+      } catch (err) {
+        logger.error(`Failed to open other artifact: ${changeName}/${entryId}`, err as Error);
+        vscode.window.showErrorMessage(t('file.cannotOpen', { name: entryId }));
+      }
+      break;
+    }
+
+    case 'getChangeDetails': {
+      const changeName = message.changeName;
+      if (!changeName) break;
+      const { scope } = resolveScopeRoot(dataManager, message.scopeId);
+      try {
+        const details = await dataManager.getChangeDetails(changeName, scope);
+        webview.postMessage({
+          type: 'changeDetails',
+          changeName,
+          schema: details.schema,
+          artifacts: details.artifacts ?? [],
+          otherArtifacts: details.otherArtifacts ?? [],
+        });
+      } catch (err) {
+        logger.error(`Failed to get change details: ${changeName}`, err as Error);
+        webview.postMessage({
+          type: 'changeDetailsError',
+          changeName,
+          message: (err as Error)?.message ?? 'Failed to load change details',
+        });
       }
       break;
     }

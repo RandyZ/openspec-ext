@@ -1486,3 +1486,95 @@ describe('DataManager declared project-root scopes', () => {
     expect(data.changes[0].name).toBe('fastgpt-change');
   });
 });
+
+describe('DataManager getChangeDetails otherArtifacts', () => {
+  beforeEach(async () => {
+    // Earlier tests in this file spy on fs.promises.readdir/stat without restoring.
+    vi.restoreAllMocks();
+  });
+
+  it('enriches CLI details with undeclared change-dir entries', async () => {
+    const fs = await import('fs');
+    const os = await import('os');
+    const path = await import('path');
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openspec-dm-'));
+    const changeDir = path.join(root, 'openspec', 'changes', 'demo-change');
+    fs.mkdirSync(path.join(changeDir, 'task-details'), { recursive: true });
+    fs.writeFileSync(path.join(changeDir, 'task-details', 'a.md'), '# a\n');
+    fs.writeFileSync(path.join(changeDir, 'proposal.md'), '# Proposal\n');
+    fs.writeFileSync(path.join(changeDir, 'notes.md'), '# Notes\n');
+
+    const manager = new DataManager(root);
+    Object.assign(manager as any, {
+      cliAvailable: true,
+      stateReader: {
+        getChangeDetails: vi.fn().mockResolvedValue({
+          name: 'demo-change',
+          schema: 'spec-driven',
+          artifacts: [
+            { id: 'proposal', outputPath: 'proposal.md', status: 'done' },
+          ],
+          tasks: [],
+          metadata: {},
+        }),
+      },
+      contentAccess: {
+        artifactExists: vi.fn(),
+        listDeltaSpecIds: vi.fn(),
+      },
+    });
+
+    const details = await manager.getChangeDetails('demo-change');
+    expect(details.artifacts).toHaveLength(1);
+    expect(details.otherArtifacts?.map((e) => e.relativePath).sort()).toEqual([
+      'notes.md',
+      'task-details',
+    ]);
+    const dirEntry = details.otherArtifacts?.find((e) => e.relativePath === 'task-details');
+    expect(dirEntry).toMatchObject({ isDirectory: true, fileCount: 1 });
+  });
+
+  it('uses filesystem fallback artifacts as known when CLI returns empty artifacts', async () => {
+    const fs = await import('fs');
+    const os = await import('os');
+    const path = await import('path');
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openspec-dm-fb-'));
+    const changeDir = path.join(root, 'openspec', 'changes', 'demo-change');
+    fs.mkdirSync(path.join(changeDir, 'specs', 'auth'), { recursive: true });
+    fs.mkdirSync(path.join(changeDir, 'task-details'), { recursive: true });
+    fs.writeFileSync(path.join(changeDir, 'proposal.md'), '# Proposal\n');
+    fs.writeFileSync(path.join(changeDir, 'design.md'), '# Design\n');
+    fs.writeFileSync(path.join(changeDir, 'tasks.md'), '# Tasks\n');
+    fs.writeFileSync(path.join(changeDir, 'specs', 'auth', 'spec.md'), '# Auth\n');
+    fs.writeFileSync(path.join(changeDir, 'task-details', '01.md'), '# 01\n');
+
+    const manager = new DataManager(root);
+    Object.assign(manager as any, {
+      cliAvailable: true,
+      stateReader: {
+        getChangeDetails: vi.fn().mockResolvedValue({
+          name: 'demo-change',
+          schema: 'unknown',
+          artifacts: [],
+          tasks: [],
+          metadata: {},
+        }),
+      },
+      contentAccess: {
+        artifactExists: vi.fn(async (_change: string, type: string) =>
+          ['proposal', 'design', 'tasks'].includes(type)
+        ),
+        listDeltaSpecIds: vi.fn().mockResolvedValue(['auth']),
+      },
+    });
+
+    const details = await manager.getChangeDetails('demo-change');
+    expect(details.artifacts?.map((a) => a.id).sort()).toEqual([
+      'design',
+      'proposal',
+      'specs',
+      'tasks',
+    ]);
+    expect(details.otherArtifacts?.map((e) => e.relativePath)).toEqual(['task-details']);
+  });
+});

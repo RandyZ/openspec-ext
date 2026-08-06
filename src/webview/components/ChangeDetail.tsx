@@ -17,6 +17,14 @@ import type {
   InteractiveWorkflowAction,
   InteractiveWorkflowState,
 } from '../../shared/interactiveWorkflow';
+import {
+  SPECS_TAB_ID,
+  VERIFY_ARCHIVE_TAB_ID,
+  PROPOSAL_TAB_ID,
+  TASKS_TAB_ID,
+} from '../../shared/interactiveWorkflow';
+import { buildTabs } from '../utils/buildTabs';
+import type { ArtifactStatus, OtherArtifactEntry } from '../types/messages';
 
 const MISSING_ARTIFACT_MESSAGE = t('artifact.missing');
 
@@ -30,17 +38,9 @@ export interface ChangeDetailProps {
   scopeId?: string;
 }
 
-const ALL_TABS = [
-  { id: 'proposal' as const, label: 'Proposal' },
-  { id: 'specs' as const, label: 'Specs' },
-  { id: 'design' as const, label: 'Design' },
-  { id: 'tasks' as const, label: 'Tasks' },
-  { id: 'verifyArchive' as const, label: 'Verify & Archive' },
-];
-
 // Cache key includes scopeId so the same change name in two roots never shares content.
 const cacheKey = (scopeId: string | undefined, type: string, specId?: string | null) =>
-  `${scopeId ? `${scopeId}::` : ''}${type === 'specs' && specId ? `specs:${specId}` : type}`;
+  `${scopeId ? `${scopeId}::` : ''}${type === SPECS_TAB_ID && specId ? `specs:${specId}` : type}`;
 
 function getCreateDisabledReason(
   artifactType: string,
@@ -118,6 +118,8 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   });
   const [pendingInteractiveAction, setPendingInteractiveAction] = useState<InteractiveWorkflowAction | null>(interactiveAction ?? null);
   const [copiedName, setCopiedName] = useState(false);
+  const [schemaArtifacts, setSchemaArtifacts] = useState<ArtifactStatus[] | undefined>(undefined);
+  const [otherArtifacts, setOtherArtifacts] = useState<OtherArtifactEntry[]>([]);
 
   const handleCopyChangeName = () => {
     postMessage(sendMessage.copyToClipboard(changeName));
@@ -139,19 +141,29 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     [changeName, existingArtifactIds, completedTasks, totalTasks, isArchived]
   );
   const showVerifyArchiveTab = debug || (completedTasks > 0 && totalTasks > 0);
-  const tabs = showVerifyArchiveTab ? ALL_TABS : ALL_TABS.filter((tab) => tab.id !== 'verifyArchive');
+  const tabs = useMemo(
+    () =>
+      buildTabs(schemaArtifacts, showVerifyArchiveTab, (id) => {
+        console.warn(`[OpenSpec] Schema artifact id "${id}" conflicts with reserved tab; skipped`);
+      }),
+    [schemaArtifacts, showVerifyArchiveTab]
+  );
+
+  useEffect(() => {
+    postMessage(sendMessage.getChangeDetails(changeName, scopeId));
+  }, [changeName, scopeId, postMessage]);
 
   useEffect(() => {
     if (initialTab) {
       setActiveTab(initialTab);
-    } else if (!showVerifyArchiveTab && activeTab === 'verifyArchive') {
-      setActiveTab('proposal');
+    } else if (!showVerifyArchiveTab && activeTab === VERIFY_ARCHIVE_TAB_ID) {
+      setActiveTab(PROPOSAL_TAB_ID);
     }
   }, [initialTab, showVerifyArchiveTab, activeTab]);
 
   useEffect(() => {
     if (interactiveAction) {
-      setActiveTab('verifyArchive');
+      setActiveTab(VERIFY_ARCHIVE_TAB_ID);
       setPendingInteractiveAction(interactiveAction);
     }
   }, [interactiveAction]);
@@ -174,7 +186,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   };
 
   useEffect(() => {
-    if (activeTab === 'verifyArchive') {
+    if (activeTab === VERIFY_ARCHIVE_TAB_ID) {
       setLoading(false);
       setError(null);
       setContent(null);
@@ -192,14 +204,14 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
       setError(MISSING_ARTIFACT_MESSAGE);
       setErrorCode('ARTIFACT_MISSING');
       setContent(null);
-      if (activeTab === 'specs') {
+      if (activeTab === SPECS_TAB_ID) {
         setDeltaSpecIds([]);
         setSelectedSpecId(null);
       }
       return;
     }
 
-    if (activeTab === 'specs') {
+    if (activeTab === SPECS_TAB_ID) {
       requestSpecsList();
       return;
     }
@@ -278,11 +290,16 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         setWorkflowLaunchConfig(msg.config ?? null);
       } else if (msg.type === 'interactiveWorkflowState' && msg.changeName === changeName) {
         setInteractiveState(msg.state ?? { changeName, sessions: {} });
+      } else if (msg.type === 'changeDetails' && msg.changeName === changeName) {
+        setSchemaArtifacts(Array.isArray(msg.artifacts) ? msg.artifacts : []);
+        setOtherArtifacts(Array.isArray(msg.otherArtifacts) ? msg.otherArtifacts : []);
+      } else if (msg.type === 'changeDetailsError' && msg.changeName === changeName) {
+        console.warn('[OpenSpec] Failed to load change details:', msg.message);
       } else if (msg.type === 'artifactInvalidated' && msg.changeName === changeName) {
         const invalidated: string[] = msg.artifactTypes ?? [];
         const scopePrefix = scopeId ? `${scopeId}::` : '';
         for (const type of invalidated) {
-          if (type === 'specs') {
+          if (type === SPECS_TAB_ID) {
             for (const key of Array.from(contentCacheRef.current.keys())) {
               // Cache keys are optionally scope-prefixed; drop the specs entries that
               // belong to this panel's scope (and any legacy unscoped specs:* keys).
@@ -304,9 +321,9 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
           }
         }
         if (invalidated.includes(activeTab)) {
-          if (activeTab === 'specs') {
+          if (activeTab === SPECS_TAB_ID) {
             requestSpecsList();
-          } else if (activeTab !== 'verifyArchive') {
+          } else if (activeTab !== VERIFY_ARCHIVE_TAB_ID) {
             requestArtifact(activeTab);
           }
         }
@@ -320,7 +337,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   }, [postMessage]);
 
   useEffect(() => {
-    if (activeTab === 'specs' && selectedSpecId) {
+    if (activeTab === SPECS_TAB_ID && selectedSpecId) {
       const key = cacheKey(scopeId, 'specs', selectedSpecId);
       const cached = contentCacheRef.current.get(key);
       if (cached !== undefined) {
@@ -337,14 +354,14 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   }, [activeTab, selectedSpecId, changeName, postMessage, scopeId]);
 
   useEffect(() => {
-    if (activeTab === 'tasks') {
+    if (activeTab === TASKS_TAB_ID) {
       postMessage(sendMessage.getAgentAdapters());
       postMessage(sendMessage.getTaskExecutionState(changeName, scopeId));
     }
   }, [activeTab, changeName, postMessage, scopeId]);
 
   useEffect(() => {
-    if (activeTab !== 'verifyArchive') return;
+    if (activeTab !== VERIFY_ARCHIVE_TAB_ID) return;
     postMessage(sendMessage.getInteractiveWorkflowState(changeName, scopeId));
     if (pendingInteractiveAction) {
       postMessage(sendMessage.runInteractiveWorkflow(changeName, pendingInteractiveAction, scopeId));
@@ -354,22 +371,23 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
 
 
   const handleOpenInEditor = () => {
-    if (activeTab === 'verifyArchive') return;
-    if (activeTab === 'specs' && selectedSpecId) {
+    if (activeTab === VERIFY_ARCHIVE_TAB_ID) return;
+    if (activeTab === SPECS_TAB_ID && selectedSpecId) {
       postMessage(sendMessage.openDeltaSpec(changeName, selectedSpecId, scopeId));
       return;
     }
-    postMessage(sendMessage.openArtifact(changeName, activeTab, scopeId));
+    const artifactMeta = schemaArtifacts?.find((a) => a.id === activeTab);
+    postMessage(sendMessage.openArtifact(changeName, activeTab, scopeId, artifactMeta?.outputPath));
   };
 
   const handleRefresh = () => {
     contentCacheRef.current.clear();
     postMessage(sendMessage.refresh());
-    if (activeTab === 'verifyArchive') {
+    if (activeTab === VERIFY_ARCHIVE_TAB_ID) {
       postMessage(sendMessage.getInteractiveWorkflowState(changeName, scopeId));
       return;
     }
-    if (activeTab === 'specs') {
+    if (activeTab === SPECS_TAB_ID) {
       requestSpecsList();
     } else {
       requestArtifact(activeTab);
@@ -397,7 +415,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     }
     if (step === 'verify' || step === 'archive') {
       if (showVerifyArchiveTab || step === 'archive') {
-        setActiveTab('verifyArchive');
+        setActiveTab(VERIFY_ARCHIVE_TAB_ID);
       }
       return;
     }
@@ -482,7 +500,40 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         ))}
       </div>
 
-      {activeTab === 'specs' && deltaSpecIds.length > 1 && (
+      {otherArtifacts.length > 0 && (
+        <div
+          className="px-4 py-2 border-b flex flex-wrap items-center gap-2"
+          style={{ borderColor: 'var(--vscode-panel-border)' }}
+          data-testid="other-artifacts"
+        >
+          <span className="text-xs font-medium" style={{ color: 'var(--vscode-descriptionForeground)' }}>
+            {t('artifact.otherArtifacts')} ({otherArtifacts.length})
+          </span>
+          {otherArtifacts.map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              className="text-xs px-2 py-1 rounded cursor-pointer border"
+              style={{
+                borderColor: 'var(--vscode-panel-border)',
+                color: 'var(--vscode-foreground)',
+                background: 'var(--vscode-editor-inactiveSelectionBackground)',
+              }}
+              title={t('artifact.otherArtifactOpenTooltip')}
+              onClick={() => postMessage(sendMessage.openOtherArtifact(changeName, entry.id, scopeId))}
+            >
+              {entry.isDirectory
+                ? t('artifact.otherArtifactDirLabel', {
+                    name: entry.relativePath,
+                    count: entry.fileCount,
+                  })
+                : entry.relativePath}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {activeTab === SPECS_TAB_ID && deltaSpecIds.length > 1 && (
         <div className="px-4 py-2 flex items-center gap-2 border-b" style={{ borderColor: 'var(--vscode-panel-border)' }}>
           <span className="text-xs" style={{ color: 'var(--vscode-descriptionForeground)' }}>{t('spec.label')}</span>
           <select
@@ -503,7 +554,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
       )}
 
       <div className="p-4 flex-1 overflow-auto">
-        {activeTab === 'verifyArchive' ? (
+        {activeTab === VERIFY_ARCHIVE_TAB_ID ? (
           <div className="flex flex-col gap-4 max-w-4xl">
             <VerifyArchivePanel
               isArchived={isArchived}
@@ -573,7 +624,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
               </div>
             )}
           </div>
-        ) : activeTab === 'tasks' && content !== null && !loading && !error ? (
+        ) : activeTab === TASKS_TAB_ID && content !== null && !loading && !error ? (
           <>
             {agentAdapters.available.length > 0 && (
               <div className="flex flex-col gap-1 mb-3 text-sm">
@@ -636,7 +687,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
             onCreateWithAi={isArchived ? undefined : () => handleLaunchWorkflow('continue')}
             onContinue={isArchived ? undefined : () => handleLaunchWorkflow('continue')}
             onExplore={
-              !isArchived && activeTab === 'proposal' && !(existingArtifactIds?.includes('proposal'))
+              !isArchived && activeTab === PROPOSAL_TAB_ID && !(existingArtifactIds?.includes('proposal'))
                 ? () => handleLaunchWorkflow('explore')
                 : undefined
             }
