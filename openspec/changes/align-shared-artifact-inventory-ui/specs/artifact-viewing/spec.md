@@ -13,6 +13,14 @@ Change Detail MUST:
 
 Apply / Verify / Archive remain actions (or dedicated workflow panels), not Schema artifacts.
 
+#### Scenario: Show available artifacts
+
+- **GIVEN** a change with multiple Schema artifacts
+- **WHEN** the user opens change details
+- **THEN** all Schema artifacts MUST be shown as Plan Readiness cards and/or inventory items and content tabs
+- **AND** the set and order of artifacts MUST come from the change's current Schema instead of a hardcoded list
+- **AND** Schema-defined artifacts that have not been created yet MUST remain visible as Missing/Not created
+
 #### Scenario: Show available artifacts as readiness cards
 
 - **WHEN** a user opens Change Detail for a change with Schema artifacts
