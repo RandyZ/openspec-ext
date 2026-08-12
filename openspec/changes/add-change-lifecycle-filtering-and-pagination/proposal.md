@@ -23,6 +23,8 @@ Changes Workspace 即将加入分页，但当前 Change 只使用 `draft / in-pr
 - 每个 OpenSpec Root 独立保存筛选、排序、页码和每页数量。
 - ChangeCard 直接消费统一生命周期状态，并使用同一映射生成 Continue、FF、Apply、Verify 等智能操作。
 - 保留当前 `status` 字段作为短期兼容层，待所有消费者迁移后再删除。
+- 在进入本 Change 的 UI 实施前，所有已有的 Change 写操作 MUST 显式绑定当前有效 Root；至少覆盖 New Change、Archive、Task Toggle、创建 Artifact 和 Workflow Launch，避免 Store 视图中的操作写入 Local Root。
+- Archived 首版复用 `DataManager` 当前刷新流程已加载的同一 Root 数据，不新增服务端分页或重复 CLI 查询。
 
 ## Capabilities
 
@@ -58,6 +60,7 @@ None.
   - Root 切换状态隔离测试。
   - Archived 与 All 视图测试。
   - ChangeCard 状态和智能操作一致性测试。
+  - 写操作 scope 绑定和 Local/Store 同名 Change 隔离测试。
 
 ## Non-Goals
 
@@ -66,3 +69,4 @@ None.
 - 不实现 Store Quick View。
 - 不实现服务端分页或新增 CLI 参数。
 - 不重构 Change Detail 的动态 Artifact Tab。
+- 不实现 Project Store 关联、Store Quick View 或 Workset 工作区；这些仍由独立 Change 负责。

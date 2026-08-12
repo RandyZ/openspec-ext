@@ -12,6 +12,10 @@
 
 本 Change 不改变 OpenSpec CLI 或 Root 解析语义，只在现有分层中建立统一生命周期模型，并把分页接到正确的数据处理顺序中。
 
+当前代码核对补充：`DataManager.runRefresh()` 已在同一次选中 Scope 中并行加载 Active Change、Specs 和 Archived Change，且 `DashboardViewProvider` 会把这份快照发布给 Webview。因此首版直接复用该快照；不增加 Archived 专用查询，也不把分页下沉到 CLI。
+
+实施前置约束：现有 New Change、Archive 和部分创建 Artifact 消息没有始终携带 `scopeId`，而 Workflow Launch 已经有 Scope-aware 路径。实现本 Change 前，必须先让所有 Change 写操作使用同一个显式 Scope 解析结果，并让缓存失效、刷新和成功反馈保持同一 Scope。该约束只保证写入安全，不改变 Project Store 关联或 Root 解析语义。
+
 目标架构：
 
 ```text
@@ -65,6 +69,8 @@ ChangesSection
 - 不实现 Workset 侧边栏列表。
 - 不重构 Change Detail 的动态 Artifact。
 - 不将普通 Artifact `blocked` 自动解释为异常。
+- 不实现 Project Store link/unlink、Store Quick View 或 Workset Workspace。
+- 不实现动态 Schema Artifact Inventory、Other Artifacts 或基于真实 `outputPath` 的 Explorer 定位。
 
 ## Decisions
 
@@ -273,6 +279,22 @@ active changes + archived changes
 
 如果 Archived 仍需延迟加载，则 Host 至少需要发布 `archivedCount`。当前代码已经能够取得归档列表，第一版优先复用现有数据，避免新 CLI 调用。
 
+### 5.1 Root 快照与写入一致性
+
+`DashboardData` 的 `changes`、`archivedChanges`、`changeStatusCounts` 和 `specs` 必须由同一个解析后的 Root 生成。Scope 切换时，旧请求即使晚到也不能覆盖当前 Scope。
+
+所有已有写操作必须沿用同一 Scope 绑定原则：
+
+```text
+Webview message(scopeId)
+        ↓
+DataManager.resolveScope(scopeId)
+        ↓
+CLI/content access + cache invalidation + refresh
+```
+
+如果状态读取失败，Host 不能只返回空 Artifact 数组而丢失原因；应保留稳定 Attention reason，并将生命周期保守回退为 `planning`。
+
 ### 6. 过滤与分页使用纯函数管线
 
 新增：
@@ -459,6 +481,8 @@ archived         → 无写操作
 5. 删除旧 accordion UI。
 6. 保留 `openArchivedChange` 的只读详情行为。
 
+由于当前刷新已返回 Archived 列表，首版直接执行第 2 步的适配；只有运行时确实改为延迟加载时，才启用第 3 步的按需请求。
+
 ### 12. 兼容策略
 
 `ChangeInfo.status` 在本 Change 中不立即删除。
@@ -511,6 +535,7 @@ User selects Applying
 - Archived 加载失败：Archived 视图显示 Root 相关错误，不回退到其他 Root。
 - 恢复的 page 超界：clamp 到有效页。
 - 状态计数与列表数据不一致：以 Host 计数显示，同时记录 debug diagnostic；不得静默读取其他 Root 数据。
+- New Change、Archive、Task Toggle、创建 Artifact 或 Workflow Launch 缺少有效 Scope 时，必须阻止隐式 Root 写入并报告可恢复错误；不得回退到另一个候选 Root。
 
 ## Testing Strategy
 
@@ -577,6 +602,8 @@ openspec validate add-change-lifecycle-filtering-and-pagination --strict
 8. 实现 Root 级 view state 持久化。
 9. 完成 i18n、可访问性、测试和构建。
 10. 后续独立 Change 删除 legacy `status`。
+
+实施顺序补充：在第 1 步和第 2 步之间先完成 Scope-aware 写操作前置修复，验证 Local/Store 同名 Change 隔离后，再接入列表筛选与分页 UI。
 
 Rollback：
 

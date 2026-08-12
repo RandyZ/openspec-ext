@@ -350,3 +350,40 @@ Extension Host 统一推导生命周期与计数
 ```
 
 第一版继续全量加载当前 Root 的 Change。未来只有在 Change 数量明显增长并造成性能问题时，才升级为 Host 查询式分页。
+
+## 12. 与当前代码的进一步核对
+
+本次探索对照了当前 Extension Host 和 Webview 实现，确认了几个会影响落地顺序的事实：
+
+- `DataManager.runRefresh()` 当前已经在同一次 Root 刷新中并行取得 Active Change、Specs 和 Archived Change；因此首版不需要新增 Archived 专用 CLI 调用，也不应为了分页引入服务端查询。
+- `DashboardData` 当前没有生命周期计数，`ChangeInfo` 仍只有 legacy `draft / in-progress / complete` 状态；生命周期和计数必须在 Host 发布数据时一次性补齐。
+- `ChangesSection` 的搜索状态是组件本地状态，分页前没有统一的纯函数管线；实现时不能继续在 React render 中分散 `filter`、`sort`、`slice`。
+- `ChangeCard.getSmartActions()` 会根据 Artifact/Task 再次推导阶段；它必须改为消费 Host 提供的生命周期状态，否则状态标签和操作按钮仍可能不一致。
+- 当前 `openArtifact` 仍按 Artifact ID 拼接 `${artifactType}.md`，动态 Schema、目录型 Artifact 和嵌套输出路径不属于本 Change，应保留为后续独立 Change。
+
+## 13. 写入 Root 是实施前置约束
+
+本 Change 不重新设计 OpenSpec Root 解析，也不实现 Store link/unlink；但在实际实现前，所有会改变 Change 状态的已有写操作必须显式绑定当前有效 Root：
+
+```text
+New Change / Archive / Task Toggle / Workflow Launch
+→ 使用同一个 scopeId 解析 Effective Root
+→ 读写、缓存失效、刷新都绑定该 Root
+```
+
+特别是 New Change、Archive 和创建 Artifact 的消息目前存在未携带 `scopeId` 的路径。若先实现筛选而不修复这个边界，用户在 Store 视图中操作时仍可能写入 Local Root。该修复应作为实施前置任务或独立 Change 完成，不应在本 Change 中扩展 Store 领域模型。
+
+## 14. 收敛后的实施边界
+
+本 Change 只负责：
+
+```text
+统一生命周期 → Root 全量计数 → 筛选/搜索/排序/分页 → Archived 一级视图 → Root 级视图状态
+```
+
+以下内容继续独立规划，避免和生命周期改造互相阻塞：
+
+- Project Store 的关联、切换和断开语义；
+- Store Quick View 与跨窗口打开策略；
+- Schema-aware Artifact Inventory、Other Artifacts 和真实 `outputPath` 定位；
+- Sidebar Workset 列表与完整 Workset Workspace。

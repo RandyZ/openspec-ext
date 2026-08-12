@@ -279,3 +279,54 @@ Changes Workspace SHALL 为每个 OpenSpec Root 独立保存用户的列表视�
 - **WHEN** 系统恢复 Changes View State
 - **THEN** 系统 MUST 将页码限制到有效范围
 - **AND** 系统 MUST NOT 渲染空白的无效页
+
+### Requirement: Root-consistent dashboard mutations
+
+Dashboard SHALL bind every Change-mutating action to the same resolved OpenSpec Root that supplied the visible Change list.
+
+#### Scenario: New Change targets the visible Root
+
+- **GIVEN** 用户正在查看某个 Local 或 Store Root
+- **WHEN** 用户从 Dashboard 创建 New Change
+- **THEN** 消息 MUST 携带当前 Root 的稳定 scope 标识
+- **AND** Extension Host MUST 使用该 scope 解析目标 Root
+- **AND** 新 Change MUST 创建在该 Root，而不是 CLI 的隐式默认 Root
+
+#### Scenario: Archive targets the visible Root
+
+- **GIVEN** 当前列表中存在一个来自选中 Root 的 Change
+- **WHEN** 用户从卡片或命令入口归档该 Change
+- **THEN** Archive、缓存失效和刷新 MUST 使用同一个 Root
+- **AND** 系统 MUST NOT 归档另一个 Root 中的同名 Change
+
+#### Scenario: Scope-bound writes are isolated
+
+- **GIVEN** Local Root 和 Store Root 中存在同名 Change
+- **WHEN** 用户在其中一个 Root 执行 Task Toggle、创建 Artifact 或 Workflow Launch
+- **THEN** 操作 MUST 只影响当前可见 Root
+- **AND** 另一个 Root 的 Change、计数和缓存 MUST 保持不变
+
+### Requirement: Same-root lifecycle data and diagnostics
+
+Dashboard SHALL derive lifecycle counts, Active Change data, Archived Change data and Attention diagnostics from one resolved Root snapshot.
+
+#### Scenario: Archived data reuses the refresh snapshot
+
+- **GIVEN** `DataManager` 为当前 Root 刷新 Dashboard
+- **WHEN** Active Change、Specs 和 Archived Change 数据返回
+- **THEN** Archived 首版 MUST 直接适配该次刷新已返回的列表
+- **AND** 系统 MUST 不因状态筛选或分页额外触发 CLI 刷新
+
+#### Scenario: Status read failure is distinguishable from empty artifacts
+
+- **GIVEN** 某个 Change 的状态读取或 Artifact 解析失败
+- **WHEN** Extension Host 构建 DashboardData
+- **THEN** Change MUST 回退到保守的 `planning` 生命周期
+- **AND** MUST 标记 `Needs Attention` 及稳定诊断原因
+- **AND** 系统 MUST NOT 把读取失败静默当作合法的空 Artifact 列表
+
+#### Scenario: Stale Root response is ignored
+
+- **GIVEN** 用户在刷新期间切换到另一个 Root
+- **WHEN** 旧 Root 的异步响应晚于目标 Root 响应到达
+- **THEN** 旧 Root 的 Change、Archived 数据和计数 MUST NOT 覆盖当前 Dashboard
