@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { setLocale, t } from '../../../src/i18n';
 import { VerifyArchivePanel } from '../../../src/webview/components/VerifyArchivePanel';
+import { sendMessage } from '../../../src/webview/types/messages';
 
 describe('VerifyArchivePanel', () => {
   it('renders run controls for verify and archive', () => {
@@ -114,5 +115,23 @@ describe('VerifyArchivePanel', () => {
     );
 
     expect(html).not.toContain('Started ');
+  });
+});
+
+describe('Ready to Verify launch path (Dashboard → Verify & Archive)', () => {
+  it('openChangeDetailInEditor carries verifyArchive tab, interactiveAction, and scopeId', () => {
+    const message = sendMessage.openChangeDetailInEditor(
+      'ready-change',
+      'verifyArchive',
+      'verify',
+      'store:team-plans'
+    );
+    expect(message).toEqual({
+      type: 'openChangeDetailInEditor',
+      changeName: 'ready-change',
+      initialTab: 'verifyArchive',
+      interactiveAction: 'verify',
+      scopeId: 'store:team-plans',
+    });
   });
 });

@@ -69,8 +69,10 @@ ChangesSection
 - 不实现 Workset 侧边栏列表。
 - 不重构 Change Detail 的动态 Artifact。
 - 不将普通 Artifact `blocked` 自动解释为异常。
-- 不实现 Project Store link/unlink、Store Quick View 或 Workset Workspace。
+- 不实现 Project Store link/unlink、Store Quick View、Add Operation 或 Workset Workspace。
 - 不实现动态 Schema Artifact Inventory、Other Artifacts 或基于真实 `outputPath` 的 Explorer 定位。
+- 不以设计稿中的 `Draft` / `In Progress` / `Completed` / `Merged` 作为一级筛选值。
+- 不以 `Ready to Sync` / `Ready to Archive` / `Blocked` 作为一级筛选值。
 
 ## Decisions
 
@@ -415,7 +417,7 @@ vscode.setState()
 Editor 宽屏：
 
 ```text
-Changes                                     [New Change] [Add Operation]
+Changes                                      [ + New Change ]
 17 total · Local ./openspec · Healthy
 
 [All 17] [Planning 5] [Ready 3] [Applying 4] [Verify 2] [Archived 3]
@@ -442,7 +444,22 @@ Cards...
 1–4 of 4
 ```
 
-状态筛选为单选。`Needs Attention` 放入高级筛选，可与生命周期组合。
+状态筛选为单选。`Needs Attention` 放入高级筛选，可与生命周期组合。Header 仅保留 New Change。
+
+#### Visual source
+
+`docs/new-design`、`docs/new-design-append`、`docs/new-design-append-2` 只约束布局，不覆盖本 Change 的状态模型。
+
+借：
+
+- v4 Changes Workspace 的结构：状态栏 + Search/Sort + 卡片列表 + 分页；
+- v2 Overview 卡片上的细生命周期 badge（如 Ready to apply / Planning）。
+
+不借：
+
+- `Draft` / `In Progress` / `Completed` / `Merged` 作为一级筛选；
+- Add Operation、Store Quick View、固定 Artifact stepper、Other Artifacts；
+- `Ready to Sync` / `Ready to Archive` / `Blocked` 作为一级筛选。
 
 ### 10. ChangeCard 使用生命周期映射
 

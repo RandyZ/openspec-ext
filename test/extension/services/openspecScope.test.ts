@@ -179,3 +179,63 @@ describe('OpenSpecScopeManager', () => {
     expect(manager.getSelectedScope().id).toBe('local:/workspace');
   });
 });
+
+describe('Root-scoped archived isolation', () => {
+  const capabilities = {
+    stores: true,
+    context: true,
+    doctor: true,
+    worksets: true,
+    diagnostics: [],
+  };
+
+  it('keeps local and store scope identities distinct for per-root archived queries', async () => {
+    const cli = {
+      runJson: vi.fn().mockResolvedValue({
+        stores: [{ id: 'team-plans', root: '/stores/team-plans' }],
+        status: [],
+      }),
+    };
+    const manager = new OpenSpecScopeManager('/workspace', cli, capabilities);
+
+    await manager.loadScopeOptions();
+    const localScope = manager.getSelectedScope();
+    expect(localScope).toMatchObject({
+      id: 'local:/workspace',
+      rootPath: '/workspace',
+      source: 'local',
+    });
+
+    manager.selectScope('store:team-plans');
+    const storeScope = manager.getSelectedScope();
+    expect(storeScope).toMatchObject({
+      id: 'store:team-plans',
+      rootPath: '/stores/team-plans',
+      source: 'store',
+      storeId: 'team-plans',
+    });
+    expect(storeScope.id).not.toBe(localScope.id);
+    expect(storeScope.rootPath).not.toBe(localScope.rootPath);
+  });
+
+  it('returns the newly selected scope after switching between local and store roots', async () => {
+    const cli = {
+      runJson: vi.fn().mockResolvedValue({
+        stores: [{ id: 'team-plans', root: '/stores/team-plans' }],
+        status: [],
+      }),
+    };
+    const manager = new OpenSpecScopeManager('/workspace', cli, capabilities);
+    await manager.loadScopeOptions();
+
+    manager.selectScope('store:team-plans');
+    expect(manager.getSelectedScope().id).toBe('store:team-plans');
+
+    manager.selectScope('local:/workspace');
+    expect(manager.getSelectedScope()).toMatchObject({
+      id: 'local:/workspace',
+      rootPath: '/workspace',
+      source: 'local',
+    });
+  });
+});

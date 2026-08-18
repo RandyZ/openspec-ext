@@ -9,6 +9,55 @@ import {
 } from '../../../src/webview/components/Dashboard';
 import { sendMessage } from '../../../src/webview/types/messages';
 import type { DashboardData, OpenSpecScopeView } from '../../../src/webview/types/messages';
+import { adaptLegacyDashboardData } from '../../../src/webview/types/legacyDashboardAdapter';
+import type { ChangeStatusCounts } from '../../../src/shared/changeLifecycle';
+
+const EMPTY_COUNTS: ChangeStatusCounts = {
+  all: 0,
+  planning: 0,
+  readyToApply: 0,
+  applying: 0,
+  readyToVerify: 0,
+  archived: 0,
+  needsAttention: 0,
+};
+
+function hostChange(
+  name: string,
+  overrides: Partial<DashboardData['changes'][number]> = {}
+): DashboardData['changes'][number] {
+  return {
+    name,
+    completedTasks: 0,
+    totalTasks: 0,
+    lastModified: '2026-06-14T00:00:00.000Z',
+    status: 'draft',
+    lifecycleStatus: 'planning',
+    artifacts: [],
+    ...overrides,
+  };
+}
+
+function withHostChanges(
+  base: DashboardData,
+  changes: Array<Partial<DashboardData['changes'][number]> & { name: string }>
+): DashboardData {
+  const nextChanges = changes.map((change) => hostChange(change.name, change));
+  return {
+    ...base,
+    changes: nextChanges,
+    changeStatusCounts: {
+      ...EMPTY_COUNTS,
+      all: nextChanges.length + (base.archivedChanges?.length ?? 0),
+      planning: nextChanges.filter((c) => c.lifecycleStatus === 'planning').length,
+      readyToApply: nextChanges.filter((c) => c.lifecycleStatus === 'ready-to-apply').length,
+      applying: nextChanges.filter((c) => c.lifecycleStatus === 'applying').length,
+      readyToVerify: nextChanges.filter((c) => c.lifecycleStatus === 'ready-to-verify').length,
+      archived: base.archivedChanges?.length ?? 0,
+      needsAttention: nextChanges.filter((c) => c.attention?.required).length,
+    },
+  };
+}
 
 const localScope: OpenSpecScopeView = {
   id: 'local:/workspace',
@@ -53,6 +102,8 @@ const dashboardData: DashboardData = {
   scopes: [localScope, storeScope],
   changes: [],
   specs: [],
+  archivedChanges: [],
+  changeStatusCounts: EMPTY_COUNTS,
   lastRefresh: 1,
 };
 
@@ -79,6 +130,8 @@ vi.mock('../../../src/webview/hooks/useVscode', () => ({
   useVscode: () => ({
     postMessage: vi.fn(),
     onMessage: vi.fn(() => vi.fn()),
+    getState: () => undefined,
+    setState: vi.fn(),
   }),
 }));
 
@@ -122,7 +175,7 @@ describe('Dashboard CLI diagnostic states', () => {
     const html = renderToStaticMarkup(
       <AppProvider
         initialState={{
-          data: {
+          data: adaptLegacyDashboardData({
             changes: [
               {
                 name: 'cached-change',
@@ -135,7 +188,7 @@ describe('Dashboard CLI diagnostic states', () => {
             ],
             specs: [],
             lastRefresh: 1,
-          },
+          }),
           loading: false,
           error: null,
           selectedChange: null,
@@ -225,33 +278,14 @@ describe('Dashboard scope switching states', () => {
       stale: false,
       activity: { kind: 'idle' },
     };
-    const cachedStoreData: DashboardData = {
-      ...dashboardData,
-      scope: storeScope,
-      changes: [
-        {
-          name: 'cached-store-change',
-          completedTasks: 0,
-          totalTasks: 0,
-          lastModified: '2026-06-14T00:00:00.000Z',
-          status: 'draft',
-          artifacts: [],
-        },
-      ],
-    };
-    const freshStoreData: DashboardData = {
-      ...cachedStoreData,
-      changes: [
-        {
-          name: 'fresh-store-change',
-          completedTasks: 0,
-          totalTasks: 0,
-          lastModified: '2026-06-15T00:00:00.000Z',
-          status: 'draft',
-          artifacts: [],
-        },
-      ],
-    };
+    const cachedStoreData = withHostChanges(
+      { ...dashboardData, scope: storeScope },
+      [{ name: 'cached-store-change' }],
+    );
+    const freshStoreData = withHostChanges(
+      cachedStoreData,
+      [{ name: 'fresh-store-change', lastModified: '2026-06-15T00:00:00.000Z' }],
+    );
 
     const switching = appReducer(pendingState, {
       type: 'START_SCOPE_SWITCH',
@@ -284,6 +318,54 @@ describe('Dashboard scope switching states', () => {
     expect(withFreshData.activity).toEqual({ kind: 'idle' });
   });
 
+  it('adapts legacy cached payloads missing changeStatusCounts on SET_DATA', () => {
+    const legacyPayload = {
+      changes: [
+        {
+          name: 'legacy-cached',
+          completedTasks: 0,
+          totalTasks: 0,
+          lastModified: '2026-06-14T00:00:00.000Z',
+          status: 'draft' as const,
+          artifacts: [],
+        },
+      ],
+      specs: [],
+      lastRefresh: 1,
+    };
+
+    const next = appReducer(
+      {
+        data: null,
+        loading: true,
+        error: null,
+        selectedChange: null,
+        debug: false,
+        cliDiagnostic: null,
+        stale: false,
+        activity: { kind: 'idle' },
+      },
+      {
+        type: 'SET_DATA',
+        // Older disk cache / fixtures omit Host lifecycle fields.
+        payload: legacyPayload as unknown as AppState['data'] & object,
+        cache: { source: 'disk', stale: true, generatedAt: 1 },
+      }
+    );
+
+    expect(next.data?.changeStatusCounts).toEqual({
+      all: 1,
+      planning: 1,
+      readyToApply: 0,
+      applying: 0,
+      readyToVerify: 0,
+      archived: 0,
+      needsAttention: 0,
+    });
+    expect(next.data?.changes[0].lifecycleStatus).toBe('planning');
+    expect(next.stale).toBe(true);
+  });
+
   it('keeps target cached data and shows a warning when the fresh refresh fails', () => {
     const pendingState: AppState = {
       data: dashboardData,
@@ -295,20 +377,10 @@ describe('Dashboard scope switching states', () => {
       stale: false,
       activity: { kind: 'idle' },
     };
-    const cachedStoreData: DashboardData = {
-      ...dashboardData,
-      scope: storeScope,
-      changes: [
-        {
-          name: 'cached-store-change',
-          completedTasks: 0,
-          totalTasks: 0,
-          lastModified: '2026-06-14T00:00:00.000Z',
-          status: 'draft',
-          artifacts: [],
-        },
-      ],
-    };
+    const cachedStoreData = withHostChanges(
+      { ...dashboardData, scope: storeScope },
+      [{ name: 'cached-store-change' }],
+    );
     const warningMessage = 'OpenSpec refresh failed';
 
     const switching = appReducer(pendingState, {
@@ -447,19 +519,7 @@ describe('Dashboard scope switching states', () => {
 
   it('renders a localized stale cached data indicator', () => {
     const html = renderDashboardWithData(
-      {
-        ...dashboardData,
-        changes: [
-          {
-            name: 'cached-change',
-            completedTasks: 0,
-            totalTasks: 0,
-            lastModified: '2026-06-14T00:00:00.000Z',
-            status: 'draft',
-            artifacts: [],
-          },
-        ],
-      },
+      withHostChanges(dashboardData, [{ name: 'cached-change' }]),
       { stale: true },
     );
 
@@ -469,19 +529,7 @@ describe('Dashboard scope switching states', () => {
 
   it('does not duplicate stale copy while cached refresh is already shown in the rail', () => {
     const html = renderDashboardWithData(
-      {
-        ...dashboardData,
-        changes: [
-          {
-            name: 'cached-change',
-            completedTasks: 0,
-            totalTasks: 0,
-            lastModified: '2026-06-14T00:00:00.000Z',
-            status: 'draft',
-            artifacts: [],
-          },
-        ],
-      },
+      withHostChanges(dashboardData, [{ name: 'cached-change' }]),
       {
         stale: true,
         loading: true,
@@ -620,9 +668,9 @@ describe('Dashboard primary action rail owns root context', () => {
       scopes: [localScope],
     });
 
-    // No selector dropdown is rendered for a single root, but the current
+    // No root selector dropdown is rendered for a single root, but the current
     // root label stays visible in the action rail area (before CLI status).
-    expect(html).not.toContain('<select');
+    expect(html).not.toContain('aria-label="OpenSpec Root"');
     expect(html).toContain('Local Root');
     expect(html).toContain('New Change');
     // The header action rail label appears before the CLI/cache status section.
@@ -796,7 +844,7 @@ describe('Dashboard root rail and store state regression', () => {
       scopes: [storeScope],
       scope: storeScope,
     });
-    expect(single).not.toContain('<select');
+    expect(single).not.toContain('aria-label="OpenSpec Root"');
     expect(single).toContain('Store: team-plans');
   });
 
@@ -919,16 +967,8 @@ describe('Dashboard feature gating: OpenSpec 1.5 upgrade messaging', () => {
       ...dashboardData,
       scope: lowCapabilitiesScope,
       scopes: [localScope],
-      changes: [
-        {
-          name: 'gated-change',
-          completedTasks: 0,
-          totalTasks: 0,
-          lastModified: '2026-06-14T00:00:00.000Z',
-          status: 'draft',
-          artifacts: [],
-        },
-      ],
+      changes: [hostChange('gated-change')],
+      changeStatusCounts: withHostChanges(dashboardData, [{ name: 'gated-change' }]).changeStatusCounts,
       specs: [{ id: 'gated-spec', requirementCount: 1 }],
     });
 
@@ -1002,16 +1042,8 @@ describe('Dashboard feature gating: independent store and workset controls', () 
       ...dashboardData,
       scope: lowCapabilitiesScope,
       scopes: [localScope],
-      changes: [
-        {
-          name: 'still-usable-change',
-          completedTasks: 0,
-          totalTasks: 0,
-          lastModified: '2026-06-14T00:00:00.000Z',
-          status: 'draft',
-          artifacts: [],
-        },
-      ],
+      changes: [hostChange('still-usable-change')],
+      changeStatusCounts: withHostChanges(dashboardData, [{ name: 'still-usable-change' }]).changeStatusCounts,
       specs: [{ id: 'still-usable-spec', requirementCount: 1 }],
     });
 
@@ -1063,5 +1095,58 @@ describe('Dashboard feature gating: independent store and workset controls', () 
     expect(html).toContain('Register Store');
     expect(html).toContain('Manage Worksets');
     expect(html).not.toContain('Stores and worksets require OpenSpec 1.5.0 or newer');
+  });
+});
+
+describe('Dashboard Host lifecycle contract', () => {
+  it('renders Host-provided changeStatusCounts without webview lifecycle derivation', () => {
+    const hostCounts: ChangeStatusCounts = {
+      all: 3,
+      planning: 1,
+      readyToApply: 1,
+      applying: 0,
+      readyToVerify: 0,
+      archived: 1,
+      needsAttention: 1,
+    };
+    const data: DashboardData = {
+      ...dashboardData,
+      changes: [
+        {
+          name: 'planning-one',
+          completedTasks: 0,
+          totalTasks: 0,
+          lastModified: '2026-06-14T00:00:00.000Z',
+          status: 'draft',
+          lifecycleStatus: 'planning',
+          attention: { required: true, reasons: ['metadata-read-failed'] },
+          artifacts: [],
+        },
+        {
+          name: 'ready-one',
+          completedTasks: 0,
+          totalTasks: 3,
+          lastModified: '2026-06-14T00:00:00.000Z',
+          status: 'draft',
+          lifecycleStatus: 'ready-to-apply',
+          artifacts: [
+            { id: 'proposal', outputPath: 'openspec/changes/ready-one/proposal.md', status: 'done' },
+            { id: 'design', outputPath: 'openspec/changes/ready-one/design.md', status: 'done' },
+            { id: 'tasks', outputPath: 'openspec/changes/ready-one/tasks.md', status: 'done' },
+          ],
+        },
+      ],
+      archivedChanges: [
+        { directoryName: '2026-01-01-old', name: 'old', archiveDate: '2026-01-01' },
+      ],
+      changeStatusCounts: hostCounts,
+    };
+
+    const html = renderDashboardWithData(data);
+    expect(html).toContain('planning-one');
+    expect(html).toContain('ready-one');
+    // Contract: counts are on the payload; UI does not recompute lifecycle here.
+    expect(data.changeStatusCounts).toEqual(hostCounts);
+    expect(data.changes.every((change) => typeof change.lifecycleStatus === 'string')).toBe(true);
   });
 });

@@ -19,6 +19,7 @@ import {
   type CliActivationDiagnostic,
   type CliActivationDiagnosticCategory,
 } from './cliActivationDiagnostic';
+import { enrichChangeWithLifecycle } from '../../shared/changeLifecycle';
 
 const MINIMUM_OPENSPEC_VERSION = '1.0.0';
 
@@ -254,7 +255,7 @@ export class OpenSpecCliService {
           try {
             const status = await this.getChangeStatus(c.name, scope);
             const artifacts = this.normalizeArtifactStatuses(status.artifacts ?? []);
-            return {
+            return enrichChangeWithLifecycle({
               name: c.name,
               completedTasks: c.completedTasks || 0,
               totalTasks: c.totalTasks || 0,
@@ -262,9 +263,10 @@ export class OpenSpecCliService {
               createdAt: this.normalizeCreatedAt(c),
               status: this.determineStatus(c),
               artifacts,
-            };
+            });
           } catch {
-            return {
+            // Distinguish status-read failure from a legitimate empty artifact list.
+            return enrichChangeWithLifecycle({
               name: c.name,
               completedTasks: c.completedTasks || 0,
               totalTasks: c.totalTasks || 0,
@@ -272,7 +274,8 @@ export class OpenSpecCliService {
               createdAt: this.normalizeCreatedAt(c),
               status: this.determineStatus(c),
               artifacts: [] as ArtifactStatus[],
-            };
+              attention: { required: true, reasons: ['metadata-read-failed'] },
+            });
           }
         })
       );

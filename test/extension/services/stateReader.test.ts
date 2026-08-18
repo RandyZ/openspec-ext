@@ -54,6 +54,7 @@ describe('StateReader', () => {
         totalTasks: 1,
         lastModified: '',
         status: 'draft',
+        lifecycleStatus: 'planning',
       },
     ];
     vi.mocked(mockGateway.listChanges).mockResolvedValue(changes);
@@ -71,6 +72,7 @@ describe('StateReader', () => {
         totalTasks: 1,
         lastModified: '',
         status: 'draft',
+        lifecycleStatus: 'planning',
         proposalWhySummary: 'short why',
         proposalWhyFullText: 'short why full',
         searchText: 'foo short why full',

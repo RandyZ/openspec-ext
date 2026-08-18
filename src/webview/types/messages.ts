@@ -5,6 +5,11 @@ import type {
   InteractiveWorkflowAction,
   InteractiveWorkflowState,
 } from '../../shared/interactiveWorkflow';
+import type {
+  ActiveChangeLifecycleStatus,
+  ChangeAttention,
+  ChangeStatusCounts,
+} from '../../shared/changeLifecycle';
 
 export type LoadingReason =
   | 'initial'
@@ -23,12 +28,12 @@ export type WebviewMessage =
   | { type: 'toggleTask'; changeName: string; taskIndex: number; scopeId?: string }
   | { type: 'openChange'; changeName: string }
   | { type: 'openArtifact'; changeName: string; artifactType: string; scopeId?: string }
-  | { type: 'createChange'; name: string }
-  | { type: 'requestNewChange' }
+  | { type: 'createChange'; name: string; scopeId?: string }
+  | { type: 'requestNewChange'; scopeId?: string }
   | { type: 'copyToClipboard'; text: string }
   | { type: 'openSpec'; path: string }
   | { type: 'openDeltaSpec'; changeName: string; specId: string; scopeId?: string }
-  | { type: 'archiveChange'; name: string }
+  | { type: 'archiveChange'; name: string; scopeId?: string }
   | { type: 'getArtifactContent'; changeName: string; artifactType: string; scopeId?: string }
   | { type: 'listDeltaSpecs'; changeName: string; scopeId?: string }
   | { type: 'getDeltaSpecContent'; changeName: string; specId: string; scopeId?: string }
@@ -45,7 +50,7 @@ export type WebviewMessage =
   | { type: 'getAgentAdapters' }
   | { type: 'getWorkflowLaunchConfig' }
   | { type: 'setPreferredAgentAdapter'; adapterId: string }
-  | { type: 'requestCreateArtifact'; changeName: string; artifactType: string }
+  | { type: 'requestCreateArtifact'; changeName: string; artifactType: string; scopeId?: string }
   | { type: 'runCommand'; commandId: string; argsJson?: string; changeName?: string }
   | { type: 'fillChat'; prompt: string }
   | { type: 'launchWorkflowAction'; action: WorkflowAction; changeName: string; scopeId?: string }
@@ -180,6 +185,7 @@ export interface DashboardData {
   changes: ChangeInfo[];
   specs: SpecInfo[];
   archivedChanges?: ArchivedChangeInfo[];
+  changeStatusCounts: ChangeStatusCounts;
   lastRefresh: number;
 }
 
@@ -190,6 +196,9 @@ export interface ChangeInfo {
   lastModified: string;
   createdAt?: string;
   status: 'draft' | 'in-progress' | 'complete';
+  /** Host-derived lifecycle; required on production refresh paths. */
+  lifecycleStatus: ActiveChangeLifecycleStatus;
+  attention?: ChangeAttention;
   artifacts?: ArtifactStatus[];
   proposalWhySummary?: string;
   proposalWhyFullText?: string;
@@ -252,13 +261,15 @@ export const sendMessage = {
     ...(scopeId ? { scopeId } : {}),
   }),
 
-  createChange: (name: string): WebviewMessage => ({
+  createChange: (name: string, scopeId?: string): WebviewMessage => ({
     type: 'createChange',
     name,
+    ...(scopeId ? { scopeId } : {}),
   }),
 
-  requestNewChange: (): WebviewMessage => ({
+  requestNewChange: (scopeId?: string): WebviewMessage => ({
     type: 'requestNewChange',
+    ...(scopeId ? { scopeId } : {}),
   }),
 
   copyToClipboard: (text: string): WebviewMessage => ({
@@ -278,9 +289,10 @@ export const sendMessage = {
     ...(scopeId ? { scopeId } : {}),
   }),
 
-  archiveChange: (name: string): WebviewMessage => ({
+  archiveChange: (name: string, scopeId?: string): WebviewMessage => ({
     type: 'archiveChange',
     name,
+    ...(scopeId ? { scopeId } : {}),
   }),
 
   getArtifactContent: (changeName: string, artifactType: string, scopeId?: string): WebviewMessage => ({
@@ -346,10 +358,11 @@ export const sendMessage = {
     adapterId,
   }),
 
-  requestCreateArtifact: (changeName: string, artifactType: string): WebviewMessage => ({
+  requestCreateArtifact: (changeName: string, artifactType: string, scopeId?: string): WebviewMessage => ({
     type: 'requestCreateArtifact',
     changeName,
     artifactType,
+    ...(scopeId ? { scopeId } : {}),
   }),
 
   runCommand: (commandId: string, argsJson?: string, changeName?: string): WebviewMessage => ({

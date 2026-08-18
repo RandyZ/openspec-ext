@@ -1,191 +1,308 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useReducer } from 'react';
+import type { ChangeStatusCounts } from '../../shared/changeLifecycle';
 import { ChangeInfo, ArchivedChangeInfo } from '../types/messages';
 import { ChangeCard } from './ChangeCard';
+import { ArchivedChangeCard } from './ArchivedChangeCard';
 import { EmptyState } from './EmptyState';
-import { filterChanges } from '../utils/filterChanges';
+import { ChangeStatusFilter, type LifecycleFilterValue } from './ChangeStatusFilter';
+import { ChangeAdvancedFilters } from './ChangeAdvancedFilters';
+import { ChangePagination } from './ChangePagination';
+import { buildChangeListItems } from '../types/changeList';
+import { buildVisibleChangePage } from '../utils/changeListPipeline';
+import {
+  changesViewReducer,
+  DEFAULT_CHANGES_VIEW_STATE,
+  maybeClampChangesViewPage,
+  type ChangesViewAction,
+  type ChangesViewState,
+} from '../state/changesViewState';
 import { t } from '../../i18n';
 import type { WorkflowAction } from '../../shared/workflowCommand';
 import type { WorkflowLaunchConfigView } from '../utils/workflowLaunchLabels';
 
+export type ChangesSectionLayout = 'wide' | 'narrow' | 'auto';
+
 interface ChangesSectionProps {
   changes: ChangeInfo[];
+  changeStatusCounts: ChangeStatusCounts;
   onOpenChange?: (changeName: string) => void;
   onRequestNewChange?: () => void;
   onCopyFf?: (changeName: string) => void;
   onCopyApply?: (changeName: string) => void;
   onLaunchWorkflow?: (action: WorkflowAction, changeName: string) => void;
-  archivedExpanded?: boolean;
-  onArchivedToggle?: () => void;
   archivedItems?: ArchivedChangeInfo[];
-  archivedLoading?: boolean;
   onOpenArchivedChange?: (directoryName: string) => void;
   workflowLaunchConfig?: WorkflowLaunchConfigView | null;
   rootLabel?: string;
+  /** Controlled view state for tests / Root persistence. */
+  viewState?: ChangesViewState;
+  onViewStateChange?: (state: ChangesViewState) => void;
+  /**
+   * When false, skip persisting a clamped page (e.g. stale old-root data while
+   * the selected view Root has already switched).
+   */
+  allowPageClamp?: boolean;
+  layout?: ChangesSectionLayout;
 }
 
-type StatusGroup = 'in-progress' | 'draft' | 'complete';
+function resolveEmptyMessage(
+  state: ChangesViewState,
+  rootLabel: string | undefined,
+  hasDataset: boolean
+): { message: string; offerCreate: boolean } {
+  const hasQueryOrAttention = state.query.trim().length > 0 || state.attentionOnly;
 
-const STATUS_ORDER: StatusGroup[] = ['in-progress', 'draft', 'complete'];
-const STATUS_LABELS: Record<StatusGroup, string> = {
-  'in-progress': t('dashboard.statusInProgress'),
-  draft: t('dashboard.statusDraft'),
-  complete: t('dashboard.statusComplete'),
-};
+  if (hasDataset && hasQueryOrAttention) {
+    return {
+      message: t('dashboard.emptySearchAndFilters'),
+      offerCreate: false,
+    };
+  }
 
-function groupByStatus(changes: ChangeInfo[]): Map<StatusGroup, ChangeInfo[]> {
-  const map = new Map<StatusGroup, ChangeInfo[]>();
-  for (const s of STATUS_ORDER) {
-    map.set(s, []);
+  switch (state.lifecycleStatus) {
+    case 'planning':
+      return { message: t('dashboard.emptyPlanning'), offerCreate: true };
+    case 'ready-to-apply':
+      return { message: t('dashboard.emptyReadyToApply'), offerCreate: true };
+    case 'applying':
+      return { message: t('dashboard.emptyApplying'), offerCreate: true };
+    case 'ready-to-verify':
+      return { message: t('dashboard.emptyReadyToVerify'), offerCreate: true };
+    case 'archived':
+      return {
+        message: rootLabel
+          ? t('dashboard.emptyArchivedInRoot', { root: rootLabel })
+          : t('dashboard.emptyArchived'),
+        offerCreate: false,
+      };
+    case 'all':
+    default:
+      if (!hasDataset) {
+        return {
+          message: rootLabel
+            ? t('dashboard.emptyChangesInRoot', { root: rootLabel })
+            : t('dashboard.emptyChanges'),
+          offerCreate: true,
+        };
+      }
+      return {
+        message: t('dashboard.emptySearchAndFilters'),
+        offerCreate: false,
+      };
   }
-  for (const c of changes) {
-    const group = (c.status in STATUS_LABELS ? c.status : 'draft') as StatusGroup;
-    map.get(group)!.push(c);
-  }
-  return map;
 }
 
 export const ChangesSection: React.FC<ChangesSectionProps> = ({
   changes,
+  changeStatusCounts,
   onOpenChange,
   onRequestNewChange,
   onCopyFf,
   onCopyApply,
   onLaunchWorkflow,
-  archivedExpanded = false,
-  onArchivedToggle,
   archivedItems = [],
-  archivedLoading = false,
   onOpenArchivedChange,
   workflowLaunchConfig,
   rootLabel,
+  viewState: controlledViewState,
+  onViewStateChange,
+  allowPageClamp = true,
+  layout = 'auto',
 }) => {
-  const [query, setQuery] = useState('');
-  const filteredChanges = useMemo(() => filterChanges(changes, query), [changes, query]);
-  const grouped = groupByStatus(filteredChanges);
-  const hasSearch = query.trim().length > 0;
+  const [internalState, dispatch] = useReducer(
+    changesViewReducer,
+    DEFAULT_CHANGES_VIEW_STATE
+  );
+  const state = controlledViewState ?? internalState;
+
+  const applyAction = (action: ChangesViewAction) => {
+    if (controlledViewState) {
+      onViewStateChange?.(changesViewReducer(controlledViewState, action));
+      return;
+    }
+    dispatch(action);
+  };
+
+  const listItems = useMemo(
+    () => buildChangeListItems(changes, archivedItems),
+    [changes, archivedItems]
+  );
+
+  const pageResult = useMemo(
+    () => buildVisibleChangePage(listItems, state),
+    [listItems, state]
+  );
+
+  // Persist pipeline-clamped page for the matching Root without resetting filters.
+  useEffect(() => {
+    if (!controlledViewState || !onViewStateChange) {
+      return;
+    }
+    const clamped = maybeClampChangesViewPage(
+      controlledViewState,
+      pageResult.page,
+      allowPageClamp
+    );
+    if (clamped) {
+      onViewStateChange(clamped);
+    }
+  }, [
+    allowPageClamp,
+    controlledViewState,
+    onViewStateChange,
+    pageResult.page,
+  ]);
+
+  const hasDataset = listItems.length > 0;
+  const showWide = layout === 'wide' || layout === 'auto';
+  const showNarrow = layout === 'narrow' || layout === 'auto';
+  const isNarrowOnly = layout === 'narrow';
+
+  const empty = resolveEmptyMessage(state, rootLabel, hasDataset);
+
+  const setLifecycle = (lifecycleStatus: LifecycleFilterValue) => {
+    applyAction({ type: 'SET_LIFECYCLE_FILTER', lifecycleStatus });
+  };
 
   return (
-    <div className="mb-6">
-      <h2
-        className="text-base font-semibold mb-2"
-        style={{ color: 'var(--vscode-foreground)' }}
-      >
-        {t('dashboard.changes', { count: filteredChanges.length })}
-      </h2>
-
-      {changes.length > 0 && (
-        <input
-          type="search"
-          value={query}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setQuery(e.target.value)}
-          placeholder={t('dashboard.searchPlaceholder')}
-          aria-label={t('dashboard.searchLabel')}
-          className="w-full mb-3 px-2 py-1.5 text-xs rounded"
-          style={{
-            background: 'var(--vscode-input-background)',
-            color: 'var(--vscode-input-foreground)',
-            border: '1px solid var(--vscode-input-border)',
-            outlineColor: 'var(--vscode-focusBorder)',
-          }}
-        />
+    <div
+      className="mb-6"
+      data-changes-section
+      data-responsive={layout === 'auto' ? 'true' : undefined}
+      style={{ containerType: 'inline-size' } as React.CSSProperties}
+    >
+      {layout === 'auto' && (
+        <style>{`
+          [data-changes-section][data-responsive] [data-layout="wide"] { display: none; }
+          [data-changes-section][data-responsive] [data-layout="narrow"] { display: block; }
+          @container (min-width: 420px) {
+            [data-changes-section][data-responsive] [data-layout="wide"] { display: block; }
+            [data-changes-section][data-responsive] [data-layout="narrow"] { display: none; }
+          }
+        `}</style>
       )}
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <h2
+          className="text-base font-semibold"
+          style={{ color: 'var(--vscode-foreground)' }}
+        >
+          {t('dashboard.changes', { count: changeStatusCounts.all })}
+        </h2>
+        {onRequestNewChange && state.lifecycleStatus !== 'archived' && (
+          <button
+            type="button"
+            className="px-2 py-1 text-xs rounded cursor-pointer border-none focus:outline-none focus:ring-1 shrink-0"
+            style={{
+              background: 'var(--vscode-button-background)',
+              color: 'var(--vscode-button-foreground)',
+              outlineColor: 'var(--vscode-focusBorder)',
+            }}
+            aria-label={t('dashboard.createNew')}
+            title={t('dashboard.createNew')}
+            onClick={onRequestNewChange}
+          >
+            {t('dashboard.createNew')}
+          </button>
+        )}
+      </div>
 
-      {changes.length === 0 ? (
-        <EmptyState
-          message={rootLabel ? t('dashboard.emptyChangesInRoot', { root: rootLabel }) : t('dashboard.emptyChanges')}
-          actionLabel={t('dashboard.createNew')}
-          onAction={onRequestNewChange}
-        />
-      ) : hasSearch && filteredChanges.length === 0 ? (
-        <EmptyState message={t('dashboard.searchEmpty')} />
-      ) : (
-        <div className="space-y-4">
-          {STATUS_ORDER.map((status) => {
-            const list = grouped.get(status)!;
-            if (list.length === 0) return null;
-            return (
-              <div key={status}>
-                <h3
-                  className="text-xs font-medium mb-2"
-                  style={{ color: 'var(--vscode-descriptionForeground)' }}
-                >
-                  {STATUS_LABELS[status]} ({list.length})
-                </h3>
-                <div className="space-y-2">
-                  {list.map((change) => (
-                    <ChangeCard
-                      key={change.name}
-                      change={change}
-                      onClick={onOpenChange}
-                      onCopyFf={onCopyFf}
-                      onCopyApply={onCopyApply}
-                      onLaunchWorkflow={onLaunchWorkflow}
-                      workflowLaunchConfig={workflowLaunchConfig}
-                    />
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+      {showWide && (
+        <div data-layout="wide">
+          <ChangeStatusFilter
+            variant="segments"
+            value={state.lifecycleStatus}
+            counts={changeStatusCounts}
+            onChange={setLifecycle}
+          />
         </div>
       )}
 
-      {onArchivedToggle && (
-        <div className="mt-4 border-t pt-4" style={{ borderColor: 'var(--vscode-panel-border)' }}>
-          <button
-            type="button"
-            className="flex items-center gap-2 w-full text-left py-1 px-0 rounded cursor-pointer border-none bg-transparent"
-            style={{ color: 'var(--vscode-descriptionForeground)' }}
-            onClick={onArchivedToggle}
-          >
-            <span
-              className="inline-block text-xs transition-transform"
-              style={{ transform: archivedExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}
-            >
-              ▶
-            </span>
-            <span className="text-xs font-medium">{t('dashboard.archived')}</span>
-            {archivedExpanded && archivedItems.length > 0 && (
-              <span className="text-xs">({archivedItems.length})</span>
-            )}
-          </button>
-          {archivedExpanded && (
-            <div className="mt-2 pl-4">
-              {archivedLoading ? (
-                <div className="text-xs py-2" style={{ color: 'var(--vscode-descriptionForeground)' }}>
-                  {t('dashboard.archivedLoading')}
-                </div>
-              ) : archivedItems.length === 0 ? (
-                <div className="text-xs py-2" style={{ color: 'var(--vscode-descriptionForeground)' }}>
-                  {rootLabel ? t('dashboard.archivedEmptyInRoot', { root: rootLabel }) : t('dashboard.archivedEmpty')}
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {archivedItems.map((item) => (
-                    <button
-                      key={item.directoryName}
-                      type="button"
-                      className="block w-full text-left p-2 rounded cursor-pointer border-none text-xs"
-                      style={{
-                        background: 'var(--vscode-input-background)',
-                        color: 'var(--vscode-foreground)',
-                      }}
-                      onClick={() => onOpenArchivedChange?.(item.directoryName)}
-                    >
-                      <span className="font-medium">{item.name}</span>
-                      {item.archiveDate && (
-                        <span className="ml-2" style={{ color: 'var(--vscode-descriptionForeground)' }}>
-                          {item.archiveDate}
-                        </span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+      {showNarrow && (
+        <div data-layout="narrow">
+          <ChangeStatusFilter
+            variant="compact"
+            value={state.lifecycleStatus}
+            counts={changeStatusCounts}
+            onChange={setLifecycle}
+          />
+        </div>
+      )}
+
+      {(hasDataset || state.query.length > 0 || state.attentionOnly) && (
+        <>
+          <input
+            type="search"
+            value={state.query}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+              applyAction({ type: 'SET_QUERY', query: e.target.value })
+            }
+            placeholder={t('dashboard.searchPlaceholder')}
+            aria-label={t('dashboard.searchLabel')}
+            title={t('dashboard.searchLabel')}
+            className="w-full mb-3 px-2 py-1.5 text-xs rounded focus:outline-none focus:ring-1"
+            style={{
+              background: 'var(--vscode-input-background)',
+              color: 'var(--vscode-input-foreground)',
+              border: '1px solid var(--vscode-input-border)',
+              outlineColor: 'var(--vscode-focusBorder)',
+            }}
+          />
+          <ChangeAdvancedFilters
+            sort={state.sort}
+            attentionOnly={state.attentionOnly}
+            needsAttentionCount={changeStatusCounts.needsAttention}
+            compact={isNarrowOnly}
+            onSortChange={(sort) => applyAction({ type: 'SET_SORT', sort })}
+            onAttentionChange={(attentionOnly) =>
+              applyAction({ type: 'SET_ATTENTION_FILTER', attentionOnly })
+            }
+          />
+        </>
+      )}
+
+      {pageResult.totalItems === 0 ? (
+        <EmptyState
+          message={empty.message}
+          actionLabel={empty.offerCreate ? t('dashboard.createNew') : undefined}
+          onAction={empty.offerCreate ? onRequestNewChange : undefined}
+        />
+      ) : (
+        <div className="space-y-2">
+          {pageResult.items.map((item) =>
+            item.kind === 'active' ? (
+              <ChangeCard
+                key={item.id}
+                change={item.change}
+                onClick={onOpenChange}
+                onCopyFf={onCopyFf}
+                onCopyApply={onCopyApply}
+                onLaunchWorkflow={onLaunchWorkflow}
+                workflowLaunchConfig={workflowLaunchConfig}
+              />
+            ) : (
+              <ArchivedChangeCard
+                key={item.id}
+                archive={item.archive}
+                onOpen={onOpenArchivedChange}
+              />
+            )
           )}
         </div>
       )}
+
+      <ChangePagination
+        page={pageResult.page}
+        pageSize={state.pageSize}
+        totalItems={pageResult.totalItems}
+        totalPages={pageResult.totalPages}
+        startIndex={pageResult.startIndex}
+        endIndex={pageResult.endIndex}
+        compact={isNarrowOnly}
+        onPageChange={(page) => applyAction({ type: 'SET_PAGE', page })}
+        onPageSizeChange={(pageSize) =>
+          applyAction({ type: 'SET_PAGE_SIZE', pageSize })
+        }
+      />
     </div>
   );
 };

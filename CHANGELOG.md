@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Dashboard change lifecycle model: Planning, Ready to Apply, Applying, Ready to Verify, and Archived (first-class, read-only).
+- Lifecycle status filter UI (Editor segments + Sidebar compact selector), Needs Attention orthogonal filter, sort controls, and pagination.
+- Host-published `lifecycleStatus` and `changeStatusCounts` on dashboard payloads; Root-scoped view state for filters/search/sort/page size.
+
+### Changed
+
+- Change list processing order is filter → search → sort → paginate (status filters apply before pagination).
+- User-facing status labels use the lifecycle vocabulary above (not Draft / In Progress / Merged).
+
 ## [0.1.4] - 2026-05-20
 
 ### Added

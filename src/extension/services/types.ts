@@ -1,3 +1,8 @@
+import type {
+  ActiveChangeLifecycleStatus,
+  ChangeAttention,
+} from '../../shared/changeLifecycle';
+
 export interface ChangeInfo {
   name: string;
   completedTasks: number;
@@ -5,6 +10,9 @@ export interface ChangeInfo {
   lastModified: string;
   createdAt?: string;
   status: 'draft' | 'in-progress' | 'complete';
+  /** Host-derived lifecycle; required on production refresh paths. */
+  lifecycleStatus: ActiveChangeLifecycleStatus;
+  attention?: ChangeAttention;
   artifacts?: ArtifactStatus[];
   proposalWhySummary?: string;
   proposalWhyFullText?: string;

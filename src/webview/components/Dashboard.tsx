@@ -3,7 +3,7 @@ import { useVscode } from '../hooks/useVscode';
 import { useAppState } from '../context/AppContext';
 import type { AppAction } from '../context/AppContext';
 import { sendMessage } from '../types/messages';
-import type { ArchivedChangeInfo, DashboardData, SpecInfo, WebviewMessage } from '../types/messages';
+import type { DashboardData, SpecInfo, WebviewMessage } from '../types/messages';
 import { Header } from './Header';
 import { ChangesSection } from './ChangesSection';
 import { SpecsSection } from './SpecsSection';
@@ -19,6 +19,16 @@ import {
 } from '../../shared/workflowCommand';
 import type { WorkflowLaunchConfigView } from '../utils/workflowLaunchLabels';
 import type { CacheAction, CacheStatsView } from '../types/messages';
+import {
+  DEFAULT_CHANGES_VIEW_STATE,
+  getChangesViewForRoot,
+  getChangesViewRootKey,
+  readPersistedDashboardState,
+  resolveChangesViewScope,
+  shouldClampChangesViewPage,
+  upsertChangesViewForRoot,
+  type ChangesViewState,
+} from '../state/changesViewState';
 
 type DashboardDispatch = React.Dispatch<AppAction>;
 type DashboardPostMessage = (message: WebviewMessage) => void;
@@ -79,12 +89,9 @@ export function isLightweightLocalRoot(data: DashboardData | null | undefined): 
 }
 
 export const Dashboard: React.FC = () => {
-  const { postMessage, onMessage } = useVscode();
+  const { postMessage, onMessage, getState, setState } = useVscode();
   const { state, dispatch } = useAppState();
   const [dashboardView, setDashboardView] = useState<'overview' | 'worksets'>('overview');
-  const [archivedExpanded, setArchivedExpanded] = useState(false);
-  const [archivedItems, setArchivedItems] = useState<ArchivedChangeInfo[]>([]);
-  const [archivedLoading, setArchivedLoading] = useState(false);
   const [specRequirements, setSpecRequirements] = useState<Record<string, string[]>>({});
   const [cacheStats, setCacheStats] = useState<CacheStatsView | null>(null);
   const [cacheActionMessage, setCacheActionMessage] = useState<string | null>(null);
@@ -96,6 +103,54 @@ export const Dashboard: React.FC = () => {
   const scopeIdRef = useRef<string | undefined>(undefined);
   const [workflowLaunchConfig, setWorkflowLaunchConfig] = useState<WorkflowLaunchConfigView | null>(null);
 
+  const { data, loading, loadingReason, pendingScopeId, activity, error } = state;
+
+  const viewScope = resolveChangesViewScope(data, pendingScopeId);
+  const viewRootKey = viewScope ? getChangesViewRootKey(viewScope) : null;
+
+  const [changesViewRootKey, setChangesViewRootKey] = useState<string | null>(() => viewRootKey);
+  const [changesViewState, setChangesViewState] = useState<ChangesViewState>(() => {
+    if (!viewRootKey) {
+      return { ...DEFAULT_CHANGES_VIEW_STATE };
+    }
+    return getChangesViewForRoot(readPersistedDashboardState(getState()), viewRootKey);
+  });
+
+  // Restore the target Root's Changes view when the selected Root changes.
+  // Leave-state is already written on every view-state update via setState.
+  if (viewRootKey !== changesViewRootKey) {
+    setChangesViewRootKey(viewRootKey);
+    if (viewRootKey) {
+      setChangesViewState(
+        getChangesViewForRoot(readPersistedDashboardState(getState()), viewRootKey)
+      );
+    } else {
+      setChangesViewState({ ...DEFAULT_CHANGES_VIEW_STATE });
+    }
+  }
+
+  const persistChangesViewState = useCallback(
+    (next: ChangesViewState) => {
+      setChangesViewState(next);
+      if (!viewRootKey) {
+        return;
+      }
+      const raw = getState();
+      const base =
+        raw && typeof raw === 'object' && !Array.isArray(raw)
+          ? (raw as Record<string, unknown>)
+          : {};
+      const persisted = readPersistedDashboardState(base);
+      setState({
+        ...base,
+        ...upsertChangesViewForRoot(persisted, viewRootKey, next),
+      });
+    },
+    [getState, setState, viewRootKey]
+  );
+
+  const allowPageClamp = shouldClampChangesViewPage(data?.scope, viewScope);
+
   useEffect(() => {
     // Listen for messages from extension
     const cleanup = onMessage((event: MessageEvent) => {
@@ -103,10 +158,6 @@ export const Dashboard: React.FC = () => {
 
       if (message.type === 'dashboardData') {
         dispatch({ type: 'SET_DATA', payload: message.data, cache: message.cache });
-        if (message.data?.archivedChanges) {
-          setArchivedItems(message.data.archivedChanges);
-          setArchivedLoading(false);
-        }
         if (message.debug !== undefined) {
           dispatch({ type: 'SET_DEBUG', payload: message.debug });
         }
@@ -121,8 +172,6 @@ export const Dashboard: React.FC = () => {
         // When the scope changes, drop requirements cached for the previous scope.
         if (lastScopeIdRef.current !== undefined && lastScopeIdRef.current !== scopeId) {
           setSpecRequirements({});
-          setArchivedItems([]);
-          setArchivedLoading(false);
         }
         lastScopeIdRef.current = scopeId;
         scopeIdRef.current = scopeId;
@@ -138,19 +187,6 @@ export const Dashboard: React.FC = () => {
           ...prev,
           [message.specId]: message.requirements ?? [],
         }));
-      } else if (message.type === 'archivedChanges') {
-        const currentScopeId = scopeIdRef.current;
-        if (
-          message.scopeId !== undefined &&
-          currentScopeId !== undefined &&
-          message.scopeId !== currentScopeId
-        ) {
-          // Stale response from a previous root; ignore so cross-root archives
-          // don't leak into the currently selected scope.
-        } else {
-          setArchivedItems(message.items ?? []);
-          setArchivedLoading(false);
-        }
       } else if (message.type === 'workflowLaunchConfig') {
         setWorkflowLaunchConfig(message.config ?? null);
       } else if (message.type === 'cacheStats') {
@@ -169,15 +205,6 @@ export const Dashboard: React.FC = () => {
 
     return cleanup;
   }, [postMessage, onMessage, dispatch]);
-
-  const handleArchivedToggle = () => {
-    const next = !archivedExpanded;
-    setArchivedExpanded(next);
-    if (next) {
-      setArchivedLoading(true);
-      postMessage(sendMessage.getArchivedChanges(state.data?.scope?.id));
-    }
-  };
 
   const handleSelectScope = useCallback(
     createScopeSelectHandler(dispatch, postMessage),
@@ -216,7 +243,7 @@ export const Dashboard: React.FC = () => {
   };
 
   const handleRequestNewChange = () => {
-    postMessage(sendMessage.requestNewChange());
+    postMessage(sendMessage.requestNewChange(state.data?.scope?.id));
   };
 
   const handleCopyFf = (changeName: string) => {
@@ -254,8 +281,6 @@ export const Dashboard: React.FC = () => {
     if (action === 'copy-diagnostics') postMessage(sendMessage.copyCliDiagnostic());
     if (action === 'open-docs') postMessage(sendMessage.openCliInstallDocs());
   };
-
-  const { data, loading, loadingReason, pendingScopeId, activity, error } = state;
 
   // Root-scoped empty states name the selected root (e.g. "Store: team-plans") so it is
   // clear that local root content does not leak into a store root, and vice versa.
@@ -409,18 +434,19 @@ export const Dashboard: React.FC = () => {
 
                 <ChangesSection
                   changes={data.changes}
+                  changeStatusCounts={data.changeStatusCounts}
                   onOpenChange={handleOpenChange}
                   onRequestNewChange={handleRequestNewChange}
                   onCopyFf={handleCopyFf}
                   onCopyApply={handleCopyApply}
                   onLaunchWorkflow={handleLaunchWorkflow}
-                  archivedExpanded={archivedExpanded}
-                  onArchivedToggle={handleArchivedToggle}
-                  archivedItems={archivedItems}
-                  archivedLoading={archivedLoading}
+                  archivedItems={pendingScopeId ? [] : (data.archivedChanges ?? [])}
                   onOpenArchivedChange={handleOpenArchivedChange}
                   workflowLaunchConfig={workflowLaunchConfig}
                   rootLabel={selectedRootLabel}
+                  viewState={changesViewState}
+                  onViewStateChange={persistChangesViewState}
+                  allowPageClamp={allowPageClamp}
                 />
                 <SpecsSection
                   specs={data.specs}

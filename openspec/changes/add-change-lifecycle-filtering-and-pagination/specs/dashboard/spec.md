@@ -12,7 +12,7 @@
 - `Ready to Verify`
 - `Archived`
 
-系统 MUST NOT 继续把 `Draft / Active / Completed` 作为 Changes Workspace 的主要用户状态模型。
+系统 MUST NOT 把 `Draft`、`In Progress`、`Completed` 或 `Merged` 作为 Changes Workspace 的一级筛选值。
 
 #### Scenario: Changes expose lifecycle status
 
@@ -162,6 +162,15 @@ Changes Workspace SHALL 提供一级生命周期状态筛选，并展示当前 R
 - **WHEN** 横向空间不足以展示全部状态按钮
 - **THEN** 系统 MUST 将状态筛选降级为紧凑的可访问选择控件
 - **AND** 紧凑控件 MUST 使用与宽屏状态栏相同的状态值和数量
+
+#### Scenario: Filter labels follow lifecycle status, not design-mockup tabs
+
+- **GIVEN** `docs/new-design*` 高保真稿使用 `In Progress` / `Draft` / `Archived` / `Merged` 等标签
+- **WHEN** Changes Workspace 渲染一级状态筛选
+- **THEN** 系统 MUST 展示 `All`、`Planning`、`Ready to Apply`、`Applying`、`Ready to Verify`、`Archived`
+- **AND** 系统 MUST NOT 将 `Draft`、`In Progress`、`Completed` 或 `Merged` 作为一级筛选值
+- **AND** 筛选控件布局 MAY 参考这些设计稿的 Changes Workspace 结构（状态栏、搜索排序行、卡片列表、分页）
+- **AND** Header 主 CTA MUST 为 New Change，MUST NOT 渲染 Add Operation
 
 ### Requirement: Deterministic filter, sort, and pagination pipeline
 

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
 import { DashboardData } from '../types/messages';
 import type { CliActivationDiagnosticView, LoadingReason, WebviewCacheMeta } from '../types/messages';
+import { adaptLegacyDashboardData } from '../types/legacyDashboardAdapter';
 
 export type DashboardActivity =
   | { kind: 'idle' }
@@ -88,13 +89,16 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         activity: { kind: 'scope-switch', targetScopeId: action.scopeId },
       };
 
-    case 'SET_DATA':
+    case 'SET_DATA': {
+      // Disk/memory cache from older extension builds may omit lifecycle fields;
+      // adapt before render so ChangesSection never sees undefined counts.
+      const payload = adaptLegacyDashboardData(action.payload);
       if (action.cache?.stale === true) {
-        const scopeId = action.payload.scope?.id;
+        const scopeId = payload.scope?.id;
         const isPendingTarget = scopeId !== undefined && scopeId === state.pendingScopeId;
         return {
           ...state,
-          data: action.payload,
+          data: payload,
           loading: true,
           loadingReason: scopeId ? 'background-refresh' : state.loadingReason,
           pendingScopeId: isPendingTarget ? undefined : state.pendingScopeId,
@@ -106,15 +110,16 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       }
       return {
         ...state,
-        data: action.payload,
+        data: payload,
         loading: false,
         loadingReason: undefined,
         pendingScopeId: undefined,
-        stale: action.cache?.stale === true,
+        stale: false,
         error: null,
         cliDiagnostic: null,
         activity: { kind: 'idle' },
       };
+    }
 
     case 'SET_ERROR':
       return {

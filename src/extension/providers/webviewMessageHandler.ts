@@ -261,6 +261,7 @@ export async function handleWebviewMessage(
     }
 
     case 'requestNewChange': {
+      const { scope } = resolveScopeRoot(dataManager, message.scopeId);
       const name = await vscode.window.showInputBox({
         prompt: 'Enter change name',
         placeHolder: 'e.g., add-authentication',
@@ -273,7 +274,7 @@ export async function handleWebviewMessage(
         },
       });
       if (name) {
-        await dataManager.createChange(name);
+        await dataManager.createChange(name, scope);
         vscode.window.showInformationMessage(t('command.created', { name }));
         const newData = await dataManager.getDashboardData();
         webview.postMessage({ type: 'dashboardData', data: newData, debug: getDebug() });
@@ -469,6 +470,7 @@ export async function handleWebviewMessage(
     case 'archiveChange': {
       const name = message.name;
       if (!name) break;
+      const { scope } = resolveScopeRoot(dataManager, message.scopeId);
       const confirm = await confirmDirectArchive(name);
       if (confirm === 'verifyFirst') {
         // Route into the interactive Verify & Archive tab (recommended path).
@@ -481,7 +483,7 @@ export async function handleWebviewMessage(
         break;
       }
       if (confirm === 'archive') {
-        await dataManager.archiveChange(name);
+        await dataManager.archiveChange(name, scope);
         vscode.window.showInformationMessage(t('command.archived', { name }));
         const afterArchive = await dataManager.getDashboardData();
         webview.postMessage({ type: 'dashboardData', data: afterArchive, debug: getDebug() });
@@ -707,6 +709,11 @@ export async function handleWebviewMessage(
         break;
       }
       if (typeof changeName === 'string' && typeof artifactType === 'string') {
+        const { scope } = resolveScopeRoot(dataManager, message.scopeId);
+        // Keep mutations on the visible Root (same-name isolation across Local/Store).
+        if (message.scopeId && scope && dataManager.getSelectedScope()?.id !== scope.id) {
+          await dataManager.selectScope(scope.id);
+        }
         await vscode.commands.executeCommand('openspec.continueArtifact', changeName, artifactType);
       }
       break;

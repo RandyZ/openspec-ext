@@ -16,6 +16,11 @@ import type { CliActivationDiagnostic } from './cliActivationDiagnostic';
 import { OpenSpecScopeManager, loadScopeRelationships, type OpenSpecScope } from './openspecScope';
 import { detectOpenSpecFeatures, type OpenSpecCapabilities } from './openspecFeatures';
 import type { CacheStats, CacheStatsOptions, OpenSpecCacheService } from './openSpecCacheService';
+import {
+  buildChangeStatusCounts,
+  enrichChangeWithLifecycle,
+  type ChangeStatusCounts,
+} from '../../shared/changeLifecycle';
 
 export interface ScopeInfo {
   id: string;
@@ -55,6 +60,7 @@ export interface DashboardData {
   changes: ChangeInfo[];
   specs: SpecInfo[];
   archivedChanges: ArchivedChangeInfo[];
+  changeStatusCounts: ChangeStatusCounts;
   lastRefresh: number;
   scope?: ScopeInfo;
   scopes?: ScopeInfo[];
@@ -745,7 +751,9 @@ export class DataManager {
         services.stateReader.listSpecs(),
         services.stateReader.listArchivedChanges(),
       ]);
-      const changes = await this.enrichChangesWithProposalWhy(rawChanges, services.contentAccess);
+      const changesWithLifecycle = rawChanges.map((change) => enrichChangeWithLifecycle(change));
+      const changes = await this.enrichChangesWithProposalWhy(changesWithLifecycle, services.contentAccess);
+      const changeStatusCounts = buildChangeStatusCounts(changes, archivedChanges);
 
       const scopeInfo: ScopeInfo | undefined = scope
         ? {
@@ -804,6 +812,7 @@ export class DataManager {
         changes,
         specs,
         archivedChanges,
+        changeStatusCounts,
         lastRefresh: Date.now(),
         scope: scopeInfo,
         scopes: scopesInfo.length > 0 ? scopesInfo : undefined,
@@ -912,7 +921,7 @@ export class DataManager {
           } catch {
             // Keep current timestamp when stat fails; the entry still exists.
           }
-          return {
+          return enrichChangeWithLifecycle({
             name: changeName,
             completedTasks,
             totalTasks,
@@ -920,7 +929,7 @@ export class DataManager {
             createdAt,
             status: totalTasks === 0 ? 'draft' : completedTasks === totalTasks ? 'complete' : 'in-progress',
             artifacts,
-          };
+          });
         })
     );
 
@@ -933,25 +942,25 @@ export class DataManager {
     changeName: string,
     contentAccess: IOpenSpecContentAccess
   ): Promise<ChangeInfo['artifacts']> {
+    // Always include the known standard artifact set. Missing files stay `ready`
+    // so lifecycle derivation prefers planning when the fallback graph is incomplete
+    // (custom schemas may still be incomplete; do not invent Ready to Apply).
     const artifacts: NonNullable<ChangeInfo['artifacts']> = [];
     for (const artifactType of ['proposal', 'design', 'tasks'] as const) {
-      if (await contentAccess.artifactExists(changeName, artifactType)) {
-        artifacts.push({
-          id: artifactType,
-          outputPath: `openspec/changes/${changeName}/${artifactType}.md`,
-          status: 'done',
-        });
-      }
+      const exists = await contentAccess.artifactExists(changeName, artifactType);
+      artifacts.push({
+        id: artifactType,
+        outputPath: `openspec/changes/${changeName}/${artifactType}.md`,
+        status: exists ? 'done' : 'ready',
+      });
     }
 
     const deltaSpecIds = await contentAccess.listDeltaSpecIds(changeName);
-    if (deltaSpecIds.length > 0) {
-      artifacts.push({
-        id: 'specs',
-        outputPath: `openspec/changes/${changeName}/specs`,
-        status: 'done',
-      });
-    }
+    artifacts.push({
+      id: 'specs',
+      outputPath: `openspec/changes/${changeName}/specs`,
+      status: deltaSpecIds.length > 0 ? 'done' : 'ready',
+    });
     return artifacts;
   }
 

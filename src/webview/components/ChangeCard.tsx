@@ -3,6 +3,10 @@ import { ChangeInfo } from '../types/messages';
 import { t } from '../../i18n';
 import type { WorkflowAction } from '../../shared/workflowCommand';
 import {
+  getWorkflowActionsForLifecycle,
+  type ChangeLifecycleStatus,
+} from '../../shared/changeLifecycle';
+import {
   getWorkflowActionButtonLabel,
   getWorkflowActionTitle,
   type WorkflowLaunchConfigView,
@@ -26,25 +30,67 @@ const ArtifactBadge: React.FC<{ id: string; status: 'done' | 'ready' | 'blocked'
   );
 };
 
-function getSmartActions(change: ChangeInfo): { label: string; action: WorkflowAction }[] {
-  const hasAllArtifacts = change.artifacts?.every((a) => a.status === 'done') ?? false;
-  const allTasksDone = change.totalTasks > 0 && change.completedTasks === change.totalTasks;
+const LIFECYCLE_BADGE_KEYS: Record<ChangeLifecycleStatus, string> = {
+  planning: 'dashboard.lifecyclePlanning',
+  'ready-to-apply': 'dashboard.lifecycleReadyToApply',
+  applying: 'dashboard.lifecycleApplying',
+  'ready-to-verify': 'dashboard.lifecycleReadyToVerify',
+  archived: 'dashboard.lifecycleArchived',
+};
 
-  if (!hasAllArtifacts) {
-    return [
-      { label: 'Continue', action: 'continue' },
-      { label: 'FF', action: 'ff' },
-    ];
+/** Semantic token hints — text/data attributes remain the primary status signal. */
+const LIFECYCLE_BADGE_STYLES: Record<ChangeLifecycleStatus, React.CSSProperties> = {
+  planning: {
+    background: 'var(--vscode-badge-background)',
+    color: 'var(--vscode-badge-foreground)',
+  },
+  'ready-to-apply': {
+    background: 'var(--vscode-button-background)',
+    color: 'var(--vscode-button-foreground)',
+  },
+  applying: {
+    background: 'var(--vscode-progressBar-background)',
+    color: 'var(--vscode-editor-foreground)',
+  },
+  'ready-to-verify': {
+    background: 'var(--vscode-inputValidation-infoBackground)',
+    color: 'var(--vscode-editor-foreground)',
+  },
+  archived: {
+    background: 'var(--vscode-badge-background)',
+    color: 'var(--vscode-badge-foreground)',
+    opacity: 0.85,
+  },
+};
+
+const WORKFLOW_ACTION_LABELS: Record<WorkflowAction, string> = {
+  explore: 'Explore',
+  continue: 'Continue',
+  ff: 'FF',
+  apply: 'Apply',
+  verify: 'Verify',
+  archive: 'Archive',
+  sync: 'Sync',
+};
+
+function resolveLifecycleStatus(
+  change: ChangeInfo
+): ChangeLifecycleStatus | null {
+  const status = change.lifecycleStatus as ChangeLifecycleStatus | undefined;
+  if (
+    status === 'planning' ||
+    status === 'ready-to-apply' ||
+    status === 'applying' ||
+    status === 'ready-to-verify' ||
+    status === 'archived'
+  ) {
+    return status;
   }
-  if (allTasksDone) {
-    return [
-      { label: 'Verify', action: 'verify' },
-      { label: 'Archive', action: 'archive' },
-    ];
-  }
-  return [
-    { label: 'Apply', action: 'apply' },
-  ];
+  return null;
+}
+
+function getActionLabel(action: WorkflowAction): string {
+  return WORKFLOW_ACTION_LABELS[action] ?? action;
 }
 
 export interface ChangeCardProps {
@@ -62,13 +108,17 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
   onClick,
   onCopyFf,
   onCopyApply,
-  onArchive,
   onLaunchWorkflow,
   workflowLaunchConfig,
 }) => {
   const [hover, setHover] = React.useState(false);
   const [focusWithin, setFocusWithin] = React.useState(false);
   const showActions = hover || focusWithin;
+
+  const lifecycleStatus = resolveLifecycleStatus(change);
+  const workflowActions =
+    lifecycleStatus != null ? getWorkflowActionsForLifecycle(lifecycleStatus) : [];
+  const needsAttention = change.attention?.required === true;
 
   const handleCardClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('[data-action]')) return;
@@ -80,6 +130,9 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
   const progressPercent = change.totalTasks > 0
     ? Math.round((change.completedTasks / change.totalTasks) * 100)
     : 0;
+
+  const hasActionRail =
+    (onLaunchWorkflow && workflowActions.length > 0) || Boolean(onCopyFf) || Boolean(onCopyApply);
 
   return (
     <div
@@ -110,7 +163,33 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
       {/* 1. Change name */}
       <div className="font-medium text-sm mb-2">{change.name}</div>
 
-      {/* 2. Proposal Why summary */}
+      {/* 2. Lifecycle status badge (+ attention) */}
+      {lifecycleStatus && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-2">
+          <span
+            data-lifecycle-status={lifecycleStatus}
+            className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded font-medium"
+            style={LIFECYCLE_BADGE_STYLES[lifecycleStatus]}
+          >
+            {t(LIFECYCLE_BADGE_KEYS[lifecycleStatus])}
+          </span>
+          {needsAttention && (
+            <span
+              data-attention="true"
+              className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+              style={{
+                background: 'var(--vscode-inputValidation-warningBackground)',
+                color: 'var(--vscode-editor-foreground)',
+              }}
+              title={t('dashboard.needsAttention')}
+            >
+              {t('dashboard.needsAttention')}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* 3. Proposal Why summary */}
       {change.proposalWhySummary && (
         <div
           className="text-xs mb-2 leading-relaxed"
@@ -121,7 +200,7 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
         </div>
       )}
 
-      {/* 3. Artifact badges */}
+      {/* 4. Artifact badges */}
       {change.artifacts && change.artifacts.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
           {change.artifacts.map((a) => (
@@ -130,14 +209,14 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
         </div>
       )}
 
-      {/* 4. Created / Updated row */}
+      {/* 5. Created / Updated row */}
       <div className="text-xs flex flex-wrap items-center gap-x-2 gap-y-1 mb-2" style={{ color: 'var(--vscode-descriptionForeground)' }}>
         {createdLabel && <span>{t('change.created', { date: createdLabel })}</span>}
         {createdLabel && updatedLabel && <span aria-hidden="true">•</span>}
         {updatedLabel && <span>{t('change.updated', { date: updatedLabel })}</span>}
       </div>
 
-      {/* 5. Task progress block */}
+      {/* 6. Task progress block */}
       {change.totalTasks > 0 && (
         <div className="mt-2">
           <div className="flex items-center justify-between gap-2 text-xs" style={{ color: 'var(--vscode-descriptionForeground)' }}>
@@ -156,60 +235,59 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
         </div>
       )}
 
-      {/* 6. hover/focus workflow actions */}
-      {showActions && (onLaunchWorkflow || onCopyFf || onCopyApply || onArchive) && (
+      {/* 7. hover/focus workflow actions — keep reveal pattern; always in DOM for a11y/tests */}
+      {hasActionRail && (
         <div
           className="flex flex-wrap gap-1 mt-2 pt-2 border-t transition-opacity duration-150"
-          style={{ borderColor: 'var(--vscode-panel-border)' }}
+          style={{
+            borderColor: 'var(--vscode-panel-border)',
+            opacity: showActions ? 1 : 0,
+            pointerEvents: showActions ? 'auto' : 'none',
+          }}
           data-action
+          aria-hidden={!showActions}
         >
-          {onLaunchWorkflow && getSmartActions(change).map((action) => (
-            <button
-              key={action.label}
-              type="button"
-              data-action
-              className="px-2 py-0.5 text-xs rounded cursor-pointer border-none"
-              title={
-                action.action === 'verify' || action.action === 'archive'
-                  ? action.label
-                  : getWorkflowActionTitle(action.label, workflowLaunchConfig)
-              }
-              aria-label={
-                action.action === 'verify' || action.action === 'archive'
-                  ? action.label
-                  : getWorkflowActionTitle(action.label, workflowLaunchConfig)
-              }
-              style={{
-                background: 'var(--vscode-button-background)',
-                color: 'var(--vscode-button-foreground)',
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onLaunchWorkflow(action.action, change.name);
-              }}
-            >
-              {action.action === 'verify' || action.action === 'archive'
-                ? action.label
-                : getWorkflowActionButtonLabel(action.label, workflowLaunchConfig)}
-            </button>
-          ))}
-          {onArchive && !onLaunchWorkflow && change.totalTasks > 0 && change.completedTasks === change.totalTasks && (
-            <button
-              type="button"
-              data-action
-              className="px-2 py-0.5 text-xs rounded cursor-pointer border-none"
-              style={{
-                background: 'var(--vscode-inputValidation-warningBackground)',
-                color: 'var(--vscode-editor-foreground)',
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onArchive(change.name);
-              }}
-            >
-              Archive
-            </button>
-          )}
+          {onLaunchWorkflow &&
+            workflowActions.map((descriptor) => {
+              const label = getActionLabel(descriptor.action);
+              const isInteractiveVerifyOrArchive =
+                descriptor.action === 'verify' || descriptor.action === 'archive';
+              const buttonLabel = isInteractiveVerifyOrArchive
+                ? label
+                : getWorkflowActionButtonLabel(label, workflowLaunchConfig);
+              const title = isInteractiveVerifyOrArchive
+                ? label
+                : getWorkflowActionTitle(label, workflowLaunchConfig);
+
+              return (
+                <button
+                  key={descriptor.action}
+                  type="button"
+                  data-action
+                  data-workflow-action={descriptor.action}
+                  data-variant={descriptor.variant}
+                  className="px-2 py-0.5 text-xs rounded cursor-pointer border-none"
+                  title={title}
+                  aria-label={title}
+                  style={{
+                    background:
+                      descriptor.variant === 'primary'
+                        ? 'var(--vscode-button-background)'
+                        : 'var(--vscode-button-secondaryBackground)',
+                    color:
+                      descriptor.variant === 'primary'
+                        ? 'var(--vscode-button-foreground)'
+                        : 'var(--vscode-button-secondaryForeground)',
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onLaunchWorkflow(descriptor.action, change.name);
+                  }}
+                >
+                  {buttonLabel}
+                </button>
+              );
+            })}
         </div>
       )}
     </div>

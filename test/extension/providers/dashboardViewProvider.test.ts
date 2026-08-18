@@ -63,10 +63,21 @@ describe('DashboardViewProvider', () => {
           completedTasks: 0,
           totalTasks: 1,
           lastModified: '2026-06-01T00:00:00.000Z',
-          status: 'draft',
+          status: 'draft' as const,
+          lifecycleStatus: 'planning' as const,
         },
       ],
       specs: [],
+      archivedChanges: [],
+      changeStatusCounts: {
+        all: 1,
+        planning: 1,
+        readyToApply: 0,
+        applying: 0,
+        readyToVerify: 0,
+        archived: 0,
+        needsAttention: 0,
+      },
       lastRefresh,
     };
   }

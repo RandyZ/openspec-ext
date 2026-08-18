@@ -198,5 +198,58 @@ describe('i18n', () => {
         expect(zhCn[key as keyof typeof zhCn]).toBeTruthy();
       }
     });
+
+    it('contains lifecycle filter, pagination, attention, and empty-state keys in both locales', () => {
+      const requiredKeys = [
+        'dashboard.lifecycleAll',
+        'dashboard.lifecyclePlanning',
+        'dashboard.lifecycleReadyToApply',
+        'dashboard.lifecycleApplying',
+        'dashboard.lifecycleReadyToVerify',
+        'dashboard.lifecycleArchived',
+        'dashboard.lifecycleFilterLabel',
+        'dashboard.needsAttention',
+        'dashboard.needsAttentionFilterLabel',
+        'dashboard.moreFilters',
+        'dashboard.sortLabel',
+        'dashboard.sortUpdatedDesc',
+        'dashboard.sortUpdatedAsc',
+        'dashboard.sortCreatedDesc',
+        'dashboard.sortNameAsc',
+        'dashboard.pageSizeLabel',
+        'dashboard.paginationRange',
+        'dashboard.paginationRangeSimple',
+        'dashboard.paginationPrev',
+        'dashboard.paginationNext',
+        'dashboard.paginationPrevDisabled',
+        'dashboard.paginationNextDisabled',
+        'dashboard.paginationPage',
+        'dashboard.emptyPlanning',
+        'dashboard.emptyReadyToApply',
+        'dashboard.emptyApplying',
+        'dashboard.emptyReadyToVerify',
+        'dashboard.emptyArchived',
+        'dashboard.emptyArchivedInRoot',
+        'dashboard.emptySearchAndFilters',
+        'dashboard.archivedReadOnlyHint',
+        'dashboard.openArchivedChange',
+      ];
+
+      for (const key of requiredKeys) {
+        expect(en[key as keyof typeof en]).toBeTruthy();
+        expect(zhCn[key as keyof typeof zhCn]).toBeTruthy();
+      }
+
+      expect(en['dashboard.lifecycleAll']).toBe('All');
+      expect(en['dashboard.lifecyclePlanning']).toBe('Planning');
+      expect(en['dashboard.lifecycleReadyToApply']).toBe('Ready to Apply');
+      expect(en['dashboard.lifecycleApplying']).toBe('Applying');
+      expect(en['dashboard.lifecycleReadyToVerify']).toBe('Ready to Verify');
+      expect(en['dashboard.lifecycleArchived']).toBe('Archived');
+      expect(en['dashboard.needsAttention']).toBe('Needs Attention');
+
+      expect(zhCn['dashboard.lifecycleAll']).toBe('全部');
+      expect(zhCn['dashboard.lifecycleArchived']).toBe('已归档');
+    });
   });
 });

@@ -10,7 +10,7 @@ A VSCode/Cursor extension that provides a visual dashboard for [OpenSpec](https:
 
 ### Features
 
-- **Visual Dashboard**: Changes grouped by status, progress bars, Proposal Why summaries, and search
+- **Visual Dashboard**: Lifecycle status filters (Planning → Ready to Verify + Archived), Needs Attention, search, sort, and pagination
 - **Change Detail**: Tabs for Proposal, Specs, Design, Tasks, and Verify & Archive; markdown viewer; task execution controls
 - **CLI Integration**: OpenSpec CLI (list, status, new, archive) with retry, timeout, and `openspec.cliPath` fallback
 - **Quick Actions**: Continue, FF, Apply, Verify, Archive, Open in Editor, Refresh
@@ -23,7 +23,7 @@ A VSCode/Cursor extension that provides a visual dashboard for [OpenSpec](https:
 
 <img src="docs/images/openspec-dashboard.png" alt="OpenSpec dashboard sidebar" />
 
-The sidebar shows active changes grouped by status, searchable change cards, task progress, artifact badges, and Proposal Why summaries.
+The sidebar shows active and archived changes with lifecycle filters, searchable cards, task progress, artifact badges, and Proposal Why summaries.
 
 ### Change details and task confirmation
 
@@ -91,8 +91,13 @@ Open Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`):
 
 ### Dashboard
 
+- Filter by Host-derived lifecycle status: **All**, **Planning**, **Ready to Apply**, **Applying**, **Ready to Verify**, and **Archived**.
+- **Needs Attention** is an orthogonal filter (not a lifecycle value) for changes that need review.
+- Pipeline order is always **filter → search → sort → paginate**; status filters apply before pagination.
+- **Archived** is a first-class, read-only lifecycle status (no write workflow actions).
+- View state (filters, search, sort, page size) is scoped per OpenSpec Root (Local / Store).
 - Search changes by name, status, artifact, or Proposal Why text.
-- Review progress, status, artifact badges, and Proposal Why summaries in the sidebar.
+- Review progress, lifecycle badges, artifact badges, and Proposal Why summaries.
 - Open change details with Proposal / Specs / Design / Tasks / Verify & Archive tabs.
 - Execute tasks through the selected adapter, or fill/copy workflow commands into chat.
 - Toggle task completion only after confirming in the webview dialog.

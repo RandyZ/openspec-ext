@@ -22,6 +22,8 @@ Changes Workspace 即将加入分页，但当前 Change 只使用 `draft / in-pr
 - 状态、搜索、排序或高级筛选发生变化时，页码自动重置到第一页。
 - 每个 OpenSpec Root 独立保存筛选、排序、页码和每页数量。
 - ChangeCard 直接消费统一生命周期状态，并使用同一映射生成 Continue、FF、Apply、Verify 等智能操作。
+- Changes Workspace 筛选控件布局可参考 `docs/new-design*` 的 Changes Workspace，但一级筛选标签必须使用上述生命周期状态，不得使用稿中的 `Draft` / `In Progress` / `Completed` / `Merged`。
+- Header 仅保留 New Change，不增加 Add Operation。
 - 保留当前 `status` 字段作为短期兼容层，待所有消费者迁移后再删除。
 - 在进入本 Change 的 UI 实施前，所有已有的 Change 写操作 MUST 显式绑定当前有效 Root；至少覆盖 New Change、Archive、Task Toggle、创建 Artifact 和 Workflow Launch，避免 Store 视图中的操作写入 Local Root。
 - Archived 首版复用 `DataManager` 当前刷新流程已加载的同一 Root 数据，不新增服务端分页或重复 CLI 查询。
@@ -67,6 +69,9 @@ None.
 - 不实现项目 Store link/unlink。
 - 不实现 Workset 侧边栏列表。
 - 不实现 Store Quick View。
+- 不实现 Add Operation、Store 关联 Modal，或设计稿中的 `Draft` / `In Progress` / `Completed` / `Merged` 一级筛选。
+- 不以 `Ready to Sync` / `Ready to Archive` / `Blocked` 作为一级筛选值。
 - 不实现服务端分页或新增 CLI 参数。
 - 不重构 Change Detail 的动态 Artifact Tab。
 - 不实现 Project Store 关联、Store Quick View 或 Workset 工作区；这些仍由独立 Change 负责。
+- `docs/new-design*` 只提供布局参考，不覆盖本 Change 的生命周期状态模型。

@@ -10,7 +10,7 @@ OpenSpec 扩展为 [OpenSpec](https://github.com/Fission-AI/OpenSpec) 提供可�
 
 ### 功能特性
 
-- **可视化 Dashboard**：按状态分组展示 changes，支持进度条、Proposal Why 摘要和搜索
+- **可视化 Dashboard**：生命周期状态筛选（Planning → Ready to Verify + Archived）、Needs Attention、搜索、排序与分页
 - **Change 详情**：Proposal、Specs、Design、Tasks、Verify & Archive 标签页；Markdown 渲染；任务执行入口
 - **CLI 集成**：集成 OpenSpec CLI（list、status、new、archive），支持重试、超时和 `openspec.cliPath` 兜底
 - **快捷操作**：Continue、FF、Apply、Verify、Archive、Open in Editor、Refresh
@@ -23,7 +23,7 @@ OpenSpec 扩展为 [OpenSpec](https://github.com/Fission-AI/OpenSpec) 提供可�
 
 <img src="docs/images/openspec-dashboard.png" alt="OpenSpec 仪表板侧边栏" />
 
-侧边栏展示按状态分组的 changes、搜索框、任务进度、artifact badges 和 Proposal Why 摘要。
+侧边栏展示活跃与已归档 changes，支持生命周期筛选、搜索、任务进度、artifact badges 和 Proposal Why 摘要。
 
 ### Change 详情与任务确认
 
@@ -91,8 +91,13 @@ Change 详情页提供工作流操作、artifact tabs、任务执行入口，以
 
 ### Dashboard
 
+- 按 Host 推导的生命周期状态筛选：**全部**、**Planning**、**Ready to Apply**、**Applying**、**Ready to Verify**、**已归档（Archived）**。
+- **Needs Attention** 是正交筛选条件（不是生命周期值），用于标出需要关注的 change。
+- 列表处理顺序固定为：**筛选 → 搜索 → 排序 → 分页**；状态筛选在分页之前生效。
+- **Archived** 是一等、只读的生命周期状态（不提供写操作工作流按钮）。
+- 视图状态（筛选、搜索、排序、每页数量）按 OpenSpec Root（Local / Store）隔离保存。
 - 按 change 名称、状态、artifact 或 Proposal Why 文本搜索。
-- 在侧边栏查看进度、状态、artifact badges 和 Proposal Why 摘要。
+- 在侧边栏查看进度、生命周期徽章、artifact badges 和 Proposal Why 摘要。
 - 打开 change 详情页查看 Proposal / Specs / Design / Tasks / Verify & Archive。
 - 通过选定 adapter 执行任务，或将工作流命令填充/复制到 chat。
 - 修改任务完成状态前会先显示 webview 确认框。

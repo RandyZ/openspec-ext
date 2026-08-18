@@ -267,6 +267,36 @@ describe('OpenSpecCliService', () => {
         },
       ]);
     });
+
+    it('marks metadata-read-failed when getChangeStatus throws (not silent empty artifacts)', async () => {
+      const service = new OpenSpecCliService('/workspace');
+      const exec = vi.spyOn(service as any, 'execOpenSpec');
+
+      exec
+        .mockResolvedValueOnce(JSON.stringify({
+          changes: [
+            {
+              name: 'status-broke',
+              completedTasks: 0,
+              totalTasks: 2,
+              lastModified: '2026-06-10T12:00:00.000Z',
+            },
+          ],
+        }))
+        .mockRejectedValueOnce(new Error('status failed'));
+
+      await expect(service.listChanges()).resolves.toMatchObject([
+        {
+          name: 'status-broke',
+          artifacts: [],
+          lifecycleStatus: 'planning',
+          attention: {
+            required: true,
+            reasons: ['metadata-read-failed'],
+          },
+        },
+      ]);
+    });
   });
 
   describe('getChangeStatus', () => {

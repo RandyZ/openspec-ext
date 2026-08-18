@@ -8,6 +8,7 @@ const baseChange: ChangeInfo = {
   totalTasks: 0,
   lastModified: '2026-04-30T00:00:00.000Z',
   status: 'draft',
+  lifecycleStatus: 'planning',
   artifacts: [],
 };
 

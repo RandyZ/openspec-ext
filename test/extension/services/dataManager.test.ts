@@ -364,6 +364,7 @@ describe('DataManager dashboard data loading', () => {
       totalTasks: 1,
       lastModified: '2026-01-01',
       status: 'draft',
+        lifecycleStatus: 'planning',
     };
     const newChange: ChangeInfo = {
       name: 'new-change',
@@ -371,6 +372,7 @@ describe('DataManager dashboard data loading', () => {
       totalTasks: 1,
       lastModified: '2026-01-02',
       status: 'draft',
+        lifecycleStatus: 'planning',
     };
     const createSettled = vi.fn();
 
@@ -429,6 +431,7 @@ describe('DataManager dashboard data loading', () => {
       totalTasks: 1,
       lastModified: '2026-01-01',
       status: 'draft',
+        lifecycleStatus: 'planning',
     };
     const storeChange: ChangeInfo = {
       name: 'store-fresh',
@@ -436,6 +439,7 @@ describe('DataManager dashboard data loading', () => {
       totalTasks: 1,
       lastModified: '2026-01-02',
       status: 'draft',
+        lifecycleStatus: 'planning',
     };
     const refreshCallback = vi.fn();
 
@@ -494,20 +498,20 @@ describe('DataManager dashboard data loading', () => {
     storeSpecsDeferred.resolve([]);
 
     await expect(localRefresh).resolves.toMatchObject({
-      changes: [localChange],
+      changes: [expect.objectContaining({ name: localChange.name })],
       scope: expect.objectContaining({ id: localScope.id }),
     });
     await expect(storeRefresh).resolves.toMatchObject({
-      changes: [storeChange],
+      changes: [expect.objectContaining({ name: storeChange.name })],
       scope: expect.objectContaining({ id: storeScope.id }),
     });
     expect(refreshCallback).toHaveBeenCalledTimes(1);
     expect(refreshCallback).toHaveBeenCalledWith(expect.objectContaining({
-      changes: [storeChange],
+      changes: [expect.objectContaining({ name: storeChange.name })],
       scope: expect.objectContaining({ id: storeScope.id }),
     }));
     expect((manager as any).cachedData).toMatchObject({
-      changes: [storeChange],
+      changes: [expect.objectContaining({ name: storeChange.name })],
       scope: expect.objectContaining({ id: storeScope.id }),
     });
   });
@@ -524,6 +528,7 @@ describe('DataManager dashboard data loading', () => {
       totalTasks: 1,
       lastModified: '2026-01-01',
       status: 'draft',
+        lifecycleStatus: 'planning',
     };
     const firstMutationChange: ChangeInfo = {
       name: 'first-mutation',
@@ -531,6 +536,7 @@ describe('DataManager dashboard data loading', () => {
       totalTasks: 1,
       lastModified: '2026-01-02',
       status: 'draft',
+        lifecycleStatus: 'planning',
     };
     const secondMutationChange: ChangeInfo = {
       name: 'second-mutation',
@@ -538,6 +544,7 @@ describe('DataManager dashboard data loading', () => {
       totalTasks: 1,
       lastModified: '2026-01-03',
       status: 'draft',
+        lifecycleStatus: 'planning',
     };
     const firstCreateSettled = vi.fn();
     const secondCreateSettled = vi.fn();
@@ -623,6 +630,7 @@ describe('DataManager dashboard data loading', () => {
         createdAt: '2026-06-01T09:00:00.000Z',
         lastModified: '2026-06-10T12:00:00.000Z',
         status: 'in-progress',
+        lifecycleStatus: 'planning',
       }),
     ]);
   });
@@ -648,6 +656,7 @@ describe('DataManager dashboard data loading', () => {
     expect(changes[0]).toMatchObject({
       name: 'missing-time',
       status: 'draft',
+        lifecycleStatus: 'planning',
       lastModified: expect.any(String),
     });
     expect(changes[0].createdAt).toBeUndefined();
@@ -718,7 +727,14 @@ describe('DataManager CLI activation diagnostic', () => {
     vi.spyOn((manager as any).stateReader, 'listArchivedChanges').mockResolvedValue([]);
     vi.spyOn((manager as any).cliService, 'getCliActivationDiagnostic').mockReturnValue(diagnostic);
     vi.spyOn(manager as any, 'listChangesFromFilesystem').mockResolvedValue([
-      { name: 'from-files', completedTasks: 0, totalTasks: 0, lastModified: 'now', status: 'draft' },
+      {
+        name: 'from-files',
+        completedTasks: 0,
+        totalTasks: 0,
+        lastModified: 'now',
+        status: 'draft',
+        lifecycleStatus: 'planning',
+      },
     ]);
     (manager as any).cliAvailable = true;
 
@@ -1151,6 +1167,7 @@ describe('DataManager refresh cache', () => {
         totalTasks: 1,
         lastModified: '2026-07-02T00:00:00.000Z',
         status: 'in-progress',
+        lifecycleStatus: 'planning',
         artifacts: [],
       },
     ];
@@ -1439,7 +1456,14 @@ describe('DataManager declared project-root scopes', () => {
     const constructedRoots: string[] = [];
     const scopedCliGateway = {
       listChanges: vi.fn().mockResolvedValue([
-        { name: 'fastgpt-change', completedTasks: 0, totalTasks: 1, lastModified: '2026-01-02', status: 'draft' },
+        {
+          name: 'fastgpt-change',
+          completedTasks: 0,
+          totalTasks: 1,
+          lastModified: '2026-01-02',
+          status: 'draft',
+          lifecycleStatus: 'planning',
+        },
       ]),
       listSpecs: vi.fn().mockResolvedValue([]),
       listArchivedChanges: vi.fn().mockResolvedValue([]),
@@ -1484,5 +1508,189 @@ describe('DataManager declared project-root scopes', () => {
     // Changes were read through the scoped gateway, not the activation-root reader.
     expect(scopedCliGateway.listChanges).toHaveBeenCalled();
     expect(data.changes[0].name).toBe('fastgpt-change');
+  });
+});
+
+describe('DataManager lifecycle data contract', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('enriches CLI changes with lifecycleStatus and publishes changeStatusCounts', async () => {
+    const { manager, stateReader, changesDeferred, specsDeferred } = createManager();
+    const archived: ArchivedChangeInfo[] = [
+      { directoryName: '2026-01-01-old', name: 'old', archiveDate: '2026-01-01' },
+    ];
+    stateReader.listArchivedChanges = vi.fn().mockResolvedValue(archived);
+    vi.spyOn(manager as any, 'enrichChangesWithProposalWhy').mockImplementation(async (changes) => changes);
+
+    const refreshPromise = manager.refresh();
+    changesDeferred.resolve([
+      {
+        name: 'ready-one',
+        completedTasks: 0,
+        totalTasks: 3,
+        lastModified: '2026-01-01',
+        status: 'draft',
+        lifecycleStatus: 'planning',
+        artifacts: [
+          { id: 'proposal', outputPath: 'openspec/changes/ready-one/proposal.md', status: 'done' },
+          { id: 'design', outputPath: 'openspec/changes/ready-one/design.md', status: 'done' },
+          { id: 'tasks', outputPath: 'openspec/changes/ready-one/tasks.md', status: 'done' },
+        ],
+      },
+      {
+        name: 'status-failed',
+        completedTasks: 0,
+        totalTasks: 2,
+        lastModified: '2026-01-02',
+        status: 'draft',
+        lifecycleStatus: 'planning',
+        artifacts: [],
+        attention: { required: true, reasons: ['metadata-read-failed'] },
+      } as ChangeInfo,
+    ]);
+    specsDeferred.resolve([]);
+
+    const data = await refreshPromise;
+
+    expect(data.changes[0].lifecycleStatus).toBe('ready-to-apply');
+    expect(data.changes[0].attention).toBeUndefined();
+    expect(data.changes[1].lifecycleStatus).toBe('planning');
+    expect(data.changes[1].attention).toEqual({
+      required: true,
+      reasons: ['metadata-read-failed'],
+    });
+    expect(data.changeStatusCounts).toEqual({
+      all: 3,
+      planning: 1,
+      readyToApply: 1,
+      applying: 0,
+      readyToVerify: 0,
+      archived: 1,
+      needsAttention: 1,
+    });
+    expect(data.archivedChanges).toEqual(archived);
+  });
+
+  it('keeps stale scope counts from overwriting the selected root snapshot', async () => {
+    const manager = new DataManager('/tmp/openspec-ext-test-workspace');
+    const localScope = makeLocalScope();
+    const storeScope = {
+      id: 'store:team-plans',
+      label: 'team-plans',
+      rootPath: '/stores/team-plans',
+      source: 'store',
+      storeId: 'team-plans',
+      runtimeSource: 'installed',
+      capabilities: { diagnostics: [] },
+    };
+    let selectedScope = localScope;
+    const localChangesDeferred = createDeferred<ChangeInfo[]>();
+    const localSpecsDeferred = createDeferred<SpecInfo[]>();
+    const storeChangesDeferred = createDeferred<ChangeInfo[]>();
+    const storeSpecsDeferred = createDeferred<SpecInfo[]>();
+    const refreshCallback = vi.fn();
+
+    Object.assign(manager as any, {
+      cliAvailable: true,
+      capabilities: {},
+      cachedData: undefined,
+      scopeManager: {
+        getSelectedScope: vi.fn(() => selectedScope),
+        getScopeOptions: vi.fn(() => [localScope, storeScope]),
+        selectScope: vi.fn((scopeId: string) => {
+          selectedScope = scopeId === storeScope.id ? (storeScope as any) : localScope;
+        }),
+      },
+      getScopedServices: vi.fn((scope: typeof localScope | typeof storeScope) => {
+        const isStore = scope?.id === storeScope.id;
+        return {
+          stateReader: {
+            listChanges: vi.fn(() => (isStore ? storeChangesDeferred.promise : localChangesDeferred.promise)),
+            listSpecs: vi.fn(() => (isStore ? storeSpecsDeferred.promise : localSpecsDeferred.promise)),
+            listArchivedChanges: vi.fn().mockResolvedValue(
+              isStore
+                ? [{ directoryName: '2026-01-02-store-arch', name: 'store-arch', archiveDate: '2026-01-02' }]
+                : [{ directoryName: '2026-01-01-local-arch', name: 'local-arch', archiveDate: '2026-01-01' }]
+            ),
+          },
+          contentAccess: {
+            readArtifact: vi.fn().mockResolvedValue(''),
+            getChangeOpenspecYamlPath: vi.fn(),
+          },
+          rootPath: scope?.rootPath ?? '/tmp/openspec-ext-test-workspace',
+          scope,
+        };
+      }),
+      cliService: {
+        getCliActivationDiagnostic: vi.fn().mockReturnValue(null),
+        runJson: vi.fn().mockResolvedValue({}),
+      },
+    });
+    vi.spyOn(manager as any, 'enrichChangesWithProposalWhy').mockImplementation(async (changes) => changes);
+    (manager as any).refreshCallbacks.add(refreshCallback);
+
+    const localRefresh = manager.refresh();
+    manager.selectScope(storeScope.id);
+    const storeRefresh = manager.refresh();
+
+    localChangesDeferred.resolve([
+      {
+        name: 'same-name',
+        completedTasks: 0,
+        totalTasks: 0,
+        lastModified: '2026-01-01',
+        status: 'draft',
+        lifecycleStatus: 'planning',
+        artifacts: [],
+      },
+    ]);
+    localSpecsDeferred.resolve([]);
+
+    await vi.waitFor(() => {
+      expect((manager as any).getScopedServices).toHaveBeenCalledWith(storeScope);
+    });
+
+    storeChangesDeferred.resolve([
+      {
+        name: 'same-name',
+        completedTasks: 1,
+        totalTasks: 2,
+        lastModified: '2026-01-02',
+        status: 'in-progress',
+        lifecycleStatus: 'planning',
+        artifacts: [
+          { id: 'proposal', outputPath: 'openspec/changes/same-name/proposal.md', status: 'done' },
+          { id: 'design', outputPath: 'openspec/changes/same-name/design.md', status: 'done' },
+          { id: 'tasks', outputPath: 'openspec/changes/same-name/tasks.md', status: 'done' },
+        ],
+      },
+    ]);
+    storeSpecsDeferred.resolve([]);
+
+    await localRefresh;
+    const storeData = await storeRefresh;
+
+    expect(storeData.scope?.id).toBe(storeScope.id);
+    expect(storeData.changes[0].lifecycleStatus).toBe('applying');
+    expect(storeData.changeStatusCounts).toEqual({
+      all: 2,
+      planning: 0,
+      readyToApply: 0,
+      applying: 1,
+      readyToVerify: 0,
+      archived: 1,
+      needsAttention: 0,
+    });
+    expect(refreshCallback).toHaveBeenCalledTimes(1);
+    expect(refreshCallback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: expect.objectContaining({ id: storeScope.id }),
+        changeStatusCounts: expect.objectContaining({ applying: 1, archived: 1 }),
+      })
+    );
+    expect((manager as any).cachedData.changeStatusCounts.archived).toBe(1);
+    expect((manager as any).cachedData.archivedChanges[0].name).toBe('store-arch');
   });
 });

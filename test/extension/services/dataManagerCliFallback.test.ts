@@ -106,4 +106,30 @@ describe('DataManager CLI fallback', () => {
 
     manager.dispose();
   }, 10000);
+
+  it('filesystem fallback enriches conservative lifecycleStatus and changeStatusCounts', async () => {
+    await fs.promises.mkdir(path.join(tmpRoot, 'openspec', 'changes', 'archive', '2026-01-01-archived'), {
+      recursive: true,
+    });
+
+    const manager = new DataManager(tmpRoot);
+    Object.assign(manager as any, {
+      cliAvailable: false,
+      cliDiagnostic: null,
+    });
+    (manager as any).cliService.getCliActivationDiagnostic = vi.fn().mockReturnValue(null);
+
+    const data = await manager.refresh();
+
+    expect(data.changes).toHaveLength(1);
+    expect(data.changes[0].name).toBe('demo-change');
+    expect(data.changes[0].lifecycleStatus).toBeDefined();
+    expect(data.changes[0].lifecycleStatus).toBe('planning'); // incomplete known artifacts → conservative
+    expect(data.changeStatusCounts.all).toBe(data.changes.length + data.archivedChanges.length);
+    expect(data.changeStatusCounts.archived).toBe(1);
+    expect(data.changeStatusCounts.planning).toBe(1);
+    expect(data.archivedChanges.some((a) => a.name === 'archived')).toBe(true);
+
+    manager.dispose();
+  }, 10000);
 });

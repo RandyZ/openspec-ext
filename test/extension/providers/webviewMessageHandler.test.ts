@@ -677,7 +677,54 @@ describe('handleWebviewMessage toggleTask', () => {
       undefined
     );
 
-    expect(archiveChange).toHaveBeenCalledWith('demo-change');
+    expect(archiveChange).toHaveBeenCalledWith('demo-change', undefined);
+  });
+
+  it('archiveChange binds the visible Root via scopeId', async () => {
+    vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce(
+      t('command.archive') as any
+    );
+    const storeScope = {
+      id: 'store:team-plans',
+      label: 'team-plans',
+      rootPath: '/stores/team-plans',
+      source: 'store',
+      storeId: 'team-plans',
+      runtimeSource: 'installed',
+      capabilities: { diagnostics: [] },
+    };
+    const archiveChange = vi.fn().mockResolvedValue(undefined);
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      resolveScope: vi.fn((scopeId?: string) => (scopeId === storeScope.id ? storeScope : undefined)),
+      archiveChange,
+      getDashboardData: vi.fn().mockResolvedValue({
+        changes: [],
+        specs: [],
+        archivedChanges: [],
+        changeStatusCounts: {
+          all: 0,
+          planning: 0,
+          readyToApply: 0,
+          applying: 0,
+          readyToVerify: 0,
+          archived: 0,
+          needsAttention: 0,
+        },
+        lastRefresh: 1,
+      }),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'archiveChange', name: 'same-name', scopeId: storeScope.id },
+      webview as any,
+      dataManager as any,
+      undefined
+    );
+
+    expect(dataManager.resolveScope).toHaveBeenCalledWith(storeScope.id);
+    expect(archiveChange).toHaveBeenCalledWith('same-name', storeScope);
   });
 
   it('archiveChange with dismiss (cancel) does not archive or open detail', async () => {

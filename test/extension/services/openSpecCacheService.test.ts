@@ -23,12 +23,32 @@ function scope(id: string, rootPath: string): ScopeInfo {
 
 function dashboard(label: string, scopeInfo: ScopeInfo): DashboardData {
   return {
-    changes: [{ name: label, status: 'draft', artifacts: [], tasks: [], updatedAt: 1 }],
+    changes: [
+      {
+        name: label,
+        completedTasks: 0,
+        totalTasks: 0,
+        lastModified: '2026-01-01T00:00:00.000Z',
+        status: 'draft',
+        lifecycleStatus: 'planning',
+        artifacts: [],
+      },
+    ],
     specs: [],
+    archivedChanges: [],
+    changeStatusCounts: {
+      all: 1,
+      planning: 1,
+      readyToApply: 0,
+      applying: 0,
+      readyToVerify: 0,
+      archived: 0,
+      needsAttention: 0,
+    },
     lastRefresh: 1,
     scope: scopeInfo,
     scopes: [scopeInfo],
-  } as DashboardData;
+  };
 }
 
 function storageUri(fsPath: string): vscode.Uri {

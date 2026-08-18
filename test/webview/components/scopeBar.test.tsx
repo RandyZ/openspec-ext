@@ -3,6 +3,14 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { ScopeBar } from '../../../src/webview/components/ScopeBar';
 import type { CacheStatsView, OpenSpecScopeView } from '../../../src/webview/types/messages';
+import {
+  DEFAULT_CHANGES_VIEW_STATE,
+  getChangesViewForRoot,
+  getChangesViewRootKey,
+  resolveChangesViewScope,
+  shouldClampChangesViewPage,
+  upsertChangesViewForRoot,
+} from '../../../src/webview/state/changesViewState';
 
 const localScope: OpenSpecScopeView = {
   id: 'local:/workspace',
@@ -474,4 +482,42 @@ describe('ScopeBar', () => {
   // "never surfaces workset names" regression have moved to the dashboard
   // action-rail test, since the root selector now lives in the primary
   // action area (Header) rather than in this CLI/cache status bar.
+});
+
+describe('Task 7 Root view-state keys for ScopeBar roots', () => {
+  it('keeps Local and Store root keys distinct for independent view state', () => {
+    const localKey = getChangesViewRootKey(localScope);
+    const storeKey = getChangesViewRootKey(storeScope);
+    expect(localKey).not.toBe(storeKey);
+
+    let persisted = upsertChangesViewForRoot(
+      {},
+      localKey,
+      { ...DEFAULT_CHANGES_VIEW_STATE, lifecycleStatus: 'applying', page: 2 }
+    );
+    persisted = upsertChangesViewForRoot(
+      persisted,
+      storeKey,
+      { ...DEFAULT_CHANGES_VIEW_STATE, lifecycleStatus: 'ready-to-verify', page: 1 }
+    );
+
+    const switchingToStore = resolveChangesViewScope(
+      { scope: localScope, scopes: [localScope, storeScope, declaredScope] },
+      storeScope.id
+    );
+    expect(switchingToStore).toEqual(storeScope);
+    expect(getChangesViewForRoot(persisted, getChangesViewRootKey(switchingToStore!))).toMatchObject({
+      lifecycleStatus: 'ready-to-verify',
+      page: 1,
+    });
+    expect(getChangesViewForRoot(persisted, localKey)).toMatchObject({
+      lifecycleStatus: 'applying',
+      page: 2,
+    });
+  });
+
+  it('does not clamp store view state while local data is still showing', () => {
+    expect(shouldClampChangesViewPage(localScope, storeScope)).toBe(false);
+    expect(shouldClampChangesViewPage(storeScope, storeScope)).toBe(true);
+  });
 });

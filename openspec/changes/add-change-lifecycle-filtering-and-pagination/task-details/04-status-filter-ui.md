@@ -9,7 +9,7 @@
 ## Editor Layout
 
 ```text
-Changes                                  [New Change] [Add Operation]
+Changes                                      [ + New Change ]
 17 total · Local ./openspec · Healthy
 
 [All 17] [Planning 5] [Ready 3] [Applying 4] [Verify 2] [Archived 3]
@@ -90,6 +90,8 @@ Prefer CSS container behavior over hard-coded global window assumptions. If the 
 
 - Wide and narrow layouts expose the same statuses.
 - Status filter is visible without opening More Filters.
+- Segment labels are the lifecycle names, not design-mockup Draft / In Progress / Merged tabs.
+- Header CTA is New Change only.
 - Pagination communicates total filtered results.
 - Keyboard-only flow is complete.
 
@@ -100,7 +102,7 @@ Prefer CSS container behavior over hard-coded global window assumptions. If the 
 **Spec coverage:** dashboard wide-layout status controls and count scenarios.
 **Dependencies / order:** after Tasks 2.2 and 3.2; consumes Host counts and view state.
 **Files:** Modify `src/webview/components/ChangesSection.tsx`; Test `test/webview/components/changesSection.test.tsx`.
-**Implementation notes:** render All, four active lifecycle states, Archived, and Needs Attention count from `DashboardData.changeStatusCounts`.
+**Implementation notes:** render All plus the five lifecycle states as segmented controls, with counts from `DashboardData.changeStatusCounts`. Segment labels MUST be `Planning`, `Ready to Apply`, `Applying`, `Ready to Verify`, and `Archived` — not design-mockup tabs (`Draft`, `In Progress`, `Merged`). Header CTA is New Change only; do not render Add Operation. Needs Attention stays in More Filters, not as a seventh segment. Layout MAY follow `docs/new-design*` Changes Workspace structure.
 **Verification:** wide-layout test selects each segment and observes the corresponding state update.
 **Risks / edge cases:** count display must not change when the current page is filtered.
 - [ ] Step 1: Add failing render/selection assertions for segmented controls.
