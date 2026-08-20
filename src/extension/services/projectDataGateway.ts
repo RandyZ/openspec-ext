@@ -15,6 +15,7 @@ import {
   type ProjectContext,
   type ProjectWorksetNavigationData,
   type ProjectReferencedStoreSpecsData,
+  type ProjectSidebarWorkspaceData,
   type ReferencedStoreSpecGroup,
   type WorksetGitMetadata,
   type WorksetNavigationEntry,
@@ -343,6 +344,60 @@ export class ProjectDataGateway {
     try {
       const readers = await this.bind(project);
       binding = readers.binding;
+      const groups = await this.loadReferencedStoreSpecsFromReaders(project, readers);
+      return { project, binding, groups };
+    } catch (cause) {
+      throw new ProjectDataAccessError(
+        `Failed to load referenced Store Specs for project ${project.id}`,
+        project.id,
+        'referenced-store-specs',
+        binding ?? (cause instanceof ProjectDataAccessError ? cause.binding : undefined),
+        cause
+      );
+    }
+  }
+
+  async loadProjectSidebarData(project: ProjectContext): Promise<ProjectSidebarWorkspaceData> {
+    let binding: OpenSpecRootBinding | undefined;
+    try {
+      const readers = await this.bind(project);
+      binding = readers.binding;
+      if (!readers.cli.listChanges || !readers.cli.listSpecs) {
+        throw new Error('Bound CLI does not support Project Sidebar data');
+      }
+
+      const [rawChanges, archivedChanges, projectSpecs, referencedStoreSpecs, worksetNavigation] = await Promise.all([
+        readers.cli.listChanges(readers.scope),
+        readers.contentAccess.listArchivedChanges(),
+        readers.cli.listSpecs(readers.scope),
+        this.loadReferencedStoreSpecsFromReaders(project, readers).catch(() => []),
+        this.loadWorksetNavigation(project).catch(() => undefined),
+      ]);
+
+      return {
+        project,
+        binding,
+        changes: await this.enrichChangesWithProposalWhy(rawChanges, readers.contentAccess),
+        archivedChanges,
+        projectSpecs,
+        referencedStoreSpecs,
+        ...(worksetNavigation ? { worksetNavigation } : {}),
+      };
+    } catch (cause) {
+      throw new ProjectDataAccessError(
+        `Failed to load Project Sidebar data for project ${project.id}`,
+        project.id,
+        'sidebar',
+        binding ?? (cause instanceof ProjectDataAccessError ? cause.binding : undefined),
+        cause
+      );
+    }
+  }
+
+  private async loadReferencedStoreSpecsFromReaders(
+    project: ProjectContext,
+    readers: BoundReaders,
+  ): Promise<readonly ReferencedStoreSpecGroup[]> {
       const references = readers.context.references ?? this.referencesFromMembers(readers.context.members);
       if (references !== undefined && !Array.isArray(references)) {
         throw new Error('CLI context references must be an array');
@@ -382,16 +437,7 @@ export class ProjectDataGateway {
         }
       }
 
-      return { project, binding, groups };
-    } catch (cause) {
-      throw new ProjectDataAccessError(
-        `Failed to load referenced Store Specs for project ${project.id}`,
-        project.id,
-        'referenced-store-specs',
-        binding ?? (cause instanceof ProjectDataAccessError ? cause.binding : undefined),
-        cause
-      );
-    }
+    return groups;
   }
 
   private referencesFromMembers(

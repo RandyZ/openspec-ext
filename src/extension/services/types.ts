@@ -162,6 +162,17 @@ export interface ProjectReferencedStoreSpecsData {
   readonly groups: readonly ReferencedStoreSpecGroup[];
 }
 
+/** Binding-scoped data shared by the Project-first Sidebar tabs. */
+export interface ProjectSidebarWorkspaceData {
+  readonly project: ProjectContext;
+  readonly binding: OpenSpecRootBinding;
+  readonly changes: readonly ChangeInfo[];
+  readonly archivedChanges?: readonly ArchivedChangeInfo[];
+  readonly projectSpecs?: readonly SpecInfo[];
+  readonly referencedStoreSpecs?: readonly ReferencedStoreSpecGroup[];
+  readonly worksetNavigation?: ProjectWorksetNavigationData;
+}
+
 export interface ArtifactStatus {
   id: string;
   outputPath: string;

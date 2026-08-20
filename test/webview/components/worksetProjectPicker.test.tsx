@@ -65,7 +65,8 @@ describe('WorksetProjectPicker', () => {
     expect(html).toContain('Planning Store');
     expect(html).toContain('data-workset-project="/repos/docs-worktree"');
     expect(html).toContain('title="/repos/docs-worktree"');
-    expect(html).toContain('aria-label="Open Docs Worktree project"');
+    expect(html).toContain('aria-label="Switch to Docs Worktree project"');
+    expect(html).not.toContain('aria-label="Open Docs Worktree project"');
     expect(html).not.toContain('data-workset-project="/stores/team-plans"');
     expect(html).toContain('data-workset-store="team-plans"');
   });

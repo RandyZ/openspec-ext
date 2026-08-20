@@ -13,10 +13,16 @@ import type {
 import type {
   OpenSpecRootBinding,
   ProjectContext,
+  ProjectSidebarWorkspaceData,
   ProjectWorksetNavigationData,
 } from '../../extension/services/types';
 
-export type { OpenSpecRootBinding, ProjectContext, ProjectWorksetNavigationData } from '../../extension/services/types';
+export type {
+  OpenSpecRootBinding,
+  ProjectContext,
+  ProjectSidebarWorkspaceData,
+  ProjectWorksetNavigationData,
+} from '../../extension/services/types';
 
 export type LoadingReason =
   | 'initial'
@@ -215,14 +221,10 @@ export interface DashboardData {
   lastRefresh: number;
 }
 
-export interface ProjectSidebarData {
-  readonly project: ProjectContext;
-  readonly binding: OpenSpecRootBinding;
-  readonly changes: readonly ChangeInfo[];
+export interface ProjectSidebarData extends ProjectSidebarWorkspaceData {
   readonly cliDiagnostic?: CliActivationDiagnosticView;
   readonly cache?: WebviewCacheMeta;
   readonly workflowLaunchConfig?: WorkflowLaunchConfigView;
-  readonly worksetNavigation?: ProjectWorksetNavigationData;
   readonly lastRefresh?: number;
 }
 

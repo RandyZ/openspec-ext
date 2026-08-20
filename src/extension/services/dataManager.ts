@@ -332,7 +332,7 @@ export class DataManager {
   }
 
   async openWorkset(name: string): Promise<void> {
-    await this.cliService.runJson(['workset', 'open', name]);
+    await this.cliService.runCommand(['workset', 'open', name]);
   }
 
   /**

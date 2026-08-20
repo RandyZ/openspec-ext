@@ -178,7 +178,8 @@ describe('WorksetsPage', () => {
       );
 
       // The Open button must be present.
-      expect(html).toContain('Open');
+    expect(html).toContain('Open');
+    expect(html).toContain('Open Workset');
 
       // Simulate the click via the handler directly (SSR test pattern).
       onOpenWorkset('platform');
@@ -202,7 +203,7 @@ describe('WorksetsPage', () => {
       expect(html).toContain('Remove');
 
       // Both actions are identified card actions.
-      expect(html).toContain('data-action="open-workset"');
+    expect(html).toContain('data-action="open-workset"');
       expect(html).toContain('data-action="remove-workset"');
     });
 

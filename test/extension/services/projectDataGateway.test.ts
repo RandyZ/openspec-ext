@@ -1420,3 +1420,120 @@ describe('ProjectDataGateway Workset navigation', () => {
     });
   });
 });
+
+describe('ProjectDataGateway unified Project Sidebar data', () => {
+  const temporaryDirectories: string[] = [];
+
+  function context(rootPath: string, rootSource: string, extra: Record<string, unknown> = {}): OpenSpecContextResult {
+    return { root: { path: rootPath, source: rootSource }, ...extra };
+  }
+
+  afterEach(async () => {
+    await Promise.all(
+      temporaryDirectories.splice(0).map((directory) => fs.rm(directory, { recursive: true, force: true }))
+    );
+  });
+
+  it('loads all Sidebar groups through one Project binding and a Store binding', async () => {
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'openspec-sidebar-payload-'));
+    temporaryDirectories.push(base);
+    const projectRoot = path.join(base, 'project-root');
+    const storeRoot = path.join(base, 'store-root');
+    await fs.mkdir(path.join(projectRoot, 'openspec'), { recursive: true });
+    await fs.mkdir(path.join(storeRoot, 'openspec'), { recursive: true });
+    const project = await createProjectContext('Project', projectRoot);
+    const contexts: unknown[] = [];
+    const gateway = new ProjectDataGateway({
+      createCli: () => ({
+        getContext: async (scope) => {
+          contexts.push(scope);
+          return context(
+            scope?.storeId ? storeRoot : projectRoot,
+            scope?.storeId ? 'store' : 'nearest',
+            scope?.storeId
+              ? {}
+              : { references: [{ store_id: 'referenced-store' }] },
+          );
+        },
+        listChanges: async () => [{
+          name: 'project-change',
+          completedTasks: 0,
+          totalTasks: 1,
+          lastModified: '2026-08-20T00:00:00.000Z',
+          status: 'draft',
+          lifecycleStatus: 'planning',
+        }] as any,
+        listSpecs: async (scope) => scope?.storeId
+          ? [{ id: 'shared-spec', requirementCount: 2 }]
+          : [{ id: 'shared-spec', requirementCount: 1 }],
+        listWorksets: async () => ({ worksets: [] }),
+        listStores: async () => ({ stores: [] }),
+      }),
+      createContentAccess: () => ({
+        listArchivedChanges: async () => [{
+          directoryName: '2026-08-19-archived-change',
+          name: 'archived-change',
+          archiveDate: '2026-08-19',
+        }],
+        readArtifact: async () => '## Why\n\nUnified sidebar payload.',
+      }),
+    });
+
+    const data = await gateway.loadProjectSidebarData(project);
+
+    expect(data.project).toEqual(project);
+    expect(data.binding.rootPath).toBe(await fs.realpath(projectRoot));
+    expect(data.changes).toHaveLength(1);
+    expect(data.archivedChanges).toHaveLength(1);
+    expect(data.projectSpecs).toEqual([{ id: 'shared-spec', requirementCount: 1 }]);
+    expect(data.referencedStoreSpecs).toEqual([{
+      storeId: 'referenced-store',
+      binding: expect.objectContaining({
+        rootPath: await fs.realpath(storeRoot),
+        storeId: 'referenced-store',
+      }),
+      specs: [{ id: 'shared-spec', requirementCount: 2 }],
+    }]);
+    expect(contexts).toEqual([undefined, { storeId: 'referenced-store' }]);
+  });
+
+  it('keeps Project Specs usable when one referenced Store cannot load Specs', async () => {
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'openspec-sidebar-store-error-'));
+    temporaryDirectories.push(base);
+    const projectRoot = path.join(base, 'project-root');
+    const storeRoot = path.join(base, 'store-root');
+    await fs.mkdir(path.join(projectRoot, 'openspec'), { recursive: true });
+    await fs.mkdir(path.join(storeRoot, 'openspec'), { recursive: true });
+    const project = await createProjectContext('Project', projectRoot);
+
+    const gateway = new ProjectDataGateway({
+      createCli: () => ({
+        getContext: async (scope) => context(
+          scope?.storeId ? storeRoot : projectRoot,
+          scope?.storeId ? 'store' : 'nearest',
+          scope?.storeId ? {} : { references: [{ store_id: 'broken-store' }] },
+        ),
+        listChanges: async () => [],
+        listSpecs: async (scope) => {
+          if (scope?.storeId) throw new Error('Store Specs unavailable');
+          return [{ id: 'project-spec', requirementCount: 1 }];
+        },
+        listWorksets: async () => ({ worksets: [] }),
+        listStores: async () => ({ stores: [] }),
+      }),
+      createContentAccess: () => ({
+        listArchivedChanges: async () => [],
+      }),
+    });
+
+    const data = await gateway.loadProjectSidebarData(project);
+
+    expect(data.projectSpecs).toEqual([{ id: 'project-spec', requirementCount: 1 }]);
+    expect(data.referencedStoreSpecs).toEqual([{
+      storeId: 'broken-store',
+      binding: expect.objectContaining({ storeId: 'broken-store' }),
+      specs: [],
+      error: expect.stringContaining('broken-store'),
+    }]);
+  });
+});

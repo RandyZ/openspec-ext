@@ -1433,6 +1433,26 @@ describe('DataManager workset data contract', () => {
     expect(data.worksets).toBeUndefined();
   });
 
+  it('opens a Workset with ordinary CLI output and the exact name', async () => {
+    const manager = createManagerWithWorksetPayload({ worksets: [] });
+    const runJson = (manager as any).cliService.runJson;
+    const runCommand = vi.fn().mockResolvedValue('Opened platform\n');
+    (manager as any).cliService.runCommand = runCommand;
+
+    await manager.openWorkset('platform');
+
+    expect(runCommand).toHaveBeenCalledWith(['workset', 'open', 'platform']);
+    expect(runJson).not.toHaveBeenCalledWith(['workset', 'open', 'platform']);
+  });
+
+  it('propagates Workset open failures without changing scope state', async () => {
+    const manager = createManagerWithWorksetPayload({ worksets: [] });
+    const runCommand = vi.fn().mockRejectedValue(new Error('workset open failed'));
+    (manager as any).cliService.runCommand = runCommand;
+
+    await expect(manager.openWorkset('platform')).rejects.toThrow('workset open failed');
+  });
+
   it('removeWorkset calls `openspec workset remove <name> --yes --json`, invalidates the dashboard cache, and returns refreshed data', async () => {
     const manager = createManagerWithWorksetPayload({ worksets: [] });
     const runJson = (manager as any).cliService.runJson;

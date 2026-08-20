@@ -6,6 +6,8 @@ import {
   Dashboard,
   createScopeSelectHandler,
   returnToCurrentProject,
+  selectProjectFirstTab,
+  sendProjectSidebarSpecDetail,
   getDashboardActionScopeId,
   requestInitialDashboardData,
 } from '../../../src/webview/components/Dashboard';
@@ -303,6 +305,62 @@ describe('Dashboard CLI diagnostic states', () => {
 });
 
 describe('project page contract', () => {
+  it('renders local Changes and Specs tabs with grouped Project-first data', () => {
+    const html = renderProjectSidebar({
+      ...projectSidebarData,
+      projectSpecs: [{ id: 'same-spec', requirementCount: 1 }],
+      referencedStoreSpecs: [{
+        storeId: 'aihelp-workspace',
+        binding: {
+          projectId: projectContext.id,
+          commandCwd: '/stores/aihelp-workspace',
+          rootPath: '/stores/aihelp-workspace/openspec',
+          rootSource: 'store',
+          storeId: 'aihelp-workspace',
+        },
+        specs: [{ id: 'same-spec', requirementCount: 2 }],
+      }],
+    });
+
+    expect(html).toContain('data-project-first-tabs');
+    expect(html).toContain('data-project-first-tab="changes"');
+    expect(html).toContain('data-project-first-tab="specs"');
+    expect(html).toContain('role="tablist"');
+    expect(html).toContain('aria-selected="true"');
+    expect(html).toContain('active-change');
+    expect(html).not.toContain('Project Specs');
+    expect(html).not.toContain('Referenced Store Specs: aihelp-workspace');
+  });
+
+  it('changes only local Project-first tab state without posting an Explorer request', () => {
+    const setTab = vi.fn();
+    const postMessage = vi.fn();
+
+    selectProjectFirstTab(setTab, 'specs');
+
+    expect(setTab).toHaveBeenCalledWith('specs');
+    expect(postMessage).not.toHaveBeenCalled();
+  });
+
+  it('keeps Project and Store Spec detail messages on their explicit bindings', () => {
+    const postMessage = vi.fn();
+    const storeBinding: OpenSpecRootBinding = {
+      projectId: projectContext.id,
+      commandCwd: '/stores/aihelp-workspace',
+      rootPath: '/stores/aihelp-workspace/openspec',
+      rootSource: 'store',
+      storeId: 'aihelp-workspace',
+    };
+
+    sendProjectSidebarSpecDetail(postMessage, projectContext, projectBinding, 'same-spec');
+    sendProjectSidebarSpecDetail(postMessage, projectContext, storeBinding, 'same-spec');
+
+    expect(postMessage.mock.calls.map(([message]) => message)).toEqual([
+      sendMessage.openSpecInEditor('same-spec', undefined, undefined, projectContext, projectBinding),
+      sendMessage.openSpecInEditor('same-spec', undefined, undefined, projectContext, storeBinding),
+    ]);
+  });
+
   it('returns from the Workset picker locally when Host keeps the current Project selected', () => {
     const events: string[] = [];
     const setProjectFirstView = (view: 'project') => {
@@ -388,7 +446,7 @@ describe('project page contract', () => {
   it('keeps All Changes and Specs available when active work is empty', () => {
     const html = renderProjectSidebar({ ...projectSidebarData, changes: [] });
 
-    expect(html).toMatch(/No active changes/i);
+    expect(html).toMatch(/No changes in this Root/i);
     expect(html).toContain('All Changes');
     expect(html).toContain('Specs');
     expect(html).toContain('New Change');

@@ -28,6 +28,7 @@ export interface HeaderProps {
   onOpenChanges?: () => void;
   onOpenSpecs?: () => void;
   onOpenWorksets?: () => void;
+  activeProjectTab?: 'changes' | 'specs';
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -46,6 +47,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenChanges,
   onOpenSpecs,
   onOpenWorksets,
+  activeProjectTab,
 }) => {
   const showSelector = scope && scopes.length > 1 && onSelectScope;
   const projectScopes = scopes.filter((s) => s.source === 'local' || s.source === 'declared');
@@ -148,35 +150,89 @@ export const Header: React.FC<HeaderProps> = ({
                 {t('worksetNavigation.openWorksets')}
               </button>
             )}
-            {onOpenChanges && (
-              <button
-                type="button"
-                onClick={onOpenChanges}
-                aria-label={t('projectSidebar.allChanges')}
-                title={t('projectSidebar.allChanges')}
-                className="w-full rounded px-2 py-1.5 text-left text-xs"
-                style={{
-                  background: 'var(--vscode-button-secondaryBackground)',
-                  color: 'var(--vscode-button-secondaryForeground)',
-                }}
+            {activeProjectTab ? (
+              <div
+                role="tablist"
+                data-project-first-tabs
+                aria-label="Project views"
+                className="flex flex-col gap-1"
               >
-                {t('projectSidebar.allChanges')}
-              </button>
-            )}
-            {onOpenSpecs && (
-              <button
-                type="button"
-                onClick={onOpenSpecs}
-                aria-label={t('projectSidebar.specs')}
-                title={t('projectSidebar.specs')}
-                className="w-full rounded px-2 py-1.5 text-left text-xs"
-                style={{
-                  background: 'var(--vscode-button-secondaryBackground)',
-                  color: 'var(--vscode-button-secondaryForeground)',
-                }}
-              >
-                {t('projectSidebar.specs')}
-              </button>
+                {onOpenChanges && (
+                  <button
+                    type="button"
+                    onClick={onOpenChanges}
+                    role="tab"
+                    data-project-first-tab="changes"
+                    aria-selected={activeProjectTab === 'changes'}
+                    aria-controls="project-first-changes-panel"
+                    tabIndex={0}
+                    aria-label={t('projectSidebar.allChanges')}
+                    title={t('projectSidebar.allChanges')}
+                    className="w-full rounded px-2 py-1.5 text-left text-xs focus:outline-none focus:ring-1"
+                    style={{
+                      background: 'var(--vscode-button-secondaryBackground)',
+                      color: 'var(--vscode-button-secondaryForeground)',
+                      outlineColor: 'var(--vscode-focusBorder)',
+                    }}
+                  >
+                    {t('projectSidebar.allChanges')}
+                  </button>
+                )}
+                {onOpenSpecs && (
+                  <button
+                    type="button"
+                    onClick={onOpenSpecs}
+                    role="tab"
+                    data-project-first-tab="specs"
+                    aria-selected={activeProjectTab === 'specs'}
+                    aria-controls="project-first-specs-panel"
+                    tabIndex={0}
+                    aria-label={t('projectSidebar.specs')}
+                    title={t('projectSidebar.specs')}
+                    className="w-full rounded px-2 py-1.5 text-left text-xs focus:outline-none focus:ring-1"
+                    style={{
+                      background: 'var(--vscode-button-secondaryBackground)',
+                      color: 'var(--vscode-button-secondaryForeground)',
+                      outlineColor: 'var(--vscode-focusBorder)',
+                    }}
+                  >
+                    {t('projectSidebar.specs')}
+                  </button>
+                )}
+              </div>
+            ) : (
+              <>
+                {onOpenChanges && (
+                  <button
+                    type="button"
+                    onClick={onOpenChanges}
+                    aria-label={t('projectSidebar.allChanges')}
+                    title={t('projectSidebar.allChanges')}
+                    className="w-full rounded px-2 py-1.5 text-left text-xs"
+                    style={{
+                      background: 'var(--vscode-button-secondaryBackground)',
+                      color: 'var(--vscode-button-secondaryForeground)',
+                    }}
+                  >
+                    {t('projectSidebar.allChanges')}
+                  </button>
+                )}
+                {onOpenSpecs && (
+                  <button
+                    type="button"
+                    onClick={onOpenSpecs}
+                    aria-label={t('projectSidebar.specs')}
+                    title={t('projectSidebar.specs')}
+                    className="w-full rounded px-2 py-1.5 text-left text-xs"
+                    style={{
+                      background: 'var(--vscode-button-secondaryBackground)',
+                      color: 'var(--vscode-button-secondaryForeground)',
+                    }}
+                  >
+                    {t('projectSidebar.specs')}
+                  </button>
+                )}
+              </>
             )}
           </nav>
         </div>

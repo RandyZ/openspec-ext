@@ -75,6 +75,38 @@ vi.mock('@extension/utils/logger', () => ({
 }));
 
 describe('DashboardViewProvider', () => {
+  it('uses one unified Project Sidebar payload instead of tab-specific loaders', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture();
+    const payload = {
+      project: fixture.project,
+      binding: fixture.binding,
+      changes: [makeProjectChange('project-change')],
+      archivedChanges: [],
+      projectSpecs: [{ id: 'project-spec', requirementCount: 1 }],
+      referencedStoreSpecs: [],
+      lastRefresh: 1,
+    };
+    const gateway = {
+      loadProjectSidebarData: vi.fn().mockResolvedValue(payload),
+    };
+    const postMessage = vi.fn();
+    const provider = makeProjectProvider(makeDataManager(), gateway, fixture);
+
+    provider.resolveWebviewView(makeWebviewView(makeWebview(postMessage)) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+
+    expect(gateway.loadProjectSidebarData).toHaveBeenCalledTimes(1);
+    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'setContext',
+      view: 'sidebar',
+      data: expect.objectContaining({
+        archivedChanges: [],
+        projectSpecs: [{ id: 'project-spec', requirementCount: 1 }],
+      }),
+    }));
+  });
+
   it('project page contract keeps Sidebar and Explorer payloads distinguishable and fully bound', () => {
     const projectA: ProjectContext = {
       id: '/projects/project-a',

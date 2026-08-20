@@ -5,6 +5,8 @@ import type { AppAction } from '../context/AppContext';
 import { sendMessage } from '../types/messages';
 import type {
   DashboardData,
+  OpenSpecRootBinding,
+  ProjectContext,
   ProjectSidebarData,
   SpecInfo,
   WebviewMessage,
@@ -38,7 +40,31 @@ import {
 } from '../state/changesViewState';
 
 type DashboardDispatch = React.Dispatch<AppAction>;
-type DashboardPostMessage = (message: WebviewMessage) => void;
+export type DashboardPostMessage = (message: WebviewMessage) => void;
+export type ProjectFirstTab = 'changes' | 'specs';
+
+export function selectProjectFirstTab(
+  setTab: (tab: ProjectFirstTab) => void,
+  tab: ProjectFirstTab,
+): void {
+  setTab(tab);
+}
+
+export function sendProjectSidebarSpecDetail(
+  postMessage: DashboardPostMessage,
+  project: ProjectContext,
+  binding: OpenSpecRootBinding,
+  specId: string,
+  requirementIndex?: number,
+): void {
+  postMessage(sendMessage.openSpecInEditor(
+    specId,
+    requirementIndex,
+    undefined,
+    project,
+    binding,
+  ));
+}
 
 export function getDashboardActionScopeId(
   projectSidebar: ProjectSidebarData | null | undefined,
@@ -115,6 +141,7 @@ export const Dashboard: React.FC = () => {
   const { state, dispatch } = useAppState();
   const [dashboardView, setDashboardView] = useState<'overview' | 'worksets'>('overview');
   const [projectFirstView, setProjectFirstView] = useState<'project' | 'workset'>('project');
+  const [projectFirstTab, setProjectFirstTab] = useState<ProjectFirstTab>('changes');
   const [specRequirements, setSpecRequirements] = useState<Record<string, string[]>>({});
   const [cacheStats, setCacheStats] = useState<CacheStatsView | null>(null);
   const [cacheActionMessage, setCacheActionMessage] = useState<string | null>(null);
@@ -136,6 +163,7 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     setProjectFirstView('project');
+    setProjectFirstTab('changes');
   }, [projectSidebar?.project.id, projectSidebar?.binding.rootPath]);
 
   const viewScope = resolveChangesViewScope(data, pendingScopeId);
@@ -266,7 +294,18 @@ export const Dashboard: React.FC = () => {
   );
 
   const handleOpenArchivedChange = (directoryName: string) => {
-    postMessage(sendMessage.openChangeDetailInEditor(`archive:${directoryName}`, undefined, undefined, state.data?.scope?.id));
+    postMessage(
+      projectSidebar
+        ? sendMessage.openChangeDetailInEditor(
+          `archive:${directoryName}`,
+          undefined,
+          undefined,
+          undefined,
+          projectSidebar.project,
+          projectSidebar.binding,
+        )
+        : sendMessage.openChangeDetailInEditor(`archive:${directoryName}`, undefined, undefined, state.data?.scope?.id)
+    );
   };
   const projectChanges = projectSidebar?.changes.filter((change) => (
     (change as { lifecycleStatus?: string }).lifecycleStatus !== 'archived'
@@ -338,16 +377,6 @@ export const Dashboard: React.FC = () => {
     ));
   };
 
-  const handleOpenChangesExplorer = () => {
-    if (!projectSidebar) return;
-    postMessage(sendMessage.openChangesExplorer(projectSidebar.project, projectSidebar.binding));
-  };
-
-  const handleOpenSpecsExplorer = () => {
-    if (!projectSidebar) return;
-    postMessage(sendMessage.openSpecsExplorer(projectSidebar.project, projectSidebar.binding));
-  };
-
   const handleOpenSpec = (spec: SpecInfo) => {
     const scopeId = state.data?.scope?.id;
     postMessage(sendMessage.openSpecInEditor(spec.id, undefined, scopeId));
@@ -359,6 +388,21 @@ export const Dashboard: React.FC = () => {
   const handleRequirementClick = (spec: SpecInfo, requirementIndex: number) => {
     const scopeId = state.data?.scope?.id;
     postMessage(sendMessage.openSpecInEditor(spec.id, requirementIndex, scopeId));
+  };
+
+  const handleOpenProjectSpec = (
+    spec: SpecInfo,
+    binding: OpenSpecRootBinding,
+    requirementIndex?: number,
+  ) => {
+    if (!projectSidebar) return;
+    sendProjectSidebarSpecDetail(
+      postMessage,
+      projectSidebar.project,
+      binding,
+      spec.id,
+      requirementIndex,
+    );
   };
 
   const handleCliDiagnosticAction = (action: string) => {
@@ -392,8 +436,13 @@ export const Dashboard: React.FC = () => {
           onSetupStore={data?.scope?.capabilities?.stores ? handleSetupStore : undefined}
           project={projectSidebar?.project}
           binding={projectSidebar?.binding}
-          onOpenChanges={projectSidebar ? handleOpenChangesExplorer : undefined}
-          onOpenSpecs={projectSidebar ? handleOpenSpecsExplorer : undefined}
+          onOpenChanges={projectSidebar
+            ? () => selectProjectFirstTab(setProjectFirstTab, 'changes')
+            : undefined}
+          onOpenSpecs={projectSidebar
+            ? () => selectProjectFirstTab(setProjectFirstTab, 'specs')
+            : undefined}
+          activeProjectTab={projectSidebar ? projectFirstTab : undefined}
           onOpenWorksets={projectSidebar?.worksetNavigation?.worksets.length && projectFirstView === 'project'
             ? () => setProjectFirstView('workset')
             : undefined}
@@ -439,14 +488,47 @@ export const Dashboard: React.FC = () => {
                 onBackToCurrentProject={() => returnToCurrentProject(setProjectFirstView, postMessage)}
               />
             ) : (
-              <ChangesSection
-                changes={[...projectChanges]}
-                changeStatusCounts={buildChangeStatusCounts(projectChanges, [])}
-                onOpenChange={handleOpenChange}
-                onLaunchWorkflow={handleLaunchWorkflow}
-                workflowLaunchConfig={projectSidebar.workflowLaunchConfig ?? workflowLaunchConfig}
-                compact
-              />
+              <>
+                {projectFirstTab === 'changes' ? (
+                  <div id="project-first-changes-panel" role="tabpanel" aria-label={t('projectSidebar.allChanges')}>
+                    <ChangesSection
+                      changes={[...projectChanges]}
+                      changeStatusCounts={buildChangeStatusCounts(projectChanges, projectSidebar.archivedChanges ?? [])}
+                      onOpenChange={handleOpenChange}
+                      onOpenArchivedChange={handleOpenArchivedChange}
+                      archivedItems={[...(projectSidebar.archivedChanges ?? [])]}
+                      onLaunchWorkflow={handleLaunchWorkflow}
+                      workflowLaunchConfig={projectSidebar.workflowLaunchConfig ?? workflowLaunchConfig}
+                      layout="narrow"
+                    />
+                  </div>
+                ) : (
+                  <div id="project-first-specs-panel" role="tabpanel" aria-label={t('projectSidebar.specs')}>
+                    <SpecsSection
+                      specs={[...(projectSidebar.projectSpecs ?? [])]}
+                      heading={t('projectSidebar.projectSpecs')}
+                      emptyMessage={t('projectSidebar.emptyProjectSpecs')}
+                      sourceLabel={projectSidebar.project.label}
+                      readOnly
+                      onOpenSpec={(spec) => handleOpenProjectSpec(spec, projectSidebar.binding)}
+                    />
+                    {(projectSidebar.referencedStoreSpecs ?? []).map((group) => (
+                      <SpecsSection
+                        key={group.storeId}
+                        specs={[...group.specs]}
+                        heading={t('projectSidebar.referencedStoreSpecs', { storeId: group.storeId })}
+                        emptyMessage={t('projectSidebar.emptyStoreSpecs', { storeId: group.storeId })}
+                        loadError={group.error}
+                        sourceLabel={group.storeId}
+                        readOnly
+                        onOpenSpec={group.binding
+                          ? (spec) => handleOpenProjectSpec(spec, group.binding!)
+                          : undefined}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </>
         ) : data ? (

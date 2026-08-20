@@ -517,6 +517,11 @@ export class OpenSpecCliService {
     return JSON.parse(output);
   }
 
+  /** Execute a command whose stdout is intentionally ordinary text. */
+  async runCommand(args: string[]): Promise<string> {
+    return await this.execOpenSpec(args);
+  }
+
   /**
    * Execute OpenSpec CLI command with retry logic.
    * On "command not found" (exit 127 or spawn ENOENT), calls showCliNotFoundError() and rethrows; no file fallback.

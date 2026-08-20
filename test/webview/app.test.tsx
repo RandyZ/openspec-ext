@@ -147,6 +147,30 @@ describe('project page context routing', () => {
     expect(changesState.specsExplorer).toBeNull();
   });
 
+  it('keeps Project and referenced Store Specs grouped in the Sidebar payload', () => {
+    const unified = {
+      ...sidebar,
+      projectSpecs: [{ id: 'shared-spec', requirementCount: 1 }],
+      referencedStoreSpecs: [{
+        storeId: 'aihelp-workspace',
+        binding: { ...binding, rootSource: 'store', storeId: 'aihelp-workspace' },
+        specs: [{ id: 'shared-spec', requirementCount: 2 }],
+      }],
+    };
+    const state = appReducer(initialState, {
+      type: 'SET_PAGE_CONTEXT',
+      payload: { type: 'setContext', view: 'sidebar', data: unified },
+    });
+
+    expect(state.projectSidebar?.projectSpecs).toEqual([
+      { id: 'shared-spec', requirementCount: 1 },
+    ]);
+    expect(state.projectSidebar?.referencedStoreSpecs[0]).toMatchObject({
+      storeId: 'aihelp-workspace',
+      binding: { storeId: 'aihelp-workspace' },
+    });
+  });
+
   it('is idempotent for a repeated identical context and clears stale data on invalid input', () => {
     const first = appReducer(initialState, {
       type: 'SET_PAGE_CONTEXT',

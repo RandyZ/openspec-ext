@@ -244,16 +244,25 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     const generation = ++this.projectRequestGeneration;
     try {
       const project = this.projectContext;
-      const navigationLoader = this.projectDataGateway.loadWorksetNavigation;
-      const [result, worksetNavigation] = await Promise.all([
-        this.projectDataGateway.loadChanges(project),
-        typeof navigationLoader === 'function'
-          ? navigationLoader.call(this.projectDataGateway, project).catch((error: unknown) => {
-            logger.warn('Failed to load Project Workset navigation', error as Error);
-            return undefined;
-          })
-          : Promise.resolve(undefined),
-      ]);
+      const sidebarLoader = this.projectDataGateway.loadProjectSidebarData;
+      let result: Awaited<ReturnType<ProjectDataGateway['loadProjectSidebarData']>>;
+      let worksetNavigation: Awaited<ReturnType<ProjectDataGateway['loadWorksetNavigation']>> | undefined;
+      if (typeof sidebarLoader === 'function') {
+        result = await sidebarLoader.call(this.projectDataGateway, project);
+      } else {
+        const navigationLoader = this.projectDataGateway.loadWorksetNavigation;
+        const legacyResult = await Promise.all([
+          this.projectDataGateway.loadChanges(project),
+          typeof navigationLoader === 'function'
+            ? navigationLoader.call(this.projectDataGateway, project).catch((error: unknown) => {
+              logger.warn('Failed to load Project Workset navigation', error as Error);
+              return undefined;
+            })
+            : Promise.resolve(undefined),
+        ]);
+        result = legacyResult[0];
+        worksetNavigation = legacyResult[1];
+      }
       if (
         generation !== this.projectRequestGeneration
         || !this.sameProject(result.project, project)
@@ -269,7 +278,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         project: result.project,
         binding: result.binding,
         changes,
-        ...(worksetNavigation?.worksets.length ? { worksetNavigation } : {}),
+        ...(result.archivedChanges ? { archivedChanges: result.archivedChanges } : {}),
+        ...(result.projectSpecs ? { projectSpecs: result.projectSpecs } : {}),
+        ...(result.referencedStoreSpecs ? { referencedStoreSpecs: result.referencedStoreSpecs } : {}),
+        ...(result.worksetNavigation?.worksets.length
+          ? { worksetNavigation: result.worksetNavigation }
+          : worksetNavigation?.worksets.length ? { worksetNavigation } : {}),
         workflowLaunchConfig: getWorkflowLaunchConfigMessage().config,
         lastRefresh: Date.now(),
       };

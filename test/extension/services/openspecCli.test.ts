@@ -245,6 +245,23 @@ describe('OpenSpecCliService', () => {
   });
 
   describe('Workset navigation lists', () => {
+    it('runs Workset open through the ordinary-output path without JSON parsing', async () => {
+      const service = new OpenSpecCliService(workspaceRoot);
+      const exec = vi.spyOn(service as any, 'execOpenSpec').mockResolvedValue('Opened planning\n');
+
+      await expect((service as any).runCommand(['workset', 'open', 'planning']))
+        .resolves.toBe('Opened planning\n');
+      expect(exec).toHaveBeenCalledWith(['workset', 'open', 'planning']);
+    });
+
+    it('propagates ordinary Workset open failures', async () => {
+      const service = new OpenSpecCliService(workspaceRoot);
+      vi.spyOn(service as any, 'execOpenSpec').mockRejectedValue(new Error('workset open failed'));
+
+      await expect((service as any).runCommand(['workset', 'open', 'planning']))
+        .rejects.toThrow('workset open failed');
+    });
+
     it('loads Worksets with a selector-free machine-global command', async () => {
       const service = new OpenSpecCliService(workspaceRoot);
       const runJson = vi.spyOn(service, 'runJson').mockResolvedValue({

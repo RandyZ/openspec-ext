@@ -92,7 +92,7 @@ export const WorksetProjectPicker: React.FC<WorksetProjectPickerProps> = ({
                       type="button"
                       data-workset-project={member.path}
                       onClick={() => onSelectProject(workset.name, member.path)}
-                      aria-label={t('worksetNavigation.openProject', { name: member.name })}
+                      aria-label={t('worksetNavigation.switchProject', { name: member.name })}
                       title={member.path}
                       className="flex w-full min-w-0 items-start justify-between gap-2 rounded px-2 py-1 text-left text-xs focus:outline-none focus:ring-1"
                       style={{
@@ -113,7 +113,7 @@ export const WorksetProjectPicker: React.FC<WorksetProjectPickerProps> = ({
                           </span>
                         )}
                       </span>
-                      <span className="shrink-0">{t('worksetNavigation.openProjectShort')}</span>
+                      <span className="shrink-0">{t('worksetNavigation.switchProjectShort')}</span>
                     </button>
                   );
                 }
