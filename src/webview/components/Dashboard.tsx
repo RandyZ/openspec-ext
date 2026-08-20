@@ -47,6 +47,14 @@ export function getDashboardActionScopeId(
   return projectSidebar ? undefined : selectedScopeId;
 }
 
+export function returnToCurrentProject(
+  setProjectFirstView: (view: 'project') => void,
+  postMessage: DashboardPostMessage,
+): void {
+  setProjectFirstView('project');
+  postMessage(sendMessage.selectCurrentProject());
+}
+
 export function createScopeSelectHandler(
   dispatch: DashboardDispatch,
   postMessage: DashboardPostMessage,
@@ -389,9 +397,6 @@ export const Dashboard: React.FC = () => {
           onOpenWorksets={projectSidebar?.worksetNavigation?.worksets.length && projectFirstView === 'project'
             ? () => setProjectFirstView('workset')
             : undefined}
-          onBackToCurrentProject={projectSidebar && projectFirstView === 'workset'
-            ? () => postMessage(sendMessage.selectCurrentProject())
-            : undefined}
         />
 
         {error && (
@@ -431,7 +436,7 @@ export const Dashboard: React.FC = () => {
                 onSelectProject={(worksetName, memberPath) => {
                   postMessage(sendMessage.selectWorksetProject(worksetName, memberPath));
                 }}
-                onBackToCurrentProject={() => postMessage(sendMessage.selectCurrentProject())}
+                onBackToCurrentProject={() => returnToCurrentProject(setProjectFirstView, postMessage)}
               />
             ) : (
               <ChangesSection

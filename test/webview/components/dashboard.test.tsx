@@ -5,6 +5,7 @@ import { AppProvider, appReducer, type AppState } from '../../../src/webview/con
 import {
   Dashboard,
   createScopeSelectHandler,
+  returnToCurrentProject,
   getDashboardActionScopeId,
   requestInitialDashboardData,
 } from '../../../src/webview/components/Dashboard';
@@ -302,6 +303,21 @@ describe('Dashboard CLI diagnostic states', () => {
 });
 
 describe('project page contract', () => {
+  it('returns from the Workset picker locally when Host keeps the current Project selected', () => {
+    const events: string[] = [];
+    const setProjectFirstView = (view: 'project') => {
+      events.push(view);
+    };
+    const postMessage = vi.fn(() => {
+      events.push('host');
+    });
+
+    returnToCurrentProject(setProjectFirstView, postMessage);
+
+    expect(events).toEqual(['project', 'host']);
+    expect(postMessage).toHaveBeenCalledWith(sendMessage.selectCurrentProject());
+  });
+
   it('does not forward a legacy selected Store scope from Project-first actions', () => {
     expect(getDashboardActionScopeId(projectSidebarData, storeScope.id)).toBeUndefined();
     expect(getDashboardActionScopeId(undefined, storeScope.id)).toBe(storeScope.id);

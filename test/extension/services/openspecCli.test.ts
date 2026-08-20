@@ -280,6 +280,23 @@ describe('OpenSpecCliService', () => {
       });
       expect(runJson).toHaveBeenCalledWith(['store', 'list', '--json']);
     });
+
+    it('propagates Store inventory failures instead of returning an empty inventory', async () => {
+      const service = new OpenSpecCliService(workspaceRoot);
+      vi.spyOn(service, 'runJson').mockRejectedValue(new Error('store probe unavailable'));
+
+      await expect(service.listStores()).rejects.toThrow('store probe unavailable');
+    });
+
+    it.each([
+      ['missing stores', {}],
+      ['non-array stores', { stores: 'not-an-array' }],
+    ])('rejects malformed Store inventory payloads (%s)', async (_label, payload) => {
+      const service = new OpenSpecCliService(workspaceRoot);
+      vi.spyOn(service, 'runJson').mockResolvedValue(payload);
+
+      await expect(service.listStores()).rejects.toThrow('Invalid Store inventory payload');
+    });
   });
 
   describe('listChanges', () => {

@@ -28,7 +28,6 @@ export interface HeaderProps {
   onOpenChanges?: () => void;
   onOpenSpecs?: () => void;
   onOpenWorksets?: () => void;
-  onBackToCurrentProject?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -47,7 +46,6 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenChanges,
   onOpenSpecs,
   onOpenWorksets,
-  onBackToCurrentProject,
 }) => {
   const showSelector = scope && scopes.length > 1 && onSelectScope;
   const projectScopes = scopes.filter((s) => s.source === 'local' || s.source === 'declared');
@@ -135,21 +133,6 @@ export const Header: React.FC<HeaderProps> = ({
             aria-label="Project navigation"
             data-project-navigation
           >
-            {onBackToCurrentProject && (
-              <button
-                type="button"
-                onClick={onBackToCurrentProject}
-                aria-label={t('worksetNavigation.returnCurrent')}
-                title={t('worksetNavigation.returnCurrent')}
-                className="w-full rounded px-2 py-1.5 text-left text-xs"
-                style={{
-                  background: 'var(--vscode-button-secondaryBackground)',
-                  color: 'var(--vscode-button-secondaryForeground)',
-                }}
-              >
-                {t('worksetNavigation.returnCurrent')}
-              </button>
-            )}
             {onOpenWorksets && (
               <button
                 type="button"

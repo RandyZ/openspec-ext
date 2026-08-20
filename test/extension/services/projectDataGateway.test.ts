@@ -1,11 +1,14 @@
+import { execFile } from 'child_process';
 import { promises as fs } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { promisify } from 'util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createProjectContext,
   ProjectDataGateway,
 } from '@extension/services/projectDataGateway';
+import { OpenSpecCliService } from '@extension/services/openspecCli';
 import type {
   OpenSpecContextResult,
   OpenSpecRootBinding,
@@ -14,6 +17,8 @@ import type {
   ProjectContext,
 } from '@extension/services/types';
 import { ProjectDataAccessError } from '@extension/services/types';
+
+const execFileAsync = promisify(execFile);
 
 describe('createProjectContext', () => {
   const temporaryDirectories: string[] = [];
@@ -1269,8 +1274,91 @@ describe('ProjectDataGateway Workset navigation', () => {
     expect(readGitMetadata).toHaveBeenCalledWith(canonicalWorktreePath);
   });
 
+  it('uses the canonical Git common directory for linked Worktree identity', async () => {
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'openspec-workset-git-identity-'));
+    temporaryDirectories.push(base);
+    const repositoryPath = path.join(base, 'repository');
+    const worktreePath = path.join(base, 'linked-worktree');
+    await fs.mkdir(repositoryPath, { recursive: true });
+    const runGit = async (args: string[]) => {
+      await execFileAsync('git', args, { cwd: repositoryPath });
+    };
+    await runGit(['init', '-q', '-b', 'main']);
+    await fs.writeFile(path.join(repositoryPath, 'README.md'), 'fixture\n');
+    await runGit(['add', 'README.md']);
+    await runGit(['-c', 'user.name=OpenSpec Test', '-c', 'user.email=test@example.com', 'commit', '-qm', 'initial']);
+    await runGit(['worktree', 'add', '-q', '-b', 'feature/linked', worktreePath, 'HEAD']);
+
+    const currentProject = await createProjectContext('Current Project', repositoryPath);
+    const canonicalWorktreePath = await fs.realpath(worktreePath);
+    const gateway = new ProjectDataGateway({
+      createCli: () => ({
+        getContext: async () => context(repositoryPath, 'nearest'),
+        listWorksets: async () => ({
+          worksets: [{
+            name: 'planning',
+            members: [
+              { name: 'main', path: repositoryPath },
+              { name: 'linked', path: worktreePath },
+            ],
+          }],
+        }),
+        listStores: async () => ({ stores: [] }),
+      }) as any,
+    });
+
+    const data = await gateway.loadWorksetNavigation(currentProject);
+    const members = data.worksets[0]?.members ?? [];
+    const mainMember = members.find((member) => member.path === currentProject.projectPath);
+    const linkedMember = members.find((member) => member.path === canonicalWorktreePath);
+
+    expect(mainMember?.role).toBe('project');
+    expect(linkedMember?.role).toBe('project');
+    expect(mainMember?.path).not.toBe(linkedMember?.path);
+    expect(mainMember?.git?.repository).toBeTruthy();
+    expect(mainMember?.git?.repository).toBe(linkedMember?.git?.repository);
+    expect(mainMember?.git?.branch).toBe('main');
+    expect(linkedMember?.git?.branch).toBe('feature/linked');
+  });
+
   it('fails closed when registered Store identity cannot be confirmed', async () => {
     const base = await fs.mkdtemp(path.join(os.tmpdir(), 'openspec-workset-store-probe-'));
+    temporaryDirectories.push(base);
+    const currentPath = path.join(base, 'current-project');
+    const possibleStorePath = path.join(base, 'possible-store');
+    await Promise.all([
+      fs.mkdir(path.join(currentPath, 'openspec'), { recursive: true }),
+      fs.mkdir(path.join(possibleStorePath, 'openspec'), { recursive: true }),
+    ]);
+    const currentProject = await createProjectContext('Current Project', currentPath);
+    const cli = new OpenSpecCliService(currentPath);
+    vi.spyOn(cli, 'runJson').mockImplementation(async (args) => {
+      if (args[0] === 'workset') {
+        return {
+          worksets: [{
+            name: 'planning',
+            members: [
+              { name: 'current', path: currentPath },
+              { name: 'possible-store', path: possibleStorePath },
+            ],
+          }],
+        };
+      }
+      throw new Error('store list unavailable');
+    });
+    const gateway = new ProjectDataGateway({
+      createCli: () => cli,
+      readGitMetadata: async () => ({}),
+    });
+
+    await expect(gateway.loadWorksetNavigation(currentProject)).resolves.toEqual({
+      project: currentProject,
+      worksets: [],
+    });
+  });
+
+  it('fails closed when Store inventory contains a malformed entry', async () => {
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'openspec-workset-malformed-store-'));
     temporaryDirectories.push(base);
     const currentPath = path.join(base, 'current-project');
     const possibleStorePath = path.join(base, 'possible-store');
@@ -1291,9 +1379,37 @@ describe('ProjectDataGateway Workset navigation', () => {
             ],
           }],
         }),
-        listStores: async () => {
-          throw new Error('store list unavailable');
-        },
+        listStores: async () => ({ stores: [{ id: 'possible-store' }] }),
+      }) as any,
+      readGitMetadata: async () => ({}),
+    } as any);
+
+    await expect(gateway.loadWorksetNavigation(currentProject)).resolves.toEqual({
+      project: currentProject,
+      worksets: [],
+    });
+  });
+
+  it('fails closed when a registered Store root cannot be resolved', async () => {
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'openspec-workset-unresolved-store-'));
+    temporaryDirectories.push(base);
+    const currentPath = path.join(base, 'current-project');
+    const possibleStorePath = path.join(base, 'possible-store');
+    await fs.mkdir(path.join(currentPath, 'openspec'), { recursive: true });
+    const currentProject = await createProjectContext('Current Project', currentPath);
+    const gateway = new ProjectDataGateway({
+      createCli: () => ({
+        getContext: async () => context(currentPath, 'nearest'),
+        listWorksets: async () => ({
+          worksets: [{
+            name: 'planning',
+            members: [
+              { name: 'current', path: currentPath },
+              { name: 'possible-store', path: possibleStorePath },
+            ],
+          }],
+        }),
+        listStores: async () => ({ stores: [{ id: 'possible-store', root: possibleStorePath }] }),
       }) as any,
       readGitMetadata: async () => ({}),
     } as any);

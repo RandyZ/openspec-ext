@@ -56,14 +56,22 @@ const execFileAsync = promisify(execFile);
 async function readGitMetadataFromGit(projectPath: string): Promise<WorksetGitMetadata> {
   const options = { cwd: projectPath, timeout: 1500, maxBuffer: 64 * 1024 };
   const [repositoryResult, branchResult] = await Promise.allSettled([
-    execFileAsync('git', ['rev-parse', '--show-toplevel'], options),
+    execFileAsync('git', ['rev-parse', '--git-common-dir'], options),
     execFileAsync('git', ['branch', '--show-current'], options),
   ]);
 
   const metadata: { repository?: string; branch?: string } = {};
   if (repositoryResult.status === 'fulfilled') {
-    const repository = String(repositoryResult.value.stdout).trim();
-    if (path.isAbsolute(repository)) metadata.repository = repository;
+    const commonDir = String(repositoryResult.value.stdout).trim();
+    const resolvedCommonDir = path.isAbsolute(commonDir)
+      ? commonDir
+      : path.resolve(projectPath, commonDir);
+    try {
+      const repository = await fs.realpath(resolvedCommonDir);
+      if (path.isAbsolute(repository)) metadata.repository = repository;
+    } catch {
+      // Git identity is display-only; an unavailable common directory must not hide a Project.
+    }
   }
   if (branchResult.status === 'fulfilled') {
     const branch = String(branchResult.value.stdout).trim();
@@ -177,15 +185,16 @@ export class ProjectDataGateway {
 
     const stores = this.asArray(storePayload, 'stores');
     const roots = new Map<string, string>();
-    await Promise.all(stores.map(async (rawStore) => {
-      if (!rawStore || typeof rawStore !== 'object') return;
+    for (const rawStore of stores) {
+      if (!rawStore || typeof rawStore !== 'object') return undefined;
       const record = rawStore as Record<string, unknown>;
       const id = typeof record.id === 'string' && record.id.trim() ? record.id : undefined;
       const root = typeof record.root === 'string' ? record.root : undefined;
-      if (!id || !root) return;
+      if (!id || !root) return undefined;
       const canonicalRoot = await this.canonicalizeMemberPath(root);
-      if (canonicalRoot) roots.set(canonicalRoot, id);
-    }));
+      if (!canonicalRoot) return undefined;
+      roots.set(canonicalRoot, id);
+    }
     return roots;
   }
 

@@ -226,12 +226,15 @@ export class OpenSpecCliService {
   async listStores(): Promise<OpenSpecStoreListResult> {
     try {
       const payload = await this.runJson(['store', 'list', '--json']);
-      if (!payload || typeof payload !== 'object') return { stores: [] };
+      if (!payload || typeof payload !== 'object'
+        || !Array.isArray((payload as { stores?: unknown }).stores)) {
+        throw new Error('Invalid Store inventory payload');
+      }
       const stores = (payload as { stores?: unknown }).stores;
-      return { stores: Array.isArray(stores) ? stores as OpenSpecStoreListResult['stores'] : [] };
+      return { stores: stores as OpenSpecStoreListResult['stores'] };
     } catch (error) {
       logger.warn('Failed to list Stores', error as Error);
-      return { stores: [] };
+      throw error;
     }
   }
 
