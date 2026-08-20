@@ -118,6 +118,7 @@ export class DataManager {
   private stateReader: StateReader;
   private contentAccess: IOpenSpecContentAccess;
   private fileWatcher: FileWatcherService;
+  private watchedProjectRoot: string;
   private taskExecutorService: TaskExecutorService;
   private readonly cacheService?: OpenSpecCacheService;
   private cachedData: DashboardData | null = null;
@@ -153,12 +154,22 @@ export class DataManager {
     this.contentAccess = new FileManagerService(openspecDir);
     this.stateReader = new StateReader(this.cliService, this.contentAccess);
     this.fileWatcher = new FileWatcherService(workspaceRoot);
+    this.watchedProjectRoot = workspaceRoot;
     this.taskExecutorService = new TaskExecutorService(workspaceRoot, this.contentAccess);
   }
 
   /** Workspace root used for openspec (same root used by "Open in Editor" and content read). */
   getWorkspaceRoot(): string {
     return this.workspaceRoot;
+  }
+
+  /** Keep one watcher aligned with the currently selected Project-first root. */
+  setWatchedProjectRoot(rootPath: string): void {
+    const normalizedRoot = path.normalize(rootPath);
+    if (normalizedRoot === path.normalize(this.watchedProjectRoot)) return;
+    this.watchedProjectRoot = normalizedRoot;
+    this.fileWatcher.retarget(normalizedRoot);
+    this.cachedData = null;
   }
 
   /**
@@ -478,7 +489,7 @@ export class DataManager {
       const artifactChanges = new Map<string, Set<string>>();
 
       for (const e of events) {
-        const relative = path.relative(this.workspaceRoot, e.uri.fsPath).replace(/\\/g, '/');
+        const relative = path.relative(this.watchedProjectRoot, e.uri.fsPath).replace(/\\/g, '/');
 
         // tasks.md auto-complete parents
         const archiveTasksMatch = relative.match(/^openspec\/changes\/archive\/([^/]+)\/tasks\.md$/);
@@ -512,13 +523,13 @@ export class DataManager {
         this.notifyArtifactChanged({
           changeName,
           artifactTypes: [...types],
-          rootPath: this.canonicalRootPath(this.workspaceRoot),
+          rootPath: this.canonicalRootPath(this.watchedProjectRoot),
         });
       }
 
       logger.info(`File changes detected (${events.length} events), refreshing...`);
       void (async () => {
-        await this.invalidateDashboardCache(this.resolveScopeForRoot(this.workspaceRoot));
+        await this.invalidateDashboardCache(this.resolveScopeForRoot(this.watchedProjectRoot));
         await this.refresh();
       })().catch((error) => {
         logger.warn('Failed to refresh after file changes', error as Error);

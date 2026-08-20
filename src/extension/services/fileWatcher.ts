@@ -53,6 +53,15 @@ export class FileWatcherService {
     logger.info('File watcher started');
   }
 
+  /** Retarget the existing watcher set to one selected Project root. */
+  retarget(rootPath: string): void {
+    if (this.workspaceRoot === rootPath) return;
+    const callback = this.changeCallback;
+    this.stop();
+    this.workspaceRoot = rootPath;
+    if (callback) this.start(callback);
+  }
+
   /**
    * Stop watching files
    */
@@ -64,6 +73,8 @@ export class FileWatcherService {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
     }
+
+    this.pendingEvents = [];
 
     logger.info('File watcher stopped');
   }

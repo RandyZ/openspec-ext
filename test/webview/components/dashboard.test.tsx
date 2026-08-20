@@ -15,6 +15,7 @@ import type {
   ProjectContext,
   OpenSpecRootBinding,
   ProjectSidebarData,
+  ProjectWorksetNavigationData,
 } from '../../../src/webview/types/messages';
 import { adaptLegacyDashboardData } from '../../../src/webview/types/legacyDashboardAdapter';
 import type { ChangeStatusCounts } from '../../../src/shared/changeLifecycle';
@@ -132,6 +133,29 @@ const projectSidebarData: ProjectSidebarData = {
   binding: projectBinding,
   changes: [hostChange('active-change', { lifecycleStatus: 'planning' })],
   lastRefresh: 2,
+};
+
+const projectWorksetNavigation: ProjectWorksetNavigationData = {
+  project: projectContext,
+  worksets: [{
+    name: 'planning',
+    members: [
+      {
+        name: projectContext.label,
+        path: projectContext.projectPath,
+        role: 'project',
+        selectable: true,
+        project: projectContext,
+      },
+      {
+        name: 'other-project',
+        path: '/projects/other',
+        role: 'project',
+        selectable: true,
+        project: { id: '/projects/other', label: 'Other Project', projectPath: '/projects/other' },
+      },
+    ],
+  }],
 };
 
 function renderDashboardWithData(data: DashboardData, state: Record<string, unknown> = {}) {
@@ -326,6 +350,23 @@ describe('project page contract', () => {
     expect(html).not.toContain('archive:old-change');
     expect(html).not.toContain('Root selector');
     expect(html).not.toContain('Stores & Worksets');
+  });
+
+  it('keeps Workset picker navigation separate from the Project content scene', () => {
+    const html = renderProjectSidebar({
+      ...projectSidebarData,
+      worksetNavigation: projectWorksetNavigation,
+    });
+
+    expect(html).toContain('Open Worksets');
+    expect(html).toContain('active-change');
+    expect(html).not.toContain('data-workset-project-picker');
+    expect(sendMessage.selectWorksetProject('planning', '/projects/other')).toEqual({
+      type: 'selectWorksetProject',
+      worksetName: 'planning',
+      memberPath: '/projects/other',
+    });
+    expect(sendMessage.selectCurrentProject()).toEqual({ type: 'selectCurrentProject' });
   });
 
   it('keeps All Changes and Specs available when active work is empty', () => {

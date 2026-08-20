@@ -50,4 +50,19 @@ describe('FileWatcherService', () => {
       'openspec/changes/**',
     ]);
   });
+
+  it('retargets the single watcher set to the selected Project root', () => {
+    const watcher = new FileWatcherService('/workspace');
+    const callback = vi.fn();
+
+    watcher.start(callback);
+    watcher.retarget('/other-project');
+
+    expect(createdWatchers).toHaveLength(6);
+    expect(createdWatchers.slice(3).map(({ pattern }) => pattern.base)).toEqual([
+      '/other-project',
+      '/other-project',
+      '/other-project',
+    ]);
+  });
 });

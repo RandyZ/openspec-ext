@@ -244,6 +244,44 @@ describe('OpenSpecCliService', () => {
     });
   });
 
+  describe('Workset navigation lists', () => {
+    it('loads Worksets with a selector-free machine-global command', async () => {
+      const service = new OpenSpecCliService(workspaceRoot);
+      const runJson = vi.spyOn(service, 'runJson').mockResolvedValue({
+        worksets: [{
+          name: 'platform',
+          tool: 'cursor',
+          members: [{ name: 'project', path: '/projects/project' }],
+        }],
+      });
+
+      const result = await (service as any).listWorksets();
+
+      expect(result).toEqual({
+        worksets: [{
+          name: 'platform',
+          tool: 'cursor',
+          members: [{ name: 'project', path: '/projects/project' }],
+        }],
+      });
+      expect(runJson).toHaveBeenCalledWith(['workset', 'list', '--json']);
+    });
+
+    it('loads registered Stores with a selector-free machine-global command', async () => {
+      const service = new OpenSpecCliService(workspaceRoot);
+      const runJson = vi.spyOn(service, 'runJson').mockResolvedValue({
+        stores: [{ id: 'planning-store', root: '/stores/planning-store' }],
+      });
+
+      const result = await (service as any).listStores();
+
+      expect(result).toEqual({
+        stores: [{ id: 'planning-store', root: '/stores/planning-store' }],
+      });
+      expect(runJson).toHaveBeenCalledWith(['store', 'list', '--json']);
+    });
+  });
+
   describe('listChanges', () => {
     it('returns empty array when CLI returns non-JSON (human-readable)', async () => {
       mockSpawnSuccess('Active changes:\n  add-foo  Some change\n');

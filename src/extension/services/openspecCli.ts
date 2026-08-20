@@ -12,6 +12,8 @@ import {
   ValidationResult,
   OpenSpecCliError,
   OpenSpecContextResult,
+  OpenSpecStoreListResult,
+  OpenSpecWorksetListResult,
 } from './types';
 import { OpenSpecCliResolver, OpenSpecCliResolutionError } from './openspecCliResolver';
 import type { OpenSpecScope } from './openspecScope';
@@ -198,6 +200,39 @@ export class OpenSpecCliService {
 
   async getContext(scope?: ScopeOption | OpenSpecScope): Promise<OpenSpecContextResult> {
     return (await this.runJson(this.withStoreFlag(['context', '--json'], scope))) as OpenSpecContextResult;
+  }
+
+  /**
+   * List machine-global Worksets. This probe is deliberately selector-free:
+   * Worksets are not scoped to the currently selected Store.
+   */
+  async listWorksets(): Promise<OpenSpecWorksetListResult> {
+    try {
+      const payload = await this.runJson(['workset', 'list', '--json']);
+      if (!payload || typeof payload !== 'object') return { worksets: [] };
+      const worksets = (payload as { worksets?: unknown }).worksets;
+      return { worksets: Array.isArray(worksets) ? worksets as OpenSpecWorksetListResult['worksets'] : [] };
+    } catch (error) {
+      logger.warn('Failed to list Worksets', error as Error);
+      return { worksets: [] };
+    }
+  }
+
+  /**
+   * List registered machine-global Stores. This probe is deliberately
+   * selector-free because the result is the authority used to classify
+   * Workset members.
+   */
+  async listStores(): Promise<OpenSpecStoreListResult> {
+    try {
+      const payload = await this.runJson(['store', 'list', '--json']);
+      if (!payload || typeof payload !== 'object') return { stores: [] };
+      const stores = (payload as { stores?: unknown }).stores;
+      return { stores: Array.isArray(stores) ? stores as OpenSpecStoreListResult['stores'] : [] };
+    } catch (error) {
+      logger.warn('Failed to list Stores', error as Error);
+      return { stores: [] };
+    }
   }
 
   /**

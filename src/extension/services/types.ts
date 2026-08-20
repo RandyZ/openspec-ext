@@ -42,6 +42,58 @@ export interface OpenSpecContextMember {
   readonly [key: string]: unknown;
 }
 
+export interface OpenSpecWorksetMember {
+  readonly name: string;
+  readonly path: string;
+}
+
+export interface OpenSpecWorkset {
+  readonly name: string;
+  readonly tool?: string;
+  readonly members: readonly OpenSpecWorksetMember[];
+}
+
+export interface OpenSpecWorksetListResult {
+  readonly worksets: readonly OpenSpecWorkset[];
+}
+
+export interface OpenSpecStore {
+  readonly id: string;
+  readonly root: string;
+}
+
+export interface OpenSpecStoreListResult {
+  readonly stores: readonly OpenSpecStore[];
+}
+
+export interface WorksetGitMetadata {
+  readonly repository?: string;
+  readonly branch?: string;
+}
+
+export type WorksetNavigationMemberRole = 'project' | 'store';
+
+export interface WorksetNavigationMember {
+  readonly name: string;
+  readonly path: string;
+  readonly role: WorksetNavigationMemberRole;
+  readonly selectable: boolean;
+  readonly project?: ProjectContext;
+  readonly storeId?: string;
+  readonly git?: WorksetGitMetadata;
+}
+
+export interface WorksetNavigationEntry {
+  readonly name: string;
+  readonly tool?: string;
+  readonly members: readonly WorksetNavigationMember[];
+}
+
+export interface ProjectWorksetNavigationData {
+  readonly project: ProjectContext;
+  readonly worksets: readonly WorksetNavigationEntry[];
+}
+
 export interface ProjectContext {
   readonly id: string;
   readonly label: string;

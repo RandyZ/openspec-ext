@@ -1167,3 +1167,140 @@ describe('ProjectDataGateway bound readers', () => {
     ]);
   });
 });
+
+describe('ProjectDataGateway Workset navigation', () => {
+  const temporaryDirectories: string[] = [];
+
+  afterEach(async () => {
+    await Promise.all(
+      temporaryDirectories.splice(0).map((directory) => fs.rm(directory, { recursive: true, force: true }))
+    );
+  });
+
+  it('loads canonical Project and Planning Store members from selector-free CLI payloads', async () => {
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'openspec-workset-navigation-'));
+    temporaryDirectories.push(base);
+    const currentPath = path.join(base, 'current-project');
+    const currentAlias = path.join(base, 'current-alias');
+    const otherPath = path.join(base, 'other-project');
+    const worktreePath = path.join(base, 'repo-worktree');
+    const storePath = path.join(base, 'planning-store');
+    const storeAlias = path.join(base, 'planning-store-alias');
+    await Promise.all([
+      fs.mkdir(path.join(currentPath, 'openspec'), { recursive: true }),
+      fs.mkdir(path.join(otherPath, 'openspec'), { recursive: true }),
+      fs.mkdir(path.join(worktreePath, 'openspec'), { recursive: true }),
+      fs.mkdir(path.join(storePath, 'openspec'), { recursive: true }),
+    ]);
+    await fs.symlink(currentPath, currentAlias, 'dir');
+    await fs.symlink(storePath, storeAlias, 'dir');
+
+    const currentProject = await createProjectContext('Current Project', currentPath);
+    const canonicalOtherPath = await fs.realpath(otherPath);
+    const canonicalWorktreePath = await fs.realpath(worktreePath);
+    const canonicalStorePath = await fs.realpath(storePath);
+    const repositoryRoot = path.join(base, 'shared-repository');
+    const listCalls: string[] = [];
+    const readGitMetadata = vi.fn(async (memberPath: string) => (
+      memberPath === canonicalWorktreePath
+        ? { repository: repositoryRoot, branch: 'feature/worktree' }
+        : {}
+    ));
+
+    const gateway = new ProjectDataGateway({
+      createCli: () => ({
+        getContext: async () => context(currentPath, 'nearest'),
+        listWorksets: async () => {
+          listCalls.push('worksets');
+          return {
+            worksets: [
+              {
+                name: 'primary-workset',
+                tool: 'cursor',
+                members: [
+                  { name: 'current', path: currentAlias },
+                  { name: 'other', path: otherPath },
+                  { name: 'planning-store', path: storeAlias },
+                  { name: 'missing', path: path.join(base, 'missing-project') },
+                ],
+              },
+              {
+                name: 'secondary-workset',
+                members: [
+                  { name: 'current', path: currentPath },
+                  { name: 'worktree', path: worktreePath },
+                ],
+              },
+            ],
+          };
+        },
+        listStores: async () => {
+          listCalls.push('stores');
+          return { stores: [{ id: 'planning-store', root: storePath }] };
+        },
+      }) as any,
+      readGitMetadata,
+    } as any);
+
+    const data = await (gateway as any).loadWorksetNavigation(currentProject);
+
+    expect(listCalls).toEqual(['worksets', 'stores']);
+    expect(data.worksets).toHaveLength(2);
+    expect(data.worksets[0].members.find((member: any) => member.role === 'store')).toMatchObject({
+      path: canonicalStorePath,
+      role: 'store',
+      selectable: false,
+      storeId: 'planning-store',
+    });
+    expect(data.worksets[0].members.some((member: any) => member.name === 'missing')).toBe(false);
+    expect(data.worksets[0].members.find((member: any) => member.name === 'other')).toMatchObject({
+      path: canonicalOtherPath,
+      role: 'project',
+      selectable: true,
+      project: { id: canonicalOtherPath, projectPath: canonicalOtherPath },
+    });
+    expect(data.worksets[1].members.find((member: any) => member.name === 'worktree')).toMatchObject({
+      path: canonicalWorktreePath,
+      role: 'project',
+      selectable: true,
+      project: { id: canonicalWorktreePath, projectPath: canonicalWorktreePath },
+      git: { repository: repositoryRoot, branch: 'feature/worktree' },
+    });
+    expect(readGitMetadata).toHaveBeenCalledWith(canonicalWorktreePath);
+  });
+
+  it('fails closed when registered Store identity cannot be confirmed', async () => {
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'openspec-workset-store-probe-'));
+    temporaryDirectories.push(base);
+    const currentPath = path.join(base, 'current-project');
+    const possibleStorePath = path.join(base, 'possible-store');
+    await Promise.all([
+      fs.mkdir(path.join(currentPath, 'openspec'), { recursive: true }),
+      fs.mkdir(path.join(possibleStorePath, 'openspec'), { recursive: true }),
+    ]);
+    const currentProject = await createProjectContext('Current Project', currentPath);
+    const gateway = new ProjectDataGateway({
+      createCli: () => ({
+        getContext: async () => context(currentPath, 'nearest'),
+        listWorksets: async () => ({
+          worksets: [{
+            name: 'planning',
+            members: [
+              { name: 'current', path: currentPath },
+              { name: 'possible-store', path: possibleStorePath },
+            ],
+          }],
+        }),
+        listStores: async () => {
+          throw new Error('store list unavailable');
+        },
+      }) as any,
+      readGitMetadata: async () => ({}),
+    } as any);
+
+    await expect(gateway.loadWorksetNavigation(currentProject)).resolves.toEqual({
+      project: currentProject,
+      worksets: [],
+    });
+  });
+});

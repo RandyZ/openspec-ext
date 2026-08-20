@@ -497,6 +497,89 @@ describe('DashboardViewProvider', () => {
     expect(sidebarMessage.data.project).toEqual(fixture.project);
   });
 
+  it('validates Workset Project selection before replacing the Project and watcher target', async () => {
+    vi.useFakeTimers();
+    const current = makeProjectFixture('/planning/current');
+    const other: ProjectContext = {
+      id: '/projects/other',
+      label: 'Other Project',
+      projectPath: '/projects/other',
+    };
+    const otherBinding: OpenSpecRootBinding = {
+      projectId: other.id,
+      commandCwd: other.projectPath,
+      rootPath: '/planning/other',
+      rootSource: 'nearest',
+    };
+    const navigationFor = (project: ProjectContext) => ({
+      project,
+      worksets: [{
+        name: 'shared-workset',
+        members: [
+          { name: project.label, path: project.projectPath, role: 'project', selectable: true, project },
+          { name: 'Other Project', path: other.projectPath, role: 'project', selectable: true, project: other },
+        ],
+      }],
+    });
+    const gateway = {
+      loadChanges: vi.fn(async (project: ProjectContext) => ({
+        project,
+        binding: project.id === current.project.id ? current.binding : otherBinding,
+        changes: [makeProjectChange(project.id === current.project.id ? 'current-change' : 'other-change')],
+      })),
+      loadWorksetNavigation: vi.fn(async (project: ProjectContext) => navigationFor(project)),
+      resolveWorksetProject: vi.fn(async (_project: ProjectContext, _name: string, memberPath: string) => (
+        memberPath === other.projectPath ? other : undefined
+      )),
+      resolveBinding: vi.fn(async (project: ProjectContext) => (
+        project.id === current.project.id ? current.binding : otherBinding
+      )),
+    };
+    const setWatchedProjectRoot = vi.fn();
+    const dataManager = makeDataManager({ setWatchedProjectRoot });
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(dataManager, gateway, current);
+
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+
+    await handler?.({ type: 'selectWorksetProject', worksetName: 'shared-workset', memberPath: other.projectPath });
+    expect(setWatchedProjectRoot).toHaveBeenCalledWith(other.projectPath);
+    const selectedSidebarMessage = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'setContext' && message.view === 'sidebar')
+      .at(-1);
+    expect(selectedSidebarMessage).toEqual(expect.objectContaining({
+      type: 'setContext',
+      view: 'sidebar',
+      data: expect.objectContaining({
+        project: other,
+        binding: otherBinding,
+        changes: [makeProjectChange('other-change')],
+      }),
+    }));
+
+    const callsBeforeForged = gateway.resolveWorksetProject.mock.calls.length;
+    await handler?.({ type: 'selectWorksetProject', worksetName: 'shared-workset', memberPath: '/forged/store' });
+    expect(gateway.resolveWorksetProject).toHaveBeenCalledTimes(callsBeforeForged + 1);
+    expect(setWatchedProjectRoot).toHaveBeenCalledTimes(1);
+
+    gateway.resolveBinding.mockResolvedValueOnce(current.binding);
+    await handler?.({ type: 'selectCurrentProject' });
+    expect(setWatchedProjectRoot).toHaveBeenLastCalledWith(current.project.projectPath);
+    const restoredSidebarMessage = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'setContext' && message.view === 'sidebar')
+      .at(-1);
+    expect(restoredSidebarMessage).toEqual(expect.objectContaining({
+      type: 'setContext',
+      view: 'sidebar',
+      data: expect.objectContaining({ project: current.project, binding: current.binding }),
+    }));
+  });
+
   it('project refreshes use the Project loader for watcher and manual refresh', async () => {
     vi.useFakeTimers();
     const fixture = makeProjectFixture();
@@ -1090,6 +1173,34 @@ describe('DashboardViewProvider', () => {
     expect(specMessages).not.toContainEqual(expect.objectContaining({ type: 'setContext', view: 'sidebar' }));
   });
 
+  it('replays Spec content when the Project-first webview becomes ready after the initial post', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture();
+    const gateway = {
+      resolveBinding: vi.fn().mockResolvedValue(fixture.binding),
+      loadChanges: vi.fn().mockResolvedValue({ project: fixture.project, binding: fixture.binding, changes: [] }),
+    };
+    const dataManager = makeDataManager({
+      readSpec: vi.fn().mockResolvedValue('late-ready spec content'),
+    });
+    const sidebarWebview = makeWebview();
+    const specPanel = makeEditorPanel();
+    const vscode = await import('vscode');
+    vi.mocked(vscode.window.createWebviewPanel).mockReturnValueOnce(specPanel as any);
+    const provider = makeProjectProvider(dataManager, gateway, fixture);
+
+    provider.resolveWebviewView(makeWebviewView(sidebarWebview) as any, {} as any, {} as any);
+    const sidebarHandler = vi.mocked(sidebarWebview.onDidReceiveMessage).mock.calls[0]?.[0];
+    await sidebarHandler?.({ type: 'openSpecInEditor', specId: 'late-ready', project: fixture.project, binding: fixture.binding });
+    await vi.runAllTimersAsync();
+
+    const specHandler = vi.mocked(specPanel.webview.onDidReceiveMessage).mock.calls[0]?.[0];
+    await specHandler?.({ type: 'getProjectSidebarData' });
+    const specMessages = specPanel.webview.postMessage.mock.calls.map(([message]) => message);
+
+    expect(specMessages.filter((message) => message?.type === 'specContent')).toHaveLength(2);
+  });
+
   it('rejects a binding mismatch before creating a Changes or Specs Explorer panel', async () => {
     const fixture = makeProjectFixture();
     const forgedBinding = { ...fixture.binding, rootPath: '/forged/root' };
@@ -1152,6 +1263,43 @@ describe('DashboardViewProvider', () => {
       project: fixture.project,
       binding: fixture.binding,
     }));
+  });
+
+  it('does not let Project-first same-named detail requests fall back to a legacy scope', async () => {
+    const fixture = makeProjectFixture();
+    const panelManager = { open: vi.fn() };
+    const dataManager = makeDataManager({
+      readSpec: vi.fn().mockResolvedValue('# legacy Store spec'),
+    });
+    const gateway = {
+      resolveBinding: vi.fn().mockResolvedValue(fixture.binding),
+      loadChanges: vi.fn().mockResolvedValue({ project: fixture.project, binding: fixture.binding, changes: [] }),
+    };
+    const sidebarWebview = makeWebview();
+    const provider = new (DashboardViewProvider as any)(
+      dataManager,
+      '/ext',
+      panelManager,
+      undefined,
+      fixture.project,
+      gateway,
+    ) as DashboardViewProvider;
+    provider.resolveWebviewView(makeWebviewView(sidebarWebview) as any, {} as any, {} as any);
+    const handler = vi.mocked(sidebarWebview.onDidReceiveMessage).mock.calls[0]?.[0];
+
+    await handler?.({
+      type: 'openChangeDetailInEditor',
+      changeName: 'same-name',
+      scopeId: 'store:legacy',
+    });
+    await handler?.({
+      type: 'openSpecInEditor',
+      specId: 'same-spec',
+      scopeId: 'store:legacy',
+    });
+
+    expect(panelManager.open).not.toHaveBeenCalled();
+    expect(dataManager.readSpec).not.toHaveBeenCalled();
   });
 
   it('opens same-named Project Spec details under separate verified Store bindings', async () => {

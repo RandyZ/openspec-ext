@@ -13,9 +13,10 @@ import type {
 import type {
   OpenSpecRootBinding,
   ProjectContext,
+  ProjectWorksetNavigationData,
 } from '../../extension/services/types';
 
-export type { OpenSpecRootBinding, ProjectContext } from '../../extension/services/types';
+export type { OpenSpecRootBinding, ProjectContext, ProjectWorksetNavigationData } from '../../extension/services/types';
 
 export type LoadingReason =
   | 'initial'
@@ -29,6 +30,8 @@ export type LoadingReason =
 export type WebviewMessage =
   | { type: 'getDashboardData' }
   | { type: 'getProjectSidebarData' }
+  | { type: 'selectWorksetProject'; worksetName: string; memberPath: string }
+  | { type: 'selectCurrentProject' }
   | { type: 'openChangesExplorer'; project: ProjectContext; binding: OpenSpecRootBinding }
   | { type: 'openSpecsExplorer'; project: ProjectContext; binding: OpenSpecRootBinding }
   | { type: 'getCacheStats'; force?: boolean }
@@ -219,6 +222,7 @@ export interface ProjectSidebarData {
   readonly cliDiagnostic?: CliActivationDiagnosticView;
   readonly cache?: WebviewCacheMeta;
   readonly workflowLaunchConfig?: WorkflowLaunchConfigView;
+  readonly worksetNavigation?: ProjectWorksetNavigationData;
   readonly lastRefresh?: number;
 }
 
@@ -345,6 +349,16 @@ export const sendMessage = {
 
   getProjectSidebarData: (): WebviewMessage => ({
     type: 'getProjectSidebarData',
+  }),
+
+  selectWorksetProject: (worksetName: string, memberPath: string): WebviewMessage => ({
+    type: 'selectWorksetProject',
+    worksetName,
+    memberPath,
+  }),
+
+  selectCurrentProject: (): WebviewMessage => ({
+    type: 'selectCurrentProject',
   }),
 
   openChangesExplorer: (project: ProjectContext, binding: OpenSpecRootBinding): WebviewMessage => ({

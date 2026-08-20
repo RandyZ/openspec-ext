@@ -30,4 +30,21 @@ describe('Project-first Header', () => {
     expect(html).toContain('data-project-navigation="true"');
     expect(html).toContain('class="flex flex-col gap-1"');
   });
+
+  it('exposes a separate Worksets navigation action without moving Project identity', () => {
+    const html = renderToStaticMarkup(
+      <Header
+        onRefresh={vi.fn()}
+        onNewChange={vi.fn()}
+        loading={false}
+        project={{ id: '/projects/current', label: 'Current Project', projectPath: '/projects/current' }}
+        onOpenWorksets={vi.fn()}
+      />
+    );
+
+    expect(html).toContain('Worksets');
+    expect(html).toContain('aria-label="Open Worksets"');
+    expect(html).toContain('title="Open Worksets"');
+    expect(html.indexOf('data-project-identity')).toBeLessThan(html.indexOf('Open Worksets'));
+  });
 });

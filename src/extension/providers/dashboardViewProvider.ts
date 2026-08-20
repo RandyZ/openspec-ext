@@ -38,6 +38,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   private pendingExplorerContexts = new Map<vscode.Webview, PendingExplorerContext>();
   private refreshSubscription?: vscode.Disposable;
   private currentProjectBinding?: OpenSpecRootBinding;
+  private readonly originProjectContext?: ProjectContext;
   private cachedProjectSidebarData?: ProjectSidebarData;
   private readonly projectPageCache?: ProjectPageCache;
   private projectRequestGeneration = 0;
@@ -52,6 +53,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     private projectDataGateway?: ProjectDataGateway,
     projectPageCache?: ProjectPageCache
   ) {
+    this.originProjectContext = projectContext;
     // DataManager remains the owner of the existing cache service; the optional
     // argument keeps this provider testable without adding a second cache.
     this.projectPageCache = projectPageCache
@@ -241,11 +243,21 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     if (!this.projectContext || !this.projectDataGateway) return;
     const generation = ++this.projectRequestGeneration;
     try {
-      const result = await this.projectDataGateway.loadChanges(this.projectContext);
+      const project = this.projectContext;
+      const navigationLoader = this.projectDataGateway.loadWorksetNavigation;
+      const [result, worksetNavigation] = await Promise.all([
+        this.projectDataGateway.loadChanges(project),
+        typeof navigationLoader === 'function'
+          ? navigationLoader.call(this.projectDataGateway, project).catch((error: unknown) => {
+            logger.warn('Failed to load Project Workset navigation', error as Error);
+            return undefined;
+          })
+          : Promise.resolve(undefined),
+      ]);
       if (
         generation !== this.projectRequestGeneration
-        || !this.sameProject(result.project, this.projectContext)
-        || result.binding.projectId !== this.projectContext.id
+        || !this.sameProject(result.project, project)
+        || result.binding.projectId !== project.id
       ) {
         return;
       }
@@ -257,6 +269,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         project: result.project,
         binding: result.binding,
         changes,
+        ...(worksetNavigation?.worksets.length ? { worksetNavigation } : {}),
         workflowLaunchConfig: getWorkflowLaunchConfigMessage().config,
         lastRefresh: Date.now(),
       };
@@ -473,11 +486,18 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     webview: vscode.Webview,
     boundScope?: ReturnType<typeof createProjectBoundScope>,
     suppressProjectSidebar = false,
+    onProjectSidebarReady?: () => void,
   ): void {
     webview.onDidReceiveMessage(
       async (message) => {
         try {
-          await this.handleMessage(message, webview, boundScope, suppressProjectSidebar);
+          await this.handleMessage(
+            message,
+            webview,
+            boundScope,
+            suppressProjectSidebar,
+            onProjectSidebarReady,
+          );
         } catch (error) {
           logger.error('Error handling webview message', error as Error);
         }
@@ -503,10 +523,23 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     webview: vscode.Webview,
     boundScope?: ReturnType<typeof createProjectBoundScope>,
     suppressProjectSidebar = false,
+    onProjectSidebarReady?: () => void,
   ): Promise<void> {
-    if (suppressProjectSidebar && message.type === 'getProjectSidebarData') return;
+    if (suppressProjectSidebar && message.type === 'getProjectSidebarData') {
+      onProjectSidebarReady?.();
+      return;
+    }
     const explorerContextConsumed = message.type === 'getProjectSidebarData'
       && this.postPendingExplorerContext(webview);
+
+    if (message.type === 'selectWorksetProject' && this.isProjectFirst()) {
+      await this.selectWorksetProject(message.worksetName, message.memberPath, webview);
+      return;
+    }
+    if (message.type === 'selectCurrentProject' && this.isProjectFirst()) {
+      await this.selectCurrentProject(webview);
+      return;
+    }
 
     const projectSidebarScope = boundScope ?? this.projectSidebarBoundScope();
     if (
@@ -543,6 +576,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     }
     if (message.type === 'openSpecsExplorer' && this.isProjectFirst()) {
       await this.openSpecsExplorer(message.project, message.binding);
+      return;
+    }
+    if (
+      this.isProjectFirst()
+      && (message.type === 'openChangeDetailInEditor' || message.type === 'openSpecInEditor')
+      && (!message.project || !message.binding)
+    ) {
+      logger.warn(`Rejected unbound Project-first ${message.type} request`);
       return;
     }
     if (message.type === 'openChangeDetailInEditor' && message.changeName && this.panelManager) {
@@ -709,6 +750,60 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private async selectWorksetProject(
+    worksetName: unknown,
+    memberPath: unknown,
+    targetWebview: vscode.Webview
+  ): Promise<void> {
+    if (!this.projectContext || !this.projectDataGateway
+      || typeof worksetName !== 'string' || typeof memberPath !== 'string') return;
+    const resolveMember = this.projectDataGateway.resolveWorksetProject;
+    if (typeof resolveMember !== 'function') return;
+
+    try {
+      const currentProject = this.projectContext;
+      const nextProject = await resolveMember.call(
+        this.projectDataGateway,
+        currentProject,
+        worksetName,
+        memberPath,
+      );
+      if (!nextProject || this.sameProject(nextProject, currentProject)) return;
+      const nextBinding = await this.projectDataGateway.resolveBinding(nextProject);
+      if (
+        nextBinding.projectId !== nextProject.id
+        || nextBinding.commandCwd !== nextProject.projectPath
+      ) return;
+
+      this.dataManager.setWatchedProjectRoot?.(nextProject.projectPath);
+      this.projectContext = nextProject;
+      this.currentProjectBinding = nextBinding;
+      this.cachedProjectSidebarData = undefined;
+      await this.reloadProjectSidebarData(targetWebview);
+    } catch (error) {
+      logger.warn('Rejected Workset Project selection', error as Error);
+    }
+  }
+
+  private async selectCurrentProject(targetWebview: vscode.Webview): Promise<void> {
+    if (!this.projectContext || !this.projectDataGateway || !this.originProjectContext) return;
+    if (this.sameProject(this.projectContext, this.originProjectContext)) return;
+    try {
+      const nextBinding = await this.projectDataGateway.resolveBinding(this.originProjectContext);
+      if (
+        nextBinding.projectId !== this.originProjectContext.id
+        || nextBinding.commandCwd !== this.originProjectContext.projectPath
+      ) return;
+      this.dataManager.setWatchedProjectRoot?.(this.originProjectContext.projectPath);
+      this.projectContext = this.originProjectContext;
+      this.currentProjectBinding = nextBinding;
+      this.cachedProjectSidebarData = undefined;
+      await this.reloadProjectSidebarData(targetWebview);
+    } catch (error) {
+      logger.warn('Failed to restore Current Project', error as Error);
+    }
+  }
+
   private async openSpecsExplorer(project: unknown, binding: unknown): Promise<void> {
     const verifiedBinding = await this.verifyProjectBinding(project, binding);
     if (!verifiedBinding || !this.projectContext || !this.projectDataGateway) return;
@@ -833,10 +928,22 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         disposed = true;
         this.specPanels.delete(key);
       });
-      this.setupMessageHandler(panel.webview, binding ? scope : undefined, true);
-      setTimeout(() => {
-        if (disposed || this.specPanels.get(key) !== panel) return;
+      let projectSidebarReady = false;
+      const postSpecContent = () => {
         panel.webview.postMessage({ type: 'specContent', specId, content });
+      };
+      this.setupMessageHandler(
+        panel.webview,
+        binding ? scope : undefined,
+        true,
+        () => {
+          projectSidebarReady = true;
+          postSpecContent();
+        },
+      );
+      setTimeout(() => {
+        if (disposed || this.specPanels.get(key) !== panel || projectSidebarReady) return;
+        postSpecContent();
       }, 200);
     } catch (err) {
       vscode.window.showErrorMessage(`Failed to open spec: ${specId}`);

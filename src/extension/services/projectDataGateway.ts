@@ -1,5 +1,7 @@
+import { execFile } from 'child_process';
 import { promises as fs } from 'fs';
 import * as path from 'path';
+import { promisify } from 'util';
 import { OpenSpecCliService, type ScopeOption } from './openspecCli';
 import { FileManagerService } from './fileManager';
 import { extractProposalWhy } from './proposalWhy';
@@ -11,12 +13,16 @@ import {
   type ProjectCanonicalSpecsData,
   type ProjectChangesData,
   type ProjectContext,
+  type ProjectWorksetNavigationData,
   type ProjectReferencedStoreSpecsData,
   type ReferencedStoreSpecGroup,
+  type WorksetGitMetadata,
+  type WorksetNavigationEntry,
+  type WorksetNavigationMember,
 } from './types';
 
 type ProjectCli = Pick<OpenSpecCliService, 'getContext'> &
-  Partial<Pick<OpenSpecCliService, 'listChanges' | 'listSpecs'>>;
+  Partial<Pick<OpenSpecCliService, 'listChanges' | 'listSpecs' | 'listStores' | 'listWorksets'>>;
 
 type BoundReaders = {
   readonly binding: OpenSpecRootBinding;
@@ -41,6 +47,29 @@ export interface ProjectDataGatewayOptions {
   createCli?: (cwd: string) => ProjectCli;
   /** Root resolution never invokes this factory. */
   createContentAccess?: (openspecPath: string) => BoundContentAccess;
+  /** Injected in tests; Git metadata is display-only and best-effort. */
+  readGitMetadata?: (projectPath: string) => Promise<WorksetGitMetadata>;
+}
+
+const execFileAsync = promisify(execFile);
+
+async function readGitMetadataFromGit(projectPath: string): Promise<WorksetGitMetadata> {
+  const options = { cwd: projectPath, timeout: 1500, maxBuffer: 64 * 1024 };
+  const [repositoryResult, branchResult] = await Promise.allSettled([
+    execFileAsync('git', ['rev-parse', '--show-toplevel'], options),
+    execFileAsync('git', ['branch', '--show-current'], options),
+  ]);
+
+  const metadata: { repository?: string; branch?: string } = {};
+  if (repositoryResult.status === 'fulfilled') {
+    const repository = String(repositoryResult.value.stdout).trim();
+    if (path.isAbsolute(repository)) metadata.repository = repository;
+  }
+  if (branchResult.status === 'fulfilled') {
+    const branch = String(branchResult.value.stdout).trim();
+    if (branch) metadata.branch = branch;
+  }
+  return metadata;
 }
 
 export async function createProjectContext(label: string, projectPath: string): Promise<ProjectContext> {
@@ -59,6 +88,173 @@ export class ProjectDataGateway {
   constructor(options: ProjectDataGatewayOptions = {}) {
     this.createCli = options.createCli ?? ((cwd) => new OpenSpecCliService(cwd));
     this.createContentAccess = options.createContentAccess ?? ((openspecPath) => new FileManagerService(openspecPath));
+    this.readGitMetadata = options.readGitMetadata ?? readGitMetadataFromGit;
+  }
+
+  private readonly readGitMetadata: (projectPath: string) => Promise<WorksetGitMetadata>;
+
+  async loadWorksetNavigation(project: ProjectContext): Promise<ProjectWorksetNavigationData> {
+    const empty: ProjectWorksetNavigationData = { project, worksets: [] };
+    const currentPath = await this.canonicalizeMemberPath(project.projectPath);
+    if (!currentPath) return empty;
+
+    const cli = this.createCli(project.projectPath);
+    if (!cli.listWorksets) return empty;
+
+    let worksetPayload: unknown;
+    try {
+      worksetPayload = await cli.listWorksets();
+    } catch {
+      return empty;
+    }
+
+    const rawWorksets = this.asArray(worksetPayload, 'worksets');
+    const storeRoots = await this.loadCanonicalStoreRoots(cli);
+    // Store membership is a trust boundary: without a successful official
+    // Store inventory, a Store member could be misclassified as a selectable
+    // Project. Hide topology navigation rather than guessing.
+    if (!storeRoots) return empty;
+    const worksets: WorksetNavigationEntry[] = [];
+
+    for (const rawWorkset of rawWorksets) {
+      if (!rawWorkset || typeof rawWorkset !== 'object') continue;
+      const worksetRecord = rawWorkset as Record<string, unknown>;
+      const name = typeof worksetRecord.name === 'string' && worksetRecord.name.trim()
+        ? worksetRecord.name
+        : undefined;
+      const rawMembers = Array.isArray(worksetRecord.members) ? worksetRecord.members : [];
+      if (!name) continue;
+
+      const members = (
+        await Promise.all(rawMembers.map((rawMember) => this.resolveWorksetMember(rawMember, storeRoots)))
+      ).filter((member): member is WorksetNavigationMember => member !== undefined);
+      if (!members.some((member) => member.path === currentPath)) continue;
+
+      const tool = typeof worksetRecord.tool === 'string' && worksetRecord.tool.trim()
+        ? worksetRecord.tool
+        : undefined;
+      worksets.push({
+        name,
+        ...(tool ? { tool } : {}),
+        members,
+      });
+    }
+
+    return { project, worksets };
+  }
+
+  /**
+   * Re-read official Workset membership before accepting a Webview selection.
+   * The submitted path is only a hint and is canonicalized before comparison.
+   */
+  async resolveWorksetProject(
+    project: ProjectContext,
+    worksetName: string,
+    memberPath: string
+  ): Promise<ProjectContext | undefined> {
+    if (!worksetName.trim()) return undefined;
+    const canonicalMemberPath = await this.canonicalizeMemberPath(memberPath);
+    if (!canonicalMemberPath) return undefined;
+    const navigation = await this.loadWorksetNavigation(project);
+    const workset = navigation.worksets.find((candidate) => candidate.name === worksetName);
+    const member = workset?.members.find((candidate) => candidate.path === canonicalMemberPath);
+    return member?.role === 'project' && member.selectable ? member.project : undefined;
+  }
+
+  private async loadCanonicalStoreRoots(cli: ProjectCli): Promise<Map<string, string> | undefined> {
+    if (!cli.listStores) return undefined;
+    let storePayload: unknown;
+    try {
+      storePayload = await cli.listStores();
+    } catch {
+      return undefined;
+    }
+
+    if (!storePayload || typeof storePayload !== 'object'
+      || !Array.isArray((storePayload as Record<string, unknown>).stores)) {
+      return undefined;
+    }
+
+    const stores = this.asArray(storePayload, 'stores');
+    const roots = new Map<string, string>();
+    await Promise.all(stores.map(async (rawStore) => {
+      if (!rawStore || typeof rawStore !== 'object') return;
+      const record = rawStore as Record<string, unknown>;
+      const id = typeof record.id === 'string' && record.id.trim() ? record.id : undefined;
+      const root = typeof record.root === 'string' ? record.root : undefined;
+      if (!id || !root) return;
+      const canonicalRoot = await this.canonicalizeMemberPath(root);
+      if (canonicalRoot) roots.set(canonicalRoot, id);
+    }));
+    return roots;
+  }
+
+  private async resolveWorksetMember(
+    rawMember: unknown,
+    storeRoots: ReadonlyMap<string, string>
+  ): Promise<WorksetNavigationMember | undefined> {
+    if (!rawMember || typeof rawMember !== 'object') return undefined;
+    const record = rawMember as Record<string, unknown>;
+    const rawPath = typeof record.path === 'string' ? record.path.trim() : '';
+    if (!rawPath) return undefined;
+    const canonicalPath = await this.canonicalizeMemberPath(rawPath);
+    if (!canonicalPath) return undefined;
+    const name = typeof record.name === 'string' && record.name.trim()
+      ? record.name
+      : path.basename(canonicalPath);
+    const storeId = storeRoots.get(canonicalPath);
+    if (storeId) {
+      return {
+        name,
+        path: canonicalPath,
+        role: 'store',
+        selectable: false,
+        storeId,
+      };
+    }
+
+    let git: WorksetGitMetadata | undefined;
+    try {
+      const candidate = await this.readGitMetadata(canonicalPath);
+      const repository = typeof candidate?.repository === 'string' && candidate.repository.trim()
+        ? candidate.repository
+        : undefined;
+      const branch = typeof candidate?.branch === 'string' && candidate.branch.trim()
+        ? candidate.branch
+        : undefined;
+      if (repository || branch) git = { ...(repository ? { repository } : {}), ...(branch ? { branch } : {}) };
+    } catch {
+      // Git metadata is display-only; an unavailable Git command must not hide a Project.
+    }
+
+    const memberProject: ProjectContext = {
+      id: canonicalPath,
+      label: name,
+      projectPath: canonicalPath,
+    };
+    return {
+      name,
+      path: canonicalPath,
+      role: 'project',
+      selectable: true,
+      project: memberProject,
+      ...(git ? { git } : {}),
+    };
+  }
+
+  private async canonicalizeMemberPath(rawPath: string): Promise<string | undefined> {
+    if (!path.isAbsolute(rawPath)) return undefined;
+    try {
+      return await fs.realpath(rawPath);
+    } catch {
+      return undefined;
+    }
+  }
+
+  private asArray(payload: unknown, key: string): unknown[] {
+    if (!payload || typeof payload !== 'object') return [];
+    const value = (payload as Record<string, unknown>)[key];
+    return Array.isArray(value) ? value : [];
   }
 
   async resolveBinding(project: ProjectContext, explicitStoreId?: string): Promise<OpenSpecRootBinding> {
