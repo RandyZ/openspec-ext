@@ -7,6 +7,7 @@ import { DashboardViewProvider } from './providers/dashboardViewProvider';
 import { ChangeDetailPanelManager } from './providers/changeDetailPanelManager';
 import { InteractiveAgentTerminalManager } from './services/interactiveAgentTerminalManager';
 import { OpenSpecCacheService } from './services/openSpecCacheService';
+import { createProjectContext, ProjectDataGateway } from './services/projectDataGateway';
 import { setLocale, t } from '../i18n';
 
 let dataManager: DataManager | null = null;
@@ -30,6 +31,14 @@ export async function activate(context: vscode.ExtensionContext) {
     // project (e.g. FastGPT + Server_DotNetCore) in the root selector. The
     // activation root stays the 'local' scope; additional roots become 'declared'.
     const projectRoots = await getOpenSpecProjectRoots();
+    const projectFolder = vscode.workspace.workspaceFolders?.find(
+      (folder) => folder.uri.fsPath === workspaceRoot
+    );
+    const projectContext = await createProjectContext(
+      projectFolder?.name ?? workspaceRoot,
+      workspaceRoot
+    );
+    const projectDataGateway = new ProjectDataGateway();
 
     // Initialize data manager
     const cacheService = new OpenSpecCacheService(context.globalStorageUri, {
@@ -64,7 +73,9 @@ export async function activate(context: vscode.ExtensionContext) {
       dataManager,
       context.extensionPath,
       changeDetailPanelManager,
-      interactiveTerminalManager
+      interactiveTerminalManager,
+      projectContext,
+      projectDataGateway
     );
     dashboardViewProviderRef = dashboardViewProvider;
     logger.info(`Registering dashboard webview provider: ${DashboardViewProvider.viewType}`);
@@ -77,8 +88,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
     // Subscribe to artifact-level changes so open panels can invalidate their caches
     context.subscriptions.push(
-      dataManager.onArtifactChanged(({ changeName, artifactTypes }) => {
-        changeDetailPanelManager.notifyArtifactChanged(changeName, artifactTypes);
+      dataManager.onArtifactChanged(({ changeName, artifactTypes, rootPath }) => {
+        changeDetailPanelManager.notifyArtifactChanged(changeName, artifactTypes, rootPath);
       })
     );
 

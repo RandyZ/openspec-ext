@@ -43,6 +43,7 @@ interface ChangesSectionProps {
    */
   allowPageClamp?: boolean;
   layout?: ChangesSectionLayout;
+  compact?: boolean;
 }
 
 function resolveEmptyMessage(
@@ -108,6 +109,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
   onViewStateChange,
   allowPageClamp = true,
   layout = 'auto',
+  compact = false,
 }) => {
   const [internalState, dispatch] = useReducer(
     changesViewReducer,
@@ -124,14 +126,15 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
   };
 
   const listItems = useMemo(
-    () => buildChangeListItems(changes, archivedItems),
-    [changes, archivedItems]
+    () => buildChangeListItems(changes, compact ? [] : archivedItems),
+    [changes, archivedItems, compact]
   );
 
   const pageResult = useMemo(
     () => buildVisibleChangePage(listItems, state),
     [listItems, state]
   );
+  const visibleItems = compact ? listItems : pageResult.items;
 
   // Persist pipeline-clamped page for the matching Root without resetting filters.
   useEffect(() => {
@@ -154,11 +157,13 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
   ]);
 
   const hasDataset = listItems.length > 0;
-  const showWide = layout === 'wide' || layout === 'auto';
-  const showNarrow = layout === 'narrow' || layout === 'auto';
+  const showWide = !compact && (layout === 'wide' || layout === 'auto');
+  const showNarrow = !compact && (layout === 'narrow' || layout === 'auto');
   const isNarrowOnly = layout === 'narrow';
 
-  const empty = resolveEmptyMessage(state, rootLabel, hasDataset);
+  const empty = compact && !hasDataset
+    ? { message: t('projectSidebar.emptyActive'), offerCreate: false }
+    : resolveEmptyMessage(state, rootLabel, hasDataset);
 
   const setLifecycle = (lifecycleStatus: LifecycleFilterValue) => {
     applyAction({ type: 'SET_LIFECYCLE_FILTER', lifecycleStatus });
@@ -171,7 +176,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
       data-responsive={layout === 'auto' ? 'true' : undefined}
       style={{ containerType: 'inline-size' } as React.CSSProperties}
     >
-      {layout === 'auto' && (
+      {!compact && layout === 'auto' && (
         <style>{`
           [data-changes-section][data-responsive] [data-layout="wide"] { display: none; }
           [data-changes-section][data-responsive] [data-layout="narrow"] { display: block; }
@@ -228,7 +233,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
         </div>
       )}
 
-      {(hasDataset || state.query.length > 0 || state.attentionOnly) && (
+      {!compact && (hasDataset || state.query.length > 0 || state.attentionOnly) && (
         <>
           <input
             type="search"
@@ -268,7 +273,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
         />
       ) : (
         <div className="space-y-2">
-          {pageResult.items.map((item) =>
+          {visibleItems.map((item) =>
             item.kind === 'active' ? (
               <ChangeCard
                 key={item.id}
@@ -290,19 +295,21 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
         </div>
       )}
 
-      <ChangePagination
-        page={pageResult.page}
-        pageSize={state.pageSize}
-        totalItems={pageResult.totalItems}
-        totalPages={pageResult.totalPages}
-        startIndex={pageResult.startIndex}
-        endIndex={pageResult.endIndex}
-        compact={isNarrowOnly}
-        onPageChange={(page) => applyAction({ type: 'SET_PAGE', page })}
-        onPageSizeChange={(pageSize) =>
-          applyAction({ type: 'SET_PAGE_SIZE', pageSize })
-        }
-      />
+      {!compact && (
+        <ChangePagination
+          page={pageResult.page}
+          pageSize={state.pageSize}
+          totalItems={pageResult.totalItems}
+          totalPages={pageResult.totalPages}
+          startIndex={pageResult.startIndex}
+          endIndex={pageResult.endIndex}
+          compact={isNarrowOnly}
+          onPageChange={(page) => applyAction({ type: 'SET_PAGE', page })}
+          onPageSizeChange={(pageSize) =>
+            applyAction({ type: 'SET_PAGE_SIZE', pageSize })
+          }
+        />
+      )}
     </div>
   );
 };

@@ -199,6 +199,11 @@
   "dashboard.searchEmpty": "No matching changes.",
   "dashboard.searchNoResults": "No matching changes.",
   "dashboard.proposalWhy": "Proposal Why",
+  "projectSidebar.currentProject": "Current Project",
+  "projectSidebar.project": "Project",
+  "projectSidebar.allChanges": "All Changes",
+  "projectSidebar.specs": "Specs",
+  "projectSidebar.emptyActive": "No active changes",
   "confirm.taskToggleTitle": "Confirm task change",
   "confirm.taskToggleMessage": "Update task \"{task}\"?",
 

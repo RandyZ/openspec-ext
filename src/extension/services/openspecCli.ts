@@ -11,6 +11,7 @@ import {
   ChangeDetails,
   ValidationResult,
   OpenSpecCliError,
+  OpenSpecContextResult,
 } from './types';
 import { OpenSpecCliResolver, OpenSpecCliResolutionError } from './openspecCliResolver';
 import type { OpenSpecScope } from './openspecScope';
@@ -193,6 +194,10 @@ export class OpenSpecCliService {
       logger.error('Failed to get OpenSpec version', error as Error);
       throw error;
     }
+  }
+
+  async getContext(scope?: ScopeOption | OpenSpecScope): Promise<OpenSpecContextResult> {
+    return (await this.runJson(this.withStoreFlag(['context', '--json'], scope))) as OpenSpecContextResult;
   }
 
   /**

@@ -1,6 +1,14 @@
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
 import { DashboardData } from '../types/messages';
-import type { CliActivationDiagnosticView, LoadingReason, WebviewCacheMeta } from '../types/messages';
+import type {
+  CliActivationDiagnosticView,
+  LoadingReason,
+  ProjectChangesExplorerData,
+  ProjectPageContextMessage,
+  ProjectSidebarData,
+  ProjectSpecsExplorerData,
+  WebviewCacheMeta,
+} from '../types/messages';
 import { adaptLegacyDashboardData } from '../types/legacyDashboardAdapter';
 
 export type DashboardActivity =
@@ -11,9 +19,17 @@ export type DashboardActivity =
   | { kind: 'scope-action'; action: 'setup' | 'register' }
   | { kind: 'warning'; message: string };
 
+export type AppPage = 'dashboard' | 'sidebar' | 'changesExplorer' | 'specsExplorer' | 'loading';
+
 // State shape
 export interface AppState {
   data: DashboardData | null;
+  /** Undefined means a legacy compatibility caller supplied the state. */
+  projectSidebar?: ProjectSidebarData | null;
+  changesExplorer?: ProjectChangesExplorerData | null;
+  specsExplorer?: ProjectSpecsExplorerData | null;
+  page?: AppPage;
+  projectFirst?: boolean;
   loading: boolean;
   loadingReason?: LoadingReason;
   pendingScopeId?: string;
@@ -31,6 +47,9 @@ export type AppAction =
   | { type: 'START_LOADING'; reason: LoadingReason }
   | { type: 'START_SCOPE_SWITCH'; scopeId: string }
   | { type: 'SET_DATA'; payload: DashboardData; cache?: WebviewCacheMeta }
+  | { type: 'SET_PROJECT_SIDEBAR'; payload: ProjectSidebarData }
+  | { type: 'SET_PAGE_CONTEXT'; payload: ProjectPageContextMessage }
+  | { type: 'CLEAR_PAGE_CONTEXT' }
   | { type: 'SET_ERROR'; payload: string }
   | { type: 'CLEAR_ERROR' }
   | { type: 'SELECT_CHANGE'; payload: string | null }
@@ -40,6 +59,11 @@ export type AppAction =
 // Initial state
 const initialState: AppState = {
   data: null,
+  projectSidebar: null,
+  changesExplorer: null,
+  specsExplorer: null,
+  page: 'sidebar',
+  projectFirst: true,
   loading: true,
   loadingReason: 'initial',
   pendingScopeId: undefined,
@@ -99,6 +123,10 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         return {
           ...state,
           data: payload,
+          projectSidebar: null,
+          changesExplorer: null,
+          specsExplorer: null,
+          page: 'dashboard',
           loading: true,
           loadingReason: scopeId ? 'background-refresh' : state.loadingReason,
           pendingScopeId: isPendingTarget ? undefined : state.pendingScopeId,
@@ -111,6 +139,10 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         data: payload,
+        projectSidebar: null,
+        changesExplorer: null,
+        specsExplorer: null,
+        page: 'dashboard',
         loading: false,
         loadingReason: undefined,
         pendingScopeId: undefined,
@@ -120,6 +152,78 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         activity: { kind: 'idle' },
       };
     }
+
+    case 'SET_PROJECT_SIDEBAR': {
+      const stale = action.payload.cache?.stale === true;
+      return {
+        ...state,
+        data: null,
+        projectSidebar: action.payload,
+        changesExplorer: null,
+        specsExplorer: null,
+        page: 'sidebar',
+        projectFirst: true,
+        loading: stale,
+        loadingReason: stale ? 'background-refresh' : undefined,
+        pendingScopeId: undefined,
+        stale,
+        error: null,
+        selectedChange: null,
+        cliDiagnostic: action.payload.cliDiagnostic
+          ? { diagnostic: action.payload.cliDiagnostic, mode: 'warning' }
+          : null,
+        activity: stale
+          ? { kind: 'cached-refresh', scopeId: action.payload.binding.projectId }
+          : { kind: 'idle' },
+      };
+    }
+
+    case 'SET_PAGE_CONTEXT': {
+      const page = action.payload.view;
+      if (
+        state.page === page
+        && ((page === 'sidebar' && state.projectSidebar === action.payload.data)
+          || (page === 'changesExplorer' && state.changesExplorer === action.payload.data)
+          || (page === 'specsExplorer' && state.specsExplorer === action.payload.data))
+      ) {
+        return state;
+      }
+      return {
+        ...state,
+        data: null,
+        projectSidebar: page === 'sidebar' ? action.payload.data : null,
+        changesExplorer: page === 'changesExplorer' ? action.payload.data : null,
+        specsExplorer: page === 'specsExplorer' ? action.payload.data : null,
+        page,
+        projectFirst: page === 'sidebar',
+        loading: false,
+        loadingReason: undefined,
+        pendingScopeId: undefined,
+        stale: false,
+        error: null,
+        selectedChange: null,
+        cliDiagnostic: page === 'sidebar' && action.payload.data.cliDiagnostic
+          ? { diagnostic: action.payload.data.cliDiagnostic, mode: 'warning' }
+          : null,
+        activity: { kind: 'idle' },
+      };
+    }
+
+    case 'CLEAR_PAGE_CONTEXT':
+      return {
+        ...state,
+        data: null,
+        projectSidebar: null,
+        changesExplorer: null,
+        specsExplorer: null,
+        page: 'loading',
+        loading: true,
+        loadingReason: 'initial',
+        pendingScopeId: undefined,
+        stale: false,
+        selectedChange: null,
+        cliDiagnostic: null,
+      };
 
     case 'SET_ERROR':
       return {

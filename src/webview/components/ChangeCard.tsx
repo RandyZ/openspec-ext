@@ -235,16 +235,16 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
         </div>
       )}
 
-      {/* 7. hover/focus workflow actions — keep reveal pattern; always in DOM for a11y/tests */}
+      {/* 7. Hover/focus workflow actions. Inline display:none keeps the rail
+          out of layout until focus or hover reveals the keyboard path. */}
       {hasActionRail && (
         <div
-          className="flex flex-wrap gap-1 mt-2 pt-2 border-t transition-opacity duration-150"
+          className="flex flex-wrap gap-1 mt-2 pt-2 border-t"
           style={{
             borderColor: 'var(--vscode-panel-border)',
-            opacity: showActions ? 1 : 0,
-            pointerEvents: showActions ? 'auto' : 'none',
+            display: showActions ? 'flex' : 'none',
           }}
-          data-action
+          data-action-rail
           aria-hidden={!showActions}
         >
           {onLaunchWorkflow &&

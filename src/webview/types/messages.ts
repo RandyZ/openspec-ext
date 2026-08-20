@@ -10,6 +10,12 @@ import type {
   ChangeAttention,
   ChangeStatusCounts,
 } from '../../shared/changeLifecycle';
+import type {
+  OpenSpecRootBinding,
+  ProjectContext,
+} from '../../extension/services/types';
+
+export type { OpenSpecRootBinding, ProjectContext } from '../../extension/services/types';
 
 export type LoadingReason =
   | 'initial'
@@ -22,6 +28,9 @@ export type LoadingReason =
 // Message types from webview to extension
 export type WebviewMessage =
   | { type: 'getDashboardData' }
+  | { type: 'getProjectSidebarData' }
+  | { type: 'openChangesExplorer'; project: ProjectContext; binding: OpenSpecRootBinding }
+  | { type: 'openSpecsExplorer'; project: ProjectContext; binding: OpenSpecRootBinding }
   | { type: 'getCacheStats'; force?: boolean }
   | { type: 'cacheAction'; action: CacheAction }
   | { type: 'refresh' }
@@ -43,6 +52,8 @@ export type WebviewMessage =
     initialTab?: ChangeDetailTabId;
     interactiveAction?: InteractiveWorkflowAction;
     scopeId?: string;
+    project?: ProjectContext;
+    binding?: OpenSpecRootBinding;
   }
   | { type: 'getArchivedChanges'; scopeId?: string }
   | { type: 'revealSidebar' }
@@ -56,7 +67,14 @@ export type WebviewMessage =
   | { type: 'launchWorkflowAction'; action: WorkflowAction; changeName: string; scopeId?: string }
   | { type: 'getSpecContent'; specId: string; scopeId?: string }
   | { type: 'getSpecRequirements'; specId: string; scopeId?: string }
-  | { type: 'openSpecInEditor'; specId: string; requirementIndex?: number; scopeId?: string }
+  | {
+    type: 'openSpecInEditor';
+    specId: string;
+    requirementIndex?: number;
+    scopeId?: string;
+    project?: ProjectContext;
+    binding?: OpenSpecRootBinding;
+  }
   | { type: 'getTaskExecutionState'; changeName: string; scopeId?: string }
   | { type: 'runInteractiveWorkflow'; changeName: string; action: InteractiveWorkflowAction; scopeId?: string }
   | { type: 'revealInteractiveWorkflow'; changeName: string; action: InteractiveWorkflowAction; scopeId?: string }
@@ -111,7 +129,12 @@ export type ExtensionMessage =
     initialTab?: ChangeDetailTabId;
     interactiveAction?: InteractiveWorkflowAction;
     scope?: OpenSpecScopeView;
+    project?: ProjectContext;
+    binding?: OpenSpecRootBinding;
   }
+  | { type: 'setContext'; view: 'sidebar'; data: ProjectSidebarData }
+  | { type: 'setContext'; view: 'changesExplorer'; data: ProjectChangesExplorerData }
+  | { type: 'setContext'; view: 'specsExplorer'; data: ProjectSpecsExplorerData }
   | { type: 'archivedChanges'; items: ArchivedChangeInfo[]; scopeId?: string }
   | { type: 'agentAdapters'; available: { id: string; displayName: string }[]; currentId: string | null }
   | { type: 'workflowLaunchConfig'; config: WorkflowLaunchConfigView }
@@ -189,6 +212,43 @@ export interface DashboardData {
   lastRefresh: number;
 }
 
+export interface ProjectSidebarData {
+  readonly project: ProjectContext;
+  readonly binding: OpenSpecRootBinding;
+  readonly changes: readonly ChangeInfo[];
+  readonly cliDiagnostic?: CliActivationDiagnosticView;
+  readonly cache?: WebviewCacheMeta;
+  readonly workflowLaunchConfig?: WorkflowLaunchConfigView;
+  readonly lastRefresh?: number;
+}
+
+export type ProjectPageContextMessage =
+  | { type: 'setContext'; view: 'sidebar'; data: ProjectSidebarData }
+  | { type: 'setContext'; view: 'changesExplorer'; data: ProjectChangesExplorerData }
+  | { type: 'setContext'; view: 'specsExplorer'; data: ProjectSpecsExplorerData };
+
+export interface ProjectChangesExplorerData {
+  readonly project: ProjectContext;
+  readonly binding: OpenSpecRootBinding;
+  readonly changes: readonly ChangeInfo[];
+  readonly archivedChanges: readonly ArchivedChangeInfo[];
+}
+
+export interface ReferencedStoreSpecGroup {
+  readonly storeId: string;
+  /** Host-created binding for the referenced Store; error groups may lack one if resolution failed. */
+  readonly binding?: OpenSpecRootBinding;
+  readonly specs: readonly SpecInfo[];
+  readonly error?: string;
+}
+
+export interface ProjectSpecsExplorerData {
+  readonly project: ProjectContext;
+  readonly binding: OpenSpecRootBinding;
+  readonly projectSpecs: readonly SpecInfo[];
+  readonly referencedStoreSpecs: readonly ReferencedStoreSpecGroup[];
+}
+
 export interface ChangeInfo {
   name: string;
   completedTasks: number;
@@ -223,10 +283,80 @@ export interface ArchivedChangeInfo {
   archiveDate: string;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function hasProjectBinding(value: unknown): value is { project: ProjectContext; binding: OpenSpecRootBinding } {
+  if (!isRecord(value) || !isRecord(value.project) || !isRecord(value.binding)) {
+    return false;
+  }
+  const project = value.project;
+  const binding = value.binding;
+  return [project.id, project.label, project.projectPath].every((field) => typeof field === 'string' && field.length > 0)
+    && typeof binding.projectId === 'string'
+    && binding.projectId === project.id
+    && typeof binding.commandCwd === 'string'
+    && typeof binding.rootPath === 'string'
+    && binding.rootPath.length > 0
+    && typeof binding.rootSource === 'string';
+}
+
+export function isProjectPageContext(message: unknown): message is ProjectPageContextMessage {
+  if (!isRecord(message) || message.type !== 'setContext' || !hasProjectBinding(message.data)) {
+    return false;
+  }
+
+  const data = message.data as Record<string, unknown>;
+  const projectId = isRecord(data.project) ? data.project.id : undefined;
+
+  switch (message.view) {
+    case 'sidebar':
+      return Array.isArray(data.changes);
+    case 'changesExplorer':
+      return Array.isArray(data.changes) && Array.isArray(data.archivedChanges);
+    case 'specsExplorer':
+      return Array.isArray(data.projectSpecs)
+        && Array.isArray(data.referencedStoreSpecs)
+        && data.referencedStoreSpecs.every(
+          (group) => {
+            if (!isRecord(group) || typeof group.storeId !== 'string' || !Array.isArray(group.specs)) {
+              return false;
+            }
+            if (group.binding === undefined) return true;
+            if (!isRecord(group.binding)) return false;
+            return group.binding.projectId === projectId
+              && group.binding.storeId === group.storeId
+              && typeof group.binding.commandCwd === 'string'
+              && typeof group.binding.rootPath === 'string'
+              && typeof group.binding.rootSource === 'string';
+          }
+        );
+    default:
+      return false;
+  }
+}
+
 // Helper functions for sending messages
 export const sendMessage = {
   getDashboardData: (): WebviewMessage => ({
     type: 'getDashboardData',
+  }),
+
+  getProjectSidebarData: (): WebviewMessage => ({
+    type: 'getProjectSidebarData',
+  }),
+
+  openChangesExplorer: (project: ProjectContext, binding: OpenSpecRootBinding): WebviewMessage => ({
+    type: 'openChangesExplorer',
+    project,
+    binding,
+  }),
+
+  openSpecsExplorer: (project: ProjectContext, binding: OpenSpecRootBinding): WebviewMessage => ({
+    type: 'openSpecsExplorer',
+    project,
+    binding,
   }),
 
   getCacheStats: (force = false): WebviewMessage => (
@@ -319,13 +449,17 @@ export const sendMessage = {
     changeName: string,
     initialTab?: ChangeDetailTabId,
     interactiveAction?: InteractiveWorkflowAction,
-    scopeId?: string
+    scopeId?: string,
+    project?: ProjectContext,
+    binding?: OpenSpecRootBinding
   ): WebviewMessage => ({
     type: 'openChangeDetailInEditor',
     changeName,
     ...(initialTab !== undefined ? { initialTab } : {}),
     ...(interactiveAction !== undefined ? { interactiveAction } : {}),
     ...(scopeId ? { scopeId } : {}),
+    ...(project ? { project } : {}),
+    ...(binding ? { binding } : {}),
   }),
 
   getArchivedChanges: (scopeId?: string): WebviewMessage => ({
@@ -396,11 +530,19 @@ export const sendMessage = {
     ...(scopeId ? { scopeId } : {}),
   }),
 
-  openSpecInEditor: (specId: string, requirementIndex?: number, scopeId?: string): WebviewMessage => ({
+  openSpecInEditor: (
+    specId: string,
+    requirementIndex?: number,
+    scopeId?: string,
+    project?: ProjectContext,
+    binding?: OpenSpecRootBinding
+  ): WebviewMessage => ({
     type: 'openSpecInEditor',
     specId,
     ...(requirementIndex !== undefined ? { requirementIndex } : {}),
     ...(scopeId ? { scopeId } : {}),
+    ...(project ? { project } : {}),
+    ...(binding ? { binding } : {}),
   }),
 
   getTaskExecutionState: (changeName: string, scopeId?: string): WebviewMessage => ({

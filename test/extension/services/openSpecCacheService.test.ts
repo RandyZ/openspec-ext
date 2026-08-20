@@ -56,6 +56,59 @@ function storageUri(fsPath: string): vscode.Uri {
 }
 
 describe('OpenSpecCacheService', () => {
+  it('Project cache keys isolate page, project, root, source, and Store identity', async () => {
+    const tempRoot = await makeTempRoot();
+    const service = new OpenSpecCacheService(storageUri(path.join(tempRoot, 'global-storage')), {
+      workspaceRoot: path.join(tempRoot, 'workspace'),
+      extensionVersion: '0.0.0-test',
+    });
+
+    const keys = [
+      { pageKind: 'sidebar', projectId: '/projects/project-a', rootPath: '/roots/project-a', rootSource: 'nearest' },
+      { pageKind: 'sidebar', projectId: '/projects/project-b', rootPath: '/roots/project-b', rootSource: 'nearest' },
+      { pageKind: 'sidebar', projectId: '/projects/project-a', rootPath: '/roots/shared', rootSource: 'nearest' },
+      { pageKind: 'sidebar', projectId: '/projects/project-a', rootPath: '/roots/shared', rootSource: 'store', storeId: 'team-plans' },
+      { pageKind: 'sidebar', projectId: '/projects/project-a', rootPath: '/roots/shared', rootSource: 'store', storeId: 'other-store' },
+      { pageKind: 'changesExplorer', projectId: '/projects/project-a', rootPath: '/roots/project-a', rootSource: 'nearest' },
+    ];
+    const cache = service as unknown as {
+      writeProjectPage: (key: typeof keys[number], payload: string) => Promise<void>;
+      readProjectPage: (key: typeof keys[number]) => Promise<{ payload: string; filePath: string } | undefined>;
+    };
+
+    await Promise.all(keys.map((key, index) => cache.writeProjectPage(key, `payload-${index}`)));
+    const values = await Promise.all(keys.map((key) => cache.readProjectPage(key)));
+
+    expect(values.map((value) => value?.payload)).toEqual(keys.map((_, index) => `payload-${index}`));
+    expect(new Set(values.map((value) => value?.filePath)).size).toBe(keys.length);
+  });
+
+  it('Project cache rejects an envelope whose binding metadata does not match the key', async () => {
+    const tempRoot = await makeTempRoot();
+    const service = new OpenSpecCacheService(storageUri(path.join(tempRoot, 'global-storage')), {
+      workspaceRoot: path.join(tempRoot, 'workspace'),
+      extensionVersion: '0.0.0-test',
+    });
+    const key = {
+      pageKind: 'sidebar' as const,
+      projectId: '/projects/project-a',
+      rootPath: '/roots/project-a',
+      rootSource: 'nearest',
+    };
+    const cache = service as unknown as {
+      writeProjectPage: (key: typeof key, payload: string) => Promise<void>;
+      readProjectPage: (key: typeof key) => Promise<{ payload: string; filePath: string } | undefined>;
+    };
+
+    await cache.writeProjectPage(key, 'payload');
+    const cached = await cache.readProjectPage(key);
+    const envelope = JSON.parse(await fs.readFile(cached!.filePath, 'utf8')) as Record<string, unknown>;
+    envelope.rootSource = 'store';
+    await fs.writeFile(cached!.filePath, JSON.stringify(envelope), 'utf8');
+
+    await expect(cache.readProjectPage(key)).resolves.toBeUndefined();
+  });
+
   it('reports the workspace cache root inside extension storage', async () => {
     const tempRoot = await makeTempRoot();
     const workspaceRoot = path.join(tempRoot, 'workspace');

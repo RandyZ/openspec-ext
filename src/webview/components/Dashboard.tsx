@@ -3,7 +3,12 @@ import { useVscode } from '../hooks/useVscode';
 import { useAppState } from '../context/AppContext';
 import type { AppAction } from '../context/AppContext';
 import { sendMessage } from '../types/messages';
-import type { DashboardData, SpecInfo, WebviewMessage } from '../types/messages';
+import type {
+  DashboardData,
+  ProjectSidebarData,
+  SpecInfo,
+  WebviewMessage,
+} from '../types/messages';
 import { Header } from './Header';
 import { ChangesSection } from './ChangesSection';
 import { SpecsSection } from './SpecsSection';
@@ -17,6 +22,7 @@ import {
   buildWorkflowCommand,
   type WorkflowAction,
 } from '../../shared/workflowCommand';
+import { buildChangeStatusCounts } from '../../shared/changeLifecycle';
 import type { WorkflowLaunchConfigView } from '../utils/workflowLaunchLabels';
 import type { CacheAction, CacheStatsView } from '../types/messages';
 import {
@@ -32,6 +38,13 @@ import {
 
 type DashboardDispatch = React.Dispatch<AppAction>;
 type DashboardPostMessage = (message: WebviewMessage) => void;
+
+export function getDashboardActionScopeId(
+  projectSidebar: ProjectSidebarData | null | undefined,
+  selectedScopeId?: string,
+): string | undefined {
+  return projectSidebar ? undefined : selectedScopeId;
+}
 
 export function createScopeSelectHandler(
   dispatch: DashboardDispatch,
@@ -104,6 +117,12 @@ export const Dashboard: React.FC = () => {
   const [workflowLaunchConfig, setWorkflowLaunchConfig] = useState<WorkflowLaunchConfigView | null>(null);
 
   const { data, loading, loadingReason, pendingScopeId, activity, error } = state;
+  const projectSidebar = state.projectSidebar;
+  const projectFirst = state.projectFirst === true || state.projectSidebar !== undefined;
+  const projectDiagnostic = state.cliDiagnostic
+    ?? (projectSidebar?.cliDiagnostic
+      ? { diagnostic: projectSidebar.cliDiagnostic, mode: 'warning' as const }
+      : null);
 
   const viewScope = resolveChangesViewScope(data, pendingScopeId);
   const viewRootKey = viewScope ? getChangesViewRootKey(viewScope) : null;
@@ -156,7 +175,12 @@ export const Dashboard: React.FC = () => {
     const cleanup = onMessage((event: MessageEvent) => {
       const message = event.data;
 
-      if (message.type === 'dashboardData') {
+      if (message.type === 'setContext' && message.view === 'sidebar') {
+        dispatch({ type: 'SET_PROJECT_SIDEBAR', payload: message.data });
+        if (message.data.workflowLaunchConfig) {
+          setWorkflowLaunchConfig(message.data.workflowLaunchConfig);
+        }
+      } else if (message.type === 'dashboardData' && !projectFirst) {
         dispatch({ type: 'SET_DATA', payload: message.data, cache: message.cache });
         if (message.debug !== undefined) {
           dispatch({ type: 'SET_DEBUG', payload: message.debug });
@@ -201,10 +225,16 @@ export const Dashboard: React.FC = () => {
     });
 
     // Request initial data
-    requestInitialDashboardData(dispatch, postMessage);
+    if (projectFirst) {
+      dispatch({ type: 'SET_LOADING', payload: true, reason: 'initial' });
+      postMessage(sendMessage.getProjectSidebarData());
+      postMessage(sendMessage.getWorkflowLaunchConfig());
+    } else {
+      requestInitialDashboardData(dispatch, postMessage);
+    }
 
     return cleanup;
-  }, [postMessage, onMessage, dispatch]);
+  }, [postMessage, onMessage, dispatch, projectFirst]);
 
   const handleSelectScope = useCallback(
     createScopeSelectHandler(dispatch, postMessage),
@@ -224,6 +254,10 @@ export const Dashboard: React.FC = () => {
   const handleOpenArchivedChange = (directoryName: string) => {
     postMessage(sendMessage.openChangeDetailInEditor(`archive:${directoryName}`, undefined, undefined, state.data?.scope?.id));
   };
+  const projectChanges = projectSidebar?.changes.filter((change) => (
+    (change as { lifecycleStatus?: string }).lifecycleStatus !== 'archived'
+      && !change.name.startsWith('archive:')
+  )) ?? [];
 
   const handleRefresh = () => {
     dispatch({ type: 'SET_LOADING', payload: true, reason: 'refresh' });
@@ -239,11 +273,24 @@ export const Dashboard: React.FC = () => {
   }, [postMessage]);
 
   const handleOpenChange = (changeName: string) => {
-    postMessage(sendMessage.openChangeDetailInEditor(changeName, undefined, undefined, state.data?.scope?.id));
+    postMessage(
+      projectSidebar
+        ? sendMessage.openChangeDetailInEditor(
+          changeName,
+          undefined,
+          undefined,
+          undefined,
+          projectSidebar.project,
+          projectSidebar.binding,
+        )
+        : sendMessage.openChangeDetailInEditor(changeName, undefined, undefined, state.data?.scope?.id)
+    );
   };
 
   const handleRequestNewChange = () => {
-    postMessage(sendMessage.requestNewChange(state.data?.scope?.id));
+    postMessage(sendMessage.requestNewChange(
+      getDashboardActionScopeId(projectSidebar, state.data?.scope?.id),
+    ));
   };
 
   const handleCopyFf = (changeName: string) => {
@@ -256,10 +303,35 @@ export const Dashboard: React.FC = () => {
 
   const handleLaunchWorkflow = (action: WorkflowAction, changeName: string) => {
     if (action === 'verify' || action === 'archive') {
-      postMessage(sendMessage.openChangeDetailInEditor(changeName, 'verifyArchive', action, state.data?.scope?.id));
+      postMessage(
+        projectSidebar
+          ? sendMessage.openChangeDetailInEditor(
+            changeName,
+            'verifyArchive',
+            action,
+            undefined,
+            projectSidebar.project,
+            projectSidebar.binding,
+          )
+          : sendMessage.openChangeDetailInEditor(changeName, 'verifyArchive', action, state.data?.scope?.id)
+      );
       return;
     }
-    postMessage(sendMessage.launchWorkflowAction(action, changeName, state.data?.scope?.id));
+    postMessage(sendMessage.launchWorkflowAction(
+      action,
+      changeName,
+      getDashboardActionScopeId(projectSidebar, state.data?.scope?.id),
+    ));
+  };
+
+  const handleOpenChangesExplorer = () => {
+    if (!projectSidebar) return;
+    postMessage(sendMessage.openChangesExplorer(projectSidebar.project, projectSidebar.binding));
+  };
+
+  const handleOpenSpecsExplorer = () => {
+    if (!projectSidebar) return;
+    postMessage(sendMessage.openSpecsExplorer(projectSidebar.project, projectSidebar.binding));
   };
 
   const handleOpenSpec = (spec: SpecInfo) => {
@@ -304,6 +376,10 @@ export const Dashboard: React.FC = () => {
           onSelectScope={data?.scope ? handleSelectScope : undefined}
           onRegisterStore={data?.scope?.capabilities?.stores ? handleRegisterStore : undefined}
           onSetupStore={data?.scope?.capabilities?.stores ? handleSetupStore : undefined}
+          project={projectSidebar?.project}
+          binding={projectSidebar?.binding}
+          onOpenChanges={projectSidebar ? handleOpenChangesExplorer : undefined}
+          onOpenSpecs={projectSidebar ? handleOpenSpecsExplorer : undefined}
         />
 
         {error && (
@@ -318,15 +394,35 @@ export const Dashboard: React.FC = () => {
           </div>
         )}
 
-        {state.cliDiagnostic && (
+        {projectDiagnostic && (
           <CliActivationDiagnosticCard
-            diagnostic={state.cliDiagnostic.diagnostic}
-            mode={state.cliDiagnostic.mode}
+            diagnostic={projectDiagnostic.diagnostic}
+            mode={projectDiagnostic.mode}
             onAction={handleCliDiagnosticAction}
           />
         )}
 
-        {data ? (
+        {projectSidebar ? (
+          <>
+            {(projectSidebar.cache?.stale || state.stale || loading) && (
+              <div
+                role="status"
+                className="mb-3 text-xs"
+                style={{ color: 'var(--vscode-descriptionForeground)' }}
+              >
+                {t('dashboard.staleData')}
+              </div>
+            )}
+            <ChangesSection
+              changes={[...projectChanges]}
+              changeStatusCounts={buildChangeStatusCounts(projectChanges, [])}
+              onOpenChange={handleOpenChange}
+              onLaunchWorkflow={handleLaunchWorkflow}
+              workflowLaunchConfig={projectSidebar.workflowLaunchConfig ?? workflowLaunchConfig}
+              compact
+            />
+          </>
+        ) : data ? (
           <>
             {/* CLI / cache status row. Root selection now lives in the Header
                 action rail above; this bar is operational status only. */}
@@ -458,7 +554,7 @@ export const Dashboard: React.FC = () => {
               </>
             )}
           </>
-        ) : loading ? (
+        ) : projectDiagnostic ? null : loading ? (
           <div className="text-xs py-4" style={{ 
             color: 'var(--vscode-descriptionForeground)' 
           }}>

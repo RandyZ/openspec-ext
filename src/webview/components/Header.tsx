@@ -1,6 +1,11 @@
 import React from 'react';
 import { t } from '../../i18n';
-import type { LoadingReason, OpenSpecScopeView } from '../types/messages';
+import type {
+  LoadingReason,
+  OpenSpecRootBinding,
+  OpenSpecScopeView,
+  ProjectContext,
+} from '../types/messages';
 import type { DashboardActivity } from '../context/AppContext';
 import { formatOpenSpecRootLabel } from '../utils/scopeLabels';
 
@@ -18,6 +23,10 @@ export interface HeaderProps {
   onSelectScope?: (scopeId: string) => void;
   onRegisterStore?: () => void;
   onSetupStore?: () => void;
+  project?: ProjectContext;
+  binding?: OpenSpecRootBinding;
+  onOpenChanges?: () => void;
+  onOpenSpecs?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -31,6 +40,10 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectScope,
   onRegisterStore,
   onSetupStore,
+  project,
+  binding,
+  onOpenChanges,
+  onOpenSpecs,
 }) => {
   const showSelector = scope && scopes.length > 1 && onSelectScope;
   const projectScopes = scopes.filter((s) => s.source === 'local' || s.source === 'declared');
@@ -58,7 +71,101 @@ export const Header: React.FC<HeaderProps> = ({
       }}>
         OpenSpec
       </h1>
-      <div className="flex flex-wrap items-center gap-2">
+      {project && (
+        <div className="space-y-3" data-project-first-header>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={onRefresh}
+              disabled={loading}
+              className="px-3 py-1 text-xs rounded"
+              style={{
+                background: 'var(--vscode-button-background)',
+                color: 'var(--vscode-button-foreground)',
+                opacity: loading ? 0.6 : 1,
+                cursor: loading ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {loading ? `⟳ ${t('header.loading')}` : `⟳ ${t('header.refresh')}`}
+            </button>
+            {onNewChange && (
+              <button
+                onClick={onNewChange}
+                className="px-3 py-1 text-xs rounded"
+                style={{
+                  background: 'var(--vscode-button-secondaryBackground)',
+                  color: 'var(--vscode-button-secondaryForeground)',
+                  cursor: 'pointer',
+                }}
+              >
+                {t('header.newChange')}
+              </button>
+            )}
+          </div>
+
+          <div
+            className="min-w-0 space-y-1"
+            aria-label="Current Project"
+            data-project-identity
+            title={project.projectPath}
+          >
+            <div
+              className="text-[10px] font-semibold uppercase tracking-wide"
+              style={{ color: 'var(--vscode-descriptionForeground)' }}
+            >
+              {t('projectSidebar.currentProject')}
+            </div>
+            <div className="min-w-0 text-sm font-semibold truncate">{project.label}</div>
+            {binding && (
+              <div
+                className="min-w-0 text-xs truncate"
+                style={{ color: 'var(--vscode-descriptionForeground)' }}
+                title={binding.rootPath}
+              >
+                {binding.rootSource}: {binding.rootPath}
+              </div>
+            )}
+          </div>
+
+          <nav
+            className="flex flex-col gap-1"
+            aria-label="Project navigation"
+            data-project-navigation
+          >
+            {onOpenChanges && (
+              <button
+                type="button"
+                onClick={onOpenChanges}
+                aria-label={t('projectSidebar.allChanges')}
+                title={t('projectSidebar.allChanges')}
+                className="w-full rounded px-2 py-1.5 text-left text-xs"
+                style={{
+                  background: 'var(--vscode-button-secondaryBackground)',
+                  color: 'var(--vscode-button-secondaryForeground)',
+                }}
+              >
+                {t('projectSidebar.allChanges')}
+              </button>
+            )}
+            {onOpenSpecs && (
+              <button
+                type="button"
+                onClick={onOpenSpecs}
+                aria-label={t('projectSidebar.specs')}
+                title={t('projectSidebar.specs')}
+                className="w-full rounded px-2 py-1.5 text-left text-xs"
+                style={{
+                  background: 'var(--vscode-button-secondaryBackground)',
+                  color: 'var(--vscode-button-secondaryForeground)',
+                }}
+              >
+                {t('projectSidebar.specs')}
+              </button>
+            )}
+          </nav>
+        </div>
+      )}
+      {!project && (
+        <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={onRefresh}
           disabled={loading}
@@ -163,7 +270,8 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </div>
         )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

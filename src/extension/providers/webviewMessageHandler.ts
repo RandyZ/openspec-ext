@@ -32,8 +32,12 @@ import type { OpenSpecScope } from '../services/openspecScope';
  */
 function resolveScopeRoot(
   dataManager: DataManager,
-  scopeId?: string
+  scopeId?: string,
+  boundScope?: OpenSpecScope
 ): { rootPath: string; scope: OpenSpecScope | undefined } {
+  if (boundScope) {
+    return { rootPath: boundScope.rootPath, scope: boundScope };
+  }
   const scopedDataManager = dataManager as DataManager & {
     resolveScope?: (id?: string) => OpenSpecScope | undefined;
   };
@@ -119,7 +123,8 @@ export async function handleWebviewMessage(
   message: WebviewMessage,
   webview: vscode.Webview,
   dataManager: DataManager,
-  interactiveTerminalManager?: InteractiveAgentTerminalManager
+  interactiveTerminalManager?: InteractiveAgentTerminalManager,
+  boundScope?: OpenSpecScope
 ): Promise<void> {
   if (message == null || typeof message !== 'object' || !('type' in message)) {
     logger.warn('Invalid webview message: missing or invalid object with type');
@@ -261,7 +266,7 @@ export async function handleWebviewMessage(
     }
 
     case 'requestNewChange': {
-      const { scope } = resolveScopeRoot(dataManager, message.scopeId);
+      const { scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
       const name = await vscode.window.showInputBox({
         prompt: 'Enter change name',
         placeHolder: 'e.g., add-authentication',
@@ -358,7 +363,7 @@ export async function handleWebviewMessage(
         break;
       }
       const taskIndex = message.taskIndex;
-      const { scope } = resolveScopeRoot(dataManager, message.scopeId);
+      const { scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
       await dataManager.toggleTask(changeName, taskIndex, scope);
       const [data, tasksContent] = await Promise.all([
         dataManager.getDashboardData(),
@@ -421,7 +426,7 @@ export async function handleWebviewMessage(
     case 'openDeltaSpec': {
       const { changeName, specId } = message;
       if (!changeName || !specId) break;
-      const { rootPath } = resolveScopeRoot(dataManager, message.scopeId);
+      const { rootPath } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
       const changesBase = getChangesBasePath(rootPath, changeName);
       const absPath = path.normalize(path.join(changesBase, 'specs', specId, 'spec.md'));
       if (!isPathUnderRoot(absPath, rootPath)) {
@@ -439,7 +444,7 @@ export async function handleWebviewMessage(
     }
 
     case 'openArtifact': {
-      const { rootPath } = resolveScopeRoot(dataManager, message.scopeId);
+      const { rootPath } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
       const changesBase = path.normalize(getChangesBasePath(rootPath, message.changeName));
       const artifactPath = path.normalize(path.join(changesBase, `${message.artifactType}.md`));
       logger.info(`[archived] openArtifact: changeName=${message.changeName}, artifactType=${message.artifactType}, root=${rootPath}, artifactPath=${artifactPath}`);
@@ -470,7 +475,7 @@ export async function handleWebviewMessage(
     case 'archiveChange': {
       const name = message.name;
       if (!name) break;
-      const { scope } = resolveScopeRoot(dataManager, message.scopeId);
+      const { scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
       const confirm = await confirmDirectArchive(name);
       if (confirm === 'verifyFirst') {
         // Route into the interactive Verify & Archive tab (recommended path).
@@ -494,7 +499,7 @@ export async function handleWebviewMessage(
     case 'getArtifactContent': {
       const { changeName, artifactType } = message;
       if (!changeName || !artifactType) break;
-      const { scope } = resolveScopeRoot(dataManager, message.scopeId);
+      const { scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
       logger.info(`[archived] getArtifactContent: changeName=${changeName}, artifactType=${artifactType}, scopeId=${message.scopeId ?? '<none>'}`);
       const cached = await dataManager.getCachedArtifactContent?.({
         changeName,
@@ -554,7 +559,7 @@ export async function handleWebviewMessage(
     case 'listDeltaSpecs': {
       const changeName = message.changeName;
       if (!changeName) break;
-      const { scope } = resolveScopeRoot(dataManager, message.scopeId);
+      const { scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
       try {
         const specIds = await dataManager.listDeltaSpecIds(changeName, scope);
         webview.postMessage({ type: 'deltaSpecList', changeName, specIds });
@@ -567,7 +572,7 @@ export async function handleWebviewMessage(
     case 'getDeltaSpecContent': {
       const { changeName, specId } = message;
       if (!changeName || !specId) break;
-      const { scope } = resolveScopeRoot(dataManager, message.scopeId);
+      const { scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
       try {
         const cached = await dataManager.getCachedArtifactContent?.({
           changeName,
@@ -612,7 +617,7 @@ export async function handleWebviewMessage(
     }
 
     case 'getArchivedChanges': {
-      const { scope } = resolveScopeRoot(dataManager, message.scopeId);
+      const { scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
       try {
         const items = await dataManager.listArchivedChanges(scope);
         webview.postMessage({ type: 'archivedChanges', items, scopeId: scope?.id });
@@ -630,17 +635,18 @@ export async function handleWebviewMessage(
         vscode.window.showInformationMessage(t('archive.readOnly'));
         break;
       }
+      const { scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
       let success = false;
       try {
-        const result = await dataManager.executeTaskRequest(changeName, taskIndex, taskText);
+        const result = await dataManager.executeTaskRequest(changeName, taskIndex, taskText, scope);
         success = result.success;
-        await dataManager.setTaskExecutionState(changeName, taskIndex, success);
+        await dataManager.setTaskExecutionState(changeName, taskIndex, success, scope);
       } catch (err) {
         logger.error('executeTask failed', err as Error);
         vscode.window.showErrorMessage((err as Error).message || t('task.executionFailed'));
       }
       try {
-        const executionState = await dataManager.getTaskExecutionState(changeName);
+        const executionState = await dataManager.getTaskExecutionState(changeName, scope);
         webview.postMessage({ type: 'taskExecutionFinished', changeName, taskIndex, success, executionState });
       } catch (e) {
         const msg = (e as Error).message ?? String(e);
@@ -656,8 +662,9 @@ export async function handleWebviewMessage(
     case 'getTaskExecutionState': {
       const changeName = message.changeName;
       if (!changeName) break;
+      const { scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
       try {
-        const executionState = await dataManager.getTaskExecutionState(changeName);
+        const executionState = await dataManager.getTaskExecutionState(changeName, scope);
         webview.postMessage({ type: 'taskExecutionState', changeName, executionState });
       } catch (err) {
         logger.error('getTaskExecutionState failed', err as Error);
@@ -709,7 +716,7 @@ export async function handleWebviewMessage(
         break;
       }
       if (typeof changeName === 'string' && typeof artifactType === 'string') {
-        const { scope } = resolveScopeRoot(dataManager, message.scopeId);
+        const { scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
         // Keep mutations on the visible Root (same-name isolation across Local/Store).
         if (message.scopeId && scope && dataManager.getSelectedScope()?.id !== scope.id) {
           await dataManager.selectScope(scope.id);
@@ -722,7 +729,7 @@ export async function handleWebviewMessage(
     case 'getSpecRequirements': {
       const specId = message.specId;
       if (typeof specId !== 'string' || !specId.trim()) break;
-      const { scope } = resolveScopeRoot(dataManager, message.scopeId);
+      const { scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
       try {
         const requirements = await dataManager.getSpecRequirements(specId, scope);
         webview.postMessage({ type: 'specRequirements', specId, requirements });
@@ -735,7 +742,7 @@ export async function handleWebviewMessage(
     case 'getSpecContent': {
       const specId = message.specId;
       if (typeof specId !== 'string' || !specId.trim()) break;
-      const { scope } = resolveScopeRoot(dataManager, message.scopeId);
+      const { scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
       try {
         const cached = await dataManager.getCachedArtifactContent?.({
           changeName: '__main-spec__',
@@ -808,7 +815,7 @@ export async function handleWebviewMessage(
 
       // Resolve the effective root (scope-aware) so store-scoped workflows run against
       // the store root, not the workspace root.
-      const { rootPath: scopeRootPath } = resolveScopeRoot(dataManager, message.scopeId);
+      const { rootPath: scopeRootPath } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
 
       const launchConfig = getWorkflowLaunchConfig();
       const effectiveAdapterId = getEffectiveWorkflowAdapterId(launchConfig);
@@ -873,7 +880,7 @@ export async function handleWebviewMessage(
     case 'runInteractiveWorkflow': {
       const { changeName, action } = message;
       if (typeof changeName !== 'string' || !changeName.trim()) break;
-      const { rootPath: scopeRootPath, scope } = resolveScopeRoot(dataManager, message.scopeId);
+      const { rootPath: scopeRootPath, scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
       postInteractiveWorkflowState(
         webview,
         changeName,
@@ -892,7 +899,7 @@ export async function handleWebviewMessage(
     case 'revealInteractiveWorkflow': {
       const { changeName, action } = message;
       if (typeof changeName !== 'string' || !changeName.trim()) break;
-      const { rootPath: scopeRootPath, scope } = resolveScopeRoot(dataManager, message.scopeId);
+      const { rootPath: scopeRootPath, scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
       postInteractiveWorkflowState(
         webview,
         changeName,
@@ -911,7 +918,7 @@ export async function handleWebviewMessage(
     case 'stopInteractiveWorkflow': {
       const { changeName, action } = message;
       if (typeof changeName !== 'string' || !changeName.trim()) break;
-      const { rootPath: scopeRootPath, scope } = resolveScopeRoot(dataManager, message.scopeId);
+      const { rootPath: scopeRootPath, scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
       postInteractiveWorkflowState(
         webview,
         changeName,
@@ -930,7 +937,7 @@ export async function handleWebviewMessage(
     case 'clearInteractiveWorkflow': {
       const { changeName, action } = message;
       if (typeof changeName !== 'string' || !changeName.trim()) break;
-      const { rootPath: scopeRootPath, scope } = resolveScopeRoot(dataManager, message.scopeId);
+      const { rootPath: scopeRootPath, scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
       postInteractiveWorkflowState(
         webview,
         changeName,
@@ -949,7 +956,7 @@ export async function handleWebviewMessage(
     case 'getInteractiveWorkflowState': {
       const { changeName } = message;
       if (typeof changeName !== 'string' || !changeName.trim()) break;
-      const { rootPath: scopeRootPath, scope } = resolveScopeRoot(dataManager, message.scopeId);
+      const { rootPath: scopeRootPath, scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
       const state = interactiveTerminalManager
         ? interactiveTerminalManager.getState(scopeRootPath, changeName, scope)
         : buildInteractiveWorkflowErrorState(

@@ -2,6 +2,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as vscode from 'vscode';
 import { ChangeDetailPanelManager } from '@extension/providers/changeDetailPanelManager';
 
+const { handleWebviewMessageMock } = vi.hoisted(() => ({
+  handleWebviewMessageMock: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('@extension/providers/webviewMessageHandler', () => ({
+  handleWebviewMessage: handleWebviewMessageMock,
+  getWebviewContent: vi.fn(() => '<!doctype html>'),
+  getWorkflowLaunchConfigMessage: vi.fn(() => ({
+    type: 'workflowLaunchConfig',
+    config: {},
+  })),
+}));
+
 vi.mock('vscode', () => ({
   Uri: {
     file: (fsPath: string) => ({ fsPath }),
@@ -130,5 +143,246 @@ describe('ChangeDetailPanelManager scope binding', () => {
       changeName: 'same-change',
       artifactTypes: ['tasks'],
     });
+  });
+
+  it('invalidates only the same-named Project-bound panel with the matching root', async () => {
+    const project = {
+      id: '/projects/current',
+      label: 'Current Project',
+      projectPath: '/projects/current',
+    };
+    const bindingA = {
+      projectId: project.id,
+      commandCwd: project.projectPath,
+      rootPath: '/planning/project-a',
+      rootSource: 'nearest',
+    };
+    const bindingB = {
+      ...bindingA,
+      rootPath: '/planning/project-b',
+    };
+    const panels = [createPanel(), createPanel()];
+    const dataManager = {
+      resolveScope: vi.fn(),
+      getSelectedScope: vi.fn(),
+      getDashboardData: vi.fn().mockResolvedValue({ changes: [], specs: [], lastRefresh: 1 }),
+      artifactExists: vi.fn().mockResolvedValue(false),
+    };
+    vi.mocked(vscode.window.createWebviewPanel)
+      .mockReturnValueOnce(panels[0] as any)
+      .mockReturnValueOnce(panels[1] as any);
+
+    const manager = new ChangeDetailPanelManager(dataManager as any, '/ext', {} as any);
+    manager.open('same-change', { project, binding: bindingA });
+    manager.open('same-change', { project, binding: bindingB });
+    await vi.runAllTimersAsync();
+    panels.forEach((panel) => panel.webview.postMessage.mockClear());
+
+    (manager.notifyArtifactChanged as any)('same-change', ['tasks'], bindingA.rootPath);
+
+    expect(panels[0].webview.postMessage).toHaveBeenCalledWith({
+      type: 'artifactInvalidated',
+      changeName: 'same-change',
+      artifactTypes: ['tasks'],
+    });
+    expect(panels[1].webview.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not reuse a Project-bound panel when only rootSource differs', () => {
+    const project = {
+      id: '/projects/current',
+      label: 'Current Project',
+      projectPath: '/projects/current',
+    };
+    const bindingA = {
+      projectId: project.id,
+      commandCwd: project.projectPath,
+      rootPath: '/planning/shared',
+      rootSource: 'nearest',
+    };
+    const bindingB = {
+      ...bindingA,
+      rootSource: 'global_default',
+    };
+    const panels = [createPanel(), createPanel()];
+    const dataManager = {
+      resolveScope: vi.fn(),
+      getSelectedScope: vi.fn(),
+      getDashboardData: vi.fn().mockResolvedValue({ changes: [], specs: [], lastRefresh: 1 }),
+      artifactExists: vi.fn().mockResolvedValue(false),
+    };
+    vi.mocked(vscode.window.createWebviewPanel)
+      .mockReturnValueOnce(panels[0] as any)
+      .mockReturnValueOnce(panels[1] as any);
+
+    const manager = new ChangeDetailPanelManager(dataManager as any, '/ext', {} as any);
+
+    manager.open('same-change', { project, binding: bindingA });
+    manager.open('same-change', { project, binding: bindingB });
+
+    expect(vscode.window.createWebviewPanel).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps Project-first detail bound when a legacy Store scope is also supplied', async () => {
+    const legacyStore = {
+      id: 'store:legacy',
+      label: 'Legacy Store',
+      rootPath: '/stores/legacy',
+      source: 'store',
+      storeId: 'legacy',
+      capabilities: {},
+      diagnostics: [],
+    };
+    const project = {
+      id: '/projects/current',
+      label: 'Current Project',
+      projectPath: '/projects/current',
+    };
+    const binding = {
+      projectId: project.id,
+      commandCwd: project.projectPath,
+      rootPath: '/planning/current',
+      rootSource: 'nearest',
+    };
+    const panel = createPanel();
+    const dataManager = {
+      resolveScope: vi.fn().mockReturnValue(legacyStore),
+      getSelectedScope: vi.fn().mockReturnValue(legacyStore),
+      getDashboardData: vi.fn().mockResolvedValue({
+        scope: legacyStore,
+        changes: [],
+        specs: [],
+        lastRefresh: 1,
+      }),
+      artifactExists: vi.fn().mockResolvedValue(false),
+    };
+    vi.mocked(vscode.window.createWebviewPanel).mockReturnValue(panel as any);
+
+    const manager = new ChangeDetailPanelManager(dataManager as any, '/ext', {} as any);
+    manager.open('same-change', { scopeId: legacyStore.id, project, binding });
+    await vi.runAllTimersAsync();
+
+    expect(dataManager.resolveScope).not.toHaveBeenCalled();
+    expect(panel.webview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      project,
+      binding,
+      scope: expect.objectContaining({
+        rootPath: binding.rootPath,
+        source: 'declared',
+      }),
+    }));
+  });
+
+  it('passes the host-created Project scope to every consecutive detail operation', async () => {
+    const project = {
+      id: '/projects/current',
+      label: 'Current Project',
+      projectPath: '/projects/current',
+    };
+    const binding = {
+      projectId: project.id,
+      commandCwd: project.projectPath,
+      rootPath: '/planning/current',
+      rootSource: 'nearest',
+    };
+    const selectedScope = {
+      id: 'store:selected',
+      label: 'Selected Store',
+      rootPath: '/stores/selected',
+      source: 'store',
+      storeId: 'selected',
+      capabilities: {},
+      diagnostics: [],
+    };
+    const panel = createPanel();
+    const dataManager = {
+      resolveScope: vi.fn(),
+      getSelectedScope: vi.fn().mockReturnValue(selectedScope),
+      getDashboardData: vi.fn().mockResolvedValue({ changes: [], specs: [], lastRefresh: 1 }),
+      artifactExists: vi.fn().mockResolvedValue(false),
+    };
+    vi.mocked(vscode.window.createWebviewPanel).mockReturnValue(panel as any);
+
+    const manager = new ChangeDetailPanelManager(dataManager as any, '/ext', {} as any);
+    manager.open('same-change', { project, binding });
+    const receiveMessage = vi.mocked(panel.webview.onDidReceiveMessage).mock.calls[0][0];
+
+    await receiveMessage({
+      type: 'getArtifactContent',
+      changeName: 'same-change',
+      artifactType: 'tasks',
+      scopeId: selectedScope.id,
+    } as any);
+    await receiveMessage({
+      type: 'toggleTask',
+      changeName: 'same-change',
+      taskIndex: 0,
+      scopeId: selectedScope.id,
+    } as any);
+    await receiveMessage({
+      type: 'launchWorkflowAction',
+      action: 'apply',
+      changeName: 'same-change',
+      scopeId: selectedScope.id,
+    } as any);
+
+    expect(handleWebviewMessageMock).toHaveBeenCalledTimes(3);
+    expect(handleWebviewMessageMock.mock.calls.map((call) => call[4])).toEqual([
+      expect.objectContaining({ rootPath: binding.rootPath }),
+      expect.objectContaining({ rootPath: binding.rootPath }),
+      expect.objectContaining({ rootPath: binding.rootPath }),
+    ]);
+    expect(dataManager.resolveScope).not.toHaveBeenCalled();
+  });
+
+  it('keeps a legacy scope-only panel bound across consecutive messages', async () => {
+    const selectedScope = {
+      id: 'store:selected',
+      label: 'Selected Store',
+      rootPath: '/stores/selected',
+      source: 'store',
+      storeId: 'selected',
+      capabilities: {},
+      diagnostics: [],
+    };
+    const legacyScope = {
+      id: 'store:legacy',
+      label: 'Legacy Store',
+      rootPath: '/stores/legacy',
+      source: 'store',
+      storeId: 'legacy',
+      capabilities: {},
+      diagnostics: [],
+    };
+    const panel = createPanel();
+    const dataManager = {
+      resolveScope: vi.fn((scopeId?: string) => scopeId === legacyScope.id ? legacyScope : selectedScope),
+      getSelectedScope: vi.fn().mockReturnValue(selectedScope),
+      getDashboardData: vi.fn().mockResolvedValue({ changes: [], specs: [], lastRefresh: 1 }),
+      artifactExists: vi.fn().mockResolvedValue(false),
+    };
+    vi.mocked(vscode.window.createWebviewPanel).mockReturnValue(panel as any);
+
+    const manager = new ChangeDetailPanelManager(dataManager as any, '/ext', {} as any);
+    manager.open('same-change', { scopeId: legacyScope.id });
+    const receiveMessage = vi.mocked(panel.webview.onDidReceiveMessage).mock.calls[0][0];
+
+    await receiveMessage({
+      type: 'getArtifactContent',
+      changeName: 'same-change',
+      artifactType: 'tasks',
+      scopeId: legacyScope.id,
+    } as any);
+    await receiveMessage({
+      type: 'toggleTask',
+      changeName: 'same-change',
+      taskIndex: 0,
+      scopeId: legacyScope.id,
+    } as any);
+
+    expect(handleWebviewMessageMock.mock.calls.slice(-2).map((call) => call[4])).toEqual([
+      expect.objectContaining({ id: legacyScope.id, rootPath: legacyScope.rootPath }),
+      expect.objectContaining({ id: legacyScope.id, rootPath: legacyScope.rootPath }),
+    ]);
   });
 });

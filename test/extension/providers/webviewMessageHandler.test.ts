@@ -67,6 +67,124 @@ describe('handleWebviewMessage toggleTask', () => {
     adapterFillChat.mockResolvedValue({ success: true, adapterId: 'cursor' });
   });
 
+  it('bound detail reads Specs from the originating binding instead of the selected scope', async () => {
+    const boundScope = {
+      id: 'project:/projects/current:/planning/current:nearest:',
+      label: 'Current Project',
+      rootPath: '/planning/current',
+      source: 'declared',
+      runtimeSource: 'installed',
+      capabilities: { stores: false, context: false, doctor: false, worksets: false, diagnostics: [] },
+      diagnostics: [],
+    };
+    const selectedScope = {
+      ...boundScope,
+      id: 'local:/wrong-project',
+      rootPath: '/wrong-project',
+    };
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      resolveScope: vi.fn().mockReturnValue(selectedScope),
+      readSpec: vi.fn().mockResolvedValue('# bound spec'),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await (handleWebviewMessage as any)(
+      { type: 'getSpecContent', specId: 'same-spec', scopeId: selectedScope.id },
+      webview,
+      dataManager,
+      undefined,
+      boundScope
+    );
+
+    expect(dataManager.resolveScope).not.toHaveBeenCalled();
+    expect(dataManager.readSpec).toHaveBeenCalledWith('same-spec', boundScope);
+    expect(webview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'specContent',
+      content: '# bound spec',
+    }));
+  });
+
+  it('passes the host-created Project scope through execute, set-state, and get-state task messages', async () => {
+    const projectScope = {
+      id: 'project:/projects/current:/projects/current:nearest:',
+      label: 'Current Project',
+      rootPath: '/projects/current',
+      source: 'declared',
+      runtimeSource: 'installed',
+      capabilities: { stores: false, context: false, doctor: false, worksets: false, diagnostics: [] },
+      diagnostics: [],
+    };
+    const selectedLegacyStore = {
+      ...projectScope,
+      id: 'store:legacy-store',
+      label: 'legacy-store',
+      rootPath: '/stores/legacy-store',
+      source: 'store',
+      storeId: 'legacy-store',
+    };
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      resolveScope: vi.fn().mockReturnValue(selectedLegacyStore),
+      executeTaskRequest: vi.fn().mockResolvedValue({ success: true }),
+      setTaskExecutionState: vi.fn().mockResolvedValue(undefined),
+      getTaskExecutionState: vi.fn().mockResolvedValue({ 0: { success: true, timestamp: 1 } }),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'executeTask', changeName: 'same-name', taskIndex: 0, taskText: 'Task', scopeId: selectedLegacyStore.id },
+      webview as any,
+      dataManager as any,
+      undefined,
+      projectScope as any,
+    );
+    await handleWebviewMessage(
+      { type: 'getTaskExecutionState', changeName: 'same-name', scopeId: selectedLegacyStore.id },
+      webview as any,
+      dataManager as any,
+      undefined,
+      projectScope as any,
+    );
+
+    expect(dataManager.resolveScope).not.toHaveBeenCalled();
+    expect(dataManager.executeTaskRequest).toHaveBeenCalledWith('same-name', 0, 'Task', projectScope);
+    expect(dataManager.setTaskExecutionState).toHaveBeenCalledWith('same-name', 0, true, projectScope);
+    expect(dataManager.getTaskExecutionState).toHaveBeenNthCalledWith(1, 'same-name', projectScope);
+    expect(dataManager.getTaskExecutionState).toHaveBeenNthCalledWith(2, 'same-name', projectScope);
+  });
+
+  it('keeps scope-only task messages on the selected legacy Store scope', async () => {
+    const selectedLegacyStore = {
+      id: 'store:legacy-store',
+      label: 'legacy-store',
+      rootPath: '/stores/legacy-store',
+      source: 'store',
+      storeId: 'legacy-store',
+      runtimeSource: 'installed',
+      capabilities: { diagnostics: [] },
+      diagnostics: [],
+    };
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      resolveScope: vi.fn().mockReturnValue(selectedLegacyStore),
+      executeTaskRequest: vi.fn().mockResolvedValue({ success: true }),
+      setTaskExecutionState: vi.fn().mockResolvedValue(undefined),
+      getTaskExecutionState: vi.fn().mockResolvedValue({}),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'executeTask', changeName: 'legacy-change', taskIndex: 0, taskText: 'Task', scopeId: selectedLegacyStore.id },
+      webview as any,
+      dataManager as any,
+    );
+
+    expect(dataManager.executeTaskRequest).toHaveBeenCalledWith('legacy-change', 0, 'Task', selectedLegacyStore);
+    expect(dataManager.setTaskExecutionState).toHaveBeenCalledWith('legacy-change', 0, true, selectedLegacyStore);
+    expect(dataManager.getTaskExecutionState).toHaveBeenCalledWith('legacy-change', selectedLegacyStore);
+  });
+
   it('toggles tasks without opening a VS Code modal confirmation', async () => {
     const data = { changes: [], specs: [], lastRefresh: 1 };
     const dataManager = {

@@ -11,4 +11,21 @@ describe('SpecsSection root-scoped empty states', () => {
 
     expect(html).toContain('No specs defined in Store: team-plans');
   });
+
+  it('supports explicit group headings and load errors', () => {
+    const emptyHtml = renderToStaticMarkup(
+      <SpecsSection
+        specs={[]}
+        heading="Project Specs"
+        emptyMessage="No project specs"
+      />
+    );
+    const errorHtml = renderToStaticMarkup(
+      <SpecsSection specs={[]} heading="Referenced Store Specs" loadError="Referenced Store failed" />
+    );
+
+    expect(emptyHtml).toContain('Project Specs');
+    expect(emptyHtml).toContain('No project specs');
+    expect(errorHtml).toContain('Referenced Store failed');
+  });
 });

@@ -184,11 +184,64 @@ describe('OpenSpecCliService', () => {
     expect(result).toEqual([]);
   });
 
+  it('listSpecs propagates CLI process failures instead of treating them as empty', async () => {
+    const service = new OpenSpecCliService(workspaceRoot);
+    vi.spyOn(service as any, 'execOpenSpec').mockRejectedValue(new Error('Command failed with code 1'));
+    await expect(service.listSpecs()).rejects.toThrow('Command failed with code 1');
+  });
+
   it('listSpecs returns empty array for human-readable "Specs: ..." output', async () => {
     mockSpawnSuccess('Specs: chat-bi-table-pagination requirement-spec some-other\n');
     const service = new OpenSpecCliService(workspaceRoot);
     const result = await service.listSpecs();
     expect(result).toEqual([]);
+  });
+
+  describe('getContext', () => {
+    it('reads selector-free context without appending a store flag', async () => {
+      const service = new OpenSpecCliService(workspaceRoot);
+      const runJson = vi.spyOn(service, 'runJson').mockResolvedValue({
+        root: { path: '/resolved/root', source: 'nearest' },
+        ignored: true,
+      });
+
+      await expect(service.getContext()).resolves.toEqual({
+        root: { path: '/resolved/root', source: 'nearest' },
+        ignored: true,
+      });
+      expect(runJson).toHaveBeenCalledOnce();
+      expect(runJson).toHaveBeenCalledWith(['context', '--json']);
+    });
+
+    it('appends exactly one explicit store selector', async () => {
+      const service = new OpenSpecCliService(workspaceRoot);
+      const runJson = vi.spyOn(service, 'runJson').mockResolvedValue({
+        root: { path: '/store/root', source: 'store' },
+      });
+
+      await expect(service.getContext({ storeId: 'team-store' })).resolves.toEqual({
+        root: { path: '/store/root', source: 'store' },
+      });
+      expect(runJson).toHaveBeenCalledWith(['context', '--json', '--store', 'team-store']);
+    });
+
+    it('preserves CLI-confirmed referenced Store Specs entries', async () => {
+      const service = new OpenSpecCliService(workspaceRoot);
+      const context = {
+        root: { path: '/resolved/root', source: 'nearest' },
+        references: [{ store_id: 'team-store' }],
+      };
+      vi.spyOn(service, 'runJson').mockResolvedValue(context);
+
+      await expect(service.getContext()).resolves.toEqual(context);
+    });
+
+    it('propagates malformed JSON errors from runJson', async () => {
+      const service = new OpenSpecCliService(workspaceRoot);
+      vi.spyOn(service, 'runJson').mockRejectedValue(new SyntaxError('Unexpected token'));
+
+      await expect(service.getContext()).rejects.toThrow('Unexpected token');
+    });
   });
 
   describe('listChanges', () => {
@@ -204,6 +257,12 @@ describe('OpenSpecCliService', () => {
       const service = new OpenSpecCliService(workspaceRoot);
       const result = await service.listChanges();
       expect(result).toEqual([]);
+    });
+
+    it('propagates overall list process failures instead of returning empty changes', async () => {
+      const service = new OpenSpecCliService(workspaceRoot);
+      vi.spyOn(service as any, 'execOpenSpec').mockRejectedValue(new Error('Command failed with code 1'));
+      await expect(service.listChanges()).rejects.toThrow('Command failed with code 1');
     });
 
     it('returns enriched changes when CLI returns valid JSON with changes', async () => {

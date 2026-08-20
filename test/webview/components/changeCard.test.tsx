@@ -66,6 +66,15 @@ function walkElements(node: ReactNode, visit: (el: ReactElement) => void): void 
 }
 
 describe('ChangeCard', () => {
+  it('does not render a hidden action rail that reserves default card height', () => {
+    const html = renderToStaticMarkup(
+      <ChangeCard change={change} onClick={vi.fn()} onLaunchWorkflow={vi.fn()} />
+    );
+
+    expect(html).toContain('data-action-rail');
+    expect(html).toContain('display:none');
+  });
+
   it('renders identity, summary, artifacts, time metadata, and progress', () => {
     const html = renderToStaticMarkup(
       <ChangeCard change={change} onClick={vi.fn()} onLaunchWorkflow={vi.fn()} />
@@ -91,9 +100,9 @@ describe('ChangeCard', () => {
     expect(html).toContain('duration-150');
     expect(html).toContain('ease-out');
 
-    // Default state: action rail exists but is visually hidden until hover/focus
-    expect(html).toContain('data-action');
-    expect(html).toMatch(/aria-hidden="true"/);
+    // Default state: the action rail is not mounted, so it contributes no height.
+    expect(html).toContain('data-action-rail');
+    expect(html).toContain('display:none');
   });
 
   it('hides Created when createdAt is missing', () => {
@@ -327,7 +336,7 @@ describe('Dashboard ready-to-verify Verify & Archive path', () => {
     );
     expect(source).toContain("action === 'verify' || action === 'archive'");
     expect(source).toContain("openChangeDetailInEditor(changeName, 'verifyArchive', action, state.data?.scope?.id)");
-    expect(source).toContain('launchWorkflowAction(action, changeName, state.data?.scope?.id)');
+    expect(source).toContain('getDashboardActionScopeId(projectSidebar, state.data?.scope?.id)');
   });
 });
 

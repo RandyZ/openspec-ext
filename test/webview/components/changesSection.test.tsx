@@ -147,6 +147,27 @@ describe('ChangesSection root-scoped empty states', () => {
   });
 });
 
+describe('Project Sidebar compact active work', () => {
+  it('does not render archived cards or explorer filters in compact mode', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(ChangesSection, {
+        changes: SAMPLE_CHANGES,
+        archivedItems: SAMPLE_ARCHIVES,
+        changeStatusCounts: HOST_COUNTS,
+        compact: true,
+        onOpenChange: vi.fn(),
+        onOpenArchivedChange: vi.fn(),
+      } as any),
+    );
+
+    expect(html).toContain('plan-a');
+    expect(html).not.toContain('old-one');
+    expect(html).not.toContain('Filter by lifecycle status');
+    expect(html).not.toContain('Search changes');
+    expect(html).not.toContain('Items per page');
+  });
+});
+
 describe('Task 4.1 wide lifecycle segmented controls', () => {
   it('renders All plus five lifecycle segments with Host counts', () => {
     const html = renderSection({}, {});

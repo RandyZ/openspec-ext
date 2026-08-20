@@ -2,15 +2,30 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { logger } from '../utils/logger';
 import { DataManager, type CachedDashboardData, type DashboardData } from '../services/dataManager';
+import { ProjectDataGateway } from '../services/projectDataGateway';
+import type { OpenSpecCacheService, ProjectPageCacheKey } from '../services/openSpecCacheService';
+import type { OpenSpecRootBinding, ProjectContext } from '../services/types';
 import { InteractiveAgentTerminalManager } from '../services/interactiveAgentTerminalManager';
-import { ChangeDetailPanelManager } from './changeDetailPanelManager';
-import type { ChangeDetailTabId, InteractiveWorkflowAction } from '../../shared/interactiveWorkflow';
-import type { CliActivationDiagnosticView } from '../../webview/types/messages';
+import {
+  ChangeDetailPanelManager,
+  createProjectBoundScope,
+  type ChangeDetailPanelOptions,
+} from './changeDetailPanelManager';
+import type {
+  CliActivationDiagnosticView,
+  ExtensionMessage,
+  ProjectChangesExplorerData,
+  ProjectSidebarData,
+  ProjectSpecsExplorerData,
+} from '../../webview/types/messages';
 import {
   handleWebviewMessage,
   getWebviewContent,
   getWorkflowLaunchConfigMessage,
 } from './webviewMessageHandler';
+
+type ProjectPageCache = Pick<OpenSpecCacheService, 'readProjectPage' | 'writeProjectPage'>;
+type PendingExplorerContext = { message: ExtensionMessage; sent: boolean };
 
 export class DashboardViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'openspec.dashboard';
@@ -19,15 +34,37 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
   private dashboardPanel?: vscode.WebviewPanel;
   private specPanels = new Map<string, vscode.WebviewPanel>();
+  private explorerPanels = new Map<string, vscode.WebviewPanel>();
+  private pendingExplorerContexts = new Map<vscode.Webview, PendingExplorerContext>();
   private refreshSubscription?: vscode.Disposable;
+  private currentProjectBinding?: OpenSpecRootBinding;
+  private cachedProjectSidebarData?: ProjectSidebarData;
+  private readonly projectPageCache?: ProjectPageCache;
+  private projectRequestGeneration = 0;
+  private skipNextProjectRefreshCallback = false;
 
   constructor(
     private dataManager: DataManager,
     private extensionPath: string,
     private panelManager?: ChangeDetailPanelManager,
-    private interactiveTerminalManager?: InteractiveAgentTerminalManager
+    private interactiveTerminalManager?: InteractiveAgentTerminalManager,
+    private projectContext?: ProjectContext,
+    private projectDataGateway?: ProjectDataGateway,
+    projectPageCache?: ProjectPageCache
   ) {
+    // DataManager remains the owner of the existing cache service; the optional
+    // argument keeps this provider testable without adding a second cache.
+    this.projectPageCache = projectPageCache
+      ?? (dataManager as unknown as { cacheService?: ProjectPageCache }).cacheService;
     this.refreshSubscription = this.dataManager.onRefresh((data) => {
+      if (this.isProjectFirst()) {
+        if (this.skipNextProjectRefreshCallback) {
+          this.skipNextProjectRefreshCallback = false;
+          return;
+        }
+        void this.reloadProjectSidebarData();
+        return;
+      }
       this.postDashboardData(data);
     });
   }
@@ -58,7 +95,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     });
 
     logger.info('Dashboard view resolved');
-    this.postInitialDashboardData(webviewView.webview);
+    if (this.isProjectFirst()) {
+      this.postInitialProjectSidebarData(webviewView.webview);
+    } else {
+      this.postInitialDashboardData(webviewView.webview);
+    }
   }
 
   dispose(): void {
@@ -95,6 +136,222 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     this.postWorkflowLaunchConfig(webview);
   }
 
+  private isProjectFirst(): boolean {
+    return this.projectContext !== undefined && this.projectDataGateway !== undefined;
+  }
+
+  private projectSidebarBoundScope(): ReturnType<typeof createProjectBoundScope> | undefined {
+    if (!this.isProjectFirst() || !this.currentProjectBinding) return undefined;
+    return createProjectBoundScope(this.currentProjectBinding, this.projectContext?.label);
+  }
+
+  private sameProject(left: ProjectContext, right: ProjectContext): boolean {
+    return left.id === right.id && left.projectPath === right.projectPath;
+  }
+
+  private sameBinding(left: OpenSpecRootBinding, right: OpenSpecRootBinding): boolean {
+    return left.projectId === right.projectId
+      && left.commandCwd === right.commandCwd
+      && left.rootPath === right.rootPath
+      && left.rootSource === right.rootSource
+      && left.storeId === right.storeId;
+  }
+
+  private toCliDiagnosticView(): CliActivationDiagnosticView | undefined {
+    const diagnostic = this.dataManager.getCliDiagnostic?.();
+    if (!diagnostic) return undefined;
+    return {
+      category: diagnostic.category,
+      message: diagnostic.message,
+      recoveryActions: diagnostic.recoveryActions,
+      safeDetails: diagnostic.safeDetails,
+      copyText: diagnostic.copyText,
+      canRetry: diagnostic.canRetry,
+      normalizedMessage: diagnostic.normalizedMessage,
+    };
+  }
+
+  private postProjectSidebarData(
+    data: ProjectSidebarData,
+    targetWebview?: vscode.Webview,
+    cache: ProjectSidebarData['cache'] = { source: 'fresh', stale: false }
+  ): void {
+    const webview = targetWebview ?? this._view?.webview;
+    if (!webview) return;
+    webview.postMessage({
+      type: 'setContext',
+      view: 'sidebar',
+      data: { ...data, cache },
+    });
+    this.postWorkflowLaunchConfig(webview);
+  }
+
+  private postProjectLoadFailure(targetWebview: vscode.Webview, error: unknown): void {
+    const diagnostic = this.toCliDiagnosticView();
+    const cached = this.cachedProjectSidebarData;
+    if (
+      cached
+      && this.currentProjectBinding
+      && this.sameBinding(cached.binding, this.currentProjectBinding)
+      && this.projectContext
+      && this.sameProject(cached.project, this.projectContext)
+    ) {
+      this.postProjectSidebarData(
+        {
+          ...cached,
+          ...(diagnostic ? { cliDiagnostic: diagnostic } : {}),
+        },
+        targetWebview,
+        { source: 'memory', stale: true, generatedAt: cached.lastRefresh }
+      );
+      if (diagnostic) {
+        targetWebview.postMessage({ type: 'cliActivationDiagnostic', diagnostic, mode: 'warning' });
+      } else {
+        targetWebview.postMessage({
+          type: 'error',
+          message: `Project data may be stale: ${this.errorMessage(error)}`,
+        });
+      }
+      return;
+    }
+
+    if (diagnostic) {
+      targetWebview.postMessage({ type: 'cliActivationDiagnostic', diagnostic, mode: 'blocking' });
+      return;
+    }
+
+    const phase = typeof error === 'object' && error !== null && 'phase' in error
+      ? (error as { phase?: unknown }).phase
+      : undefined;
+    const message = phase === 'resolve'
+      ? `OpenSpec workspace is not initialized for this project: ${this.errorMessage(error)}`
+      : this.errorMessage(error);
+    targetWebview.postMessage({ type: 'error', message });
+  }
+
+  private errorMessage(error: unknown): string {
+    return error instanceof Error
+      ? error.message
+      : typeof error === 'object' && error !== null && 'message' in error
+        ? String((error as { message?: unknown }).message ?? 'Project data load failed')
+        : 'Project data load failed';
+  }
+
+  private async reloadProjectSidebarData(targetWebview?: vscode.Webview): Promise<void> {
+    if (!this.projectContext || !this.projectDataGateway) return;
+    const generation = ++this.projectRequestGeneration;
+    try {
+      const result = await this.projectDataGateway.loadChanges(this.projectContext);
+      if (
+        generation !== this.projectRequestGeneration
+        || !this.sameProject(result.project, this.projectContext)
+        || result.binding.projectId !== this.projectContext.id
+      ) {
+        return;
+      }
+      const changes = result.changes.filter((change) => (
+        (change as { lifecycleStatus?: string }).lifecycleStatus !== 'archived'
+        && !change.name.startsWith('archive:')
+      ));
+      const data: ProjectSidebarData = {
+        project: result.project,
+        binding: result.binding,
+        changes,
+        workflowLaunchConfig: getWorkflowLaunchConfigMessage().config,
+        lastRefresh: Date.now(),
+      };
+      this.currentProjectBinding = result.binding;
+      this.cachedProjectSidebarData = data;
+      this.postProjectSidebarData(data, targetWebview);
+      await this.writeProjectSidebarCache(data);
+    } catch (error) {
+      if (generation !== this.projectRequestGeneration) return;
+      const webview = targetWebview ?? this._view?.webview;
+      if (!webview) return;
+      logger.error('Failed to load current Project Sidebar data', error as Error);
+      this.postProjectLoadFailure(webview, error);
+    }
+  }
+
+  private postInitialProjectSidebarData(targetWebview: vscode.Webview): void {
+    setTimeout(() => {
+      void (async () => {
+        await this.postCachedProjectSidebarData(targetWebview);
+        await this.reloadProjectSidebarData(targetWebview);
+      })();
+    }, DashboardViewProvider.initialDataPostDelayMs);
+  }
+
+  private projectSidebarCacheKey(binding: OpenSpecRootBinding): ProjectPageCacheKey {
+    return {
+      pageKind: 'sidebar',
+      projectId: binding.projectId,
+      rootPath: binding.rootPath,
+      rootSource: binding.rootSource,
+      ...(binding.storeId ? { storeId: binding.storeId } : {}),
+    };
+  }
+
+  private async postCachedProjectSidebarData(targetWebview: vscode.Webview): Promise<void> {
+    if (!this.projectContext) return;
+    const cached = this.cachedProjectSidebarData;
+    if (
+      cached
+      && this.currentProjectBinding
+      && this.sameBinding(cached.binding, this.currentProjectBinding)
+      && this.sameProject(cached.project, this.projectContext)
+    ) {
+      this.postProjectSidebarData(
+        cached,
+        targetWebview,
+        { source: 'memory', stale: true, generatedAt: cached.lastRefresh },
+      );
+      return;
+    }
+
+    if (!this.projectPageCache || !this.projectDataGateway) return;
+    let binding = this.currentProjectBinding;
+    if (!binding) {
+      try {
+        binding = await this.projectDataGateway.resolveBinding(this.projectContext);
+      } catch {
+        return;
+      }
+    }
+    if (
+      binding.projectId !== this.projectContext.id
+      || binding.commandCwd !== this.projectContext.projectPath
+    ) return;
+
+    const cachedPage = await this.projectPageCache.readProjectPage<ProjectSidebarData>(
+      this.projectSidebarCacheKey(binding),
+    );
+    if (!cachedPage) return;
+    const data = cachedPage.payload;
+    if (
+      !data
+      || !this.sameProject(data.project, this.projectContext)
+      || !this.sameBinding(data.binding, binding)
+    ) return;
+
+    this.currentProjectBinding = binding;
+    this.cachedProjectSidebarData = data;
+    this.postProjectSidebarData(
+      data,
+      targetWebview,
+      { source: 'disk', stale: true, generatedAt: cachedPage.metadata.generatedAt },
+    );
+  }
+
+  private async writeProjectSidebarCache(data: ProjectSidebarData): Promise<void> {
+    if (!this.projectPageCache) return;
+    try {
+      await this.projectPageCache.writeProjectPage(this.projectSidebarCacheKey(data.binding), data);
+    } catch (error) {
+      logger.warn('Failed to write Project Sidebar cache', error as Error);
+    }
+  }
+
   private postCliActivationDiagnostic(targetWebview: vscode.Webview, mode: 'blocking' | 'warning'): void {
     const diagnostic = this.dataManager.getCliDiagnostic?.();
     if (!diagnostic) return;
@@ -119,7 +376,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   public openInEditor(): void {
     if (this.dashboardPanel) {
       this.dashboardPanel.reveal(vscode.ViewColumn.One);
-      this.postInitialDashboardData(this.dashboardPanel.webview);
+      if (this.isProjectFirst()) {
+        this.postInitialProjectSidebarData(this.dashboardPanel.webview);
+      } else {
+        this.postInitialDashboardData(this.dashboardPanel.webview);
+      }
       return;
     }
 
@@ -140,7 +401,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       this.dashboardPanel = undefined;
     });
     logger.info('Dashboard editor panel opened');
-    this.postInitialDashboardData(panel.webview);
+    if (this.isProjectFirst()) {
+      this.postInitialProjectSidebarData(panel.webview);
+    } else {
+      this.postInitialDashboardData(panel.webview);
+    }
   }
 
   private postInitialDashboardData(targetWebview?: vscode.Webview): void {
@@ -195,7 +460,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
    */
   public openChangeDetail(
     changeName: string,
-    options?: { initialTab?: ChangeDetailTabId; interactiveAction?: InteractiveWorkflowAction }
+    options?: ChangeDetailPanelOptions
   ): void {
     if (!this.panelManager) return;
     this.panelManager.open(changeName, options);
@@ -204,11 +469,15 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   /**
    * Setup message handler for webview communication
    */
-  private setupMessageHandler(webview: vscode.Webview): void {
+  private setupMessageHandler(
+    webview: vscode.Webview,
+    boundScope?: ReturnType<typeof createProjectBoundScope>,
+    suppressProjectSidebar = false,
+  ): void {
     webview.onDidReceiveMessage(
       async (message) => {
         try {
-          await this.handleMessage(message, webview);
+          await this.handleMessage(message, webview, boundScope, suppressProjectSidebar);
         } catch (error) {
           logger.error('Error handling webview message', error as Error);
         }
@@ -221,8 +490,73 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   /**
    * Handle messages from webview (sidebar). openChangeDetailInEditor is handled here.
    */
-  private async handleMessage(message: any, webview: vscode.Webview): Promise<void> {
+  private postPendingExplorerContext(webview: vscode.Webview): boolean {
+    const pending = this.pendingExplorerContexts.get(webview);
+    if (!pending) return false;
+    webview.postMessage(pending.message);
+    pending.sent = true;
+    return true;
+  }
+
+  private async handleMessage(
+    message: any,
+    webview: vscode.Webview,
+    boundScope?: ReturnType<typeof createProjectBoundScope>,
+    suppressProjectSidebar = false,
+  ): Promise<void> {
+    if (suppressProjectSidebar && message.type === 'getProjectSidebarData') return;
+    const explorerContextConsumed = message.type === 'getProjectSidebarData'
+      && this.postPendingExplorerContext(webview);
+
+    const projectSidebarScope = boundScope ?? this.projectSidebarBoundScope();
+    if (
+      this.isProjectFirst()
+      && !boundScope
+      && !projectSidebarScope
+      && (message.type === 'requestNewChange' || message.type === 'launchWorkflowAction')
+    ) {
+      logger.warn('Rejected Project Sidebar action before its Project binding was resolved');
+      return;
+    }
+
+    if (message.type === 'getProjectSidebarData' && this.isProjectFirst()) {
+      if (explorerContextConsumed) return;
+      await this.postCachedProjectSidebarData(webview);
+      await this.reloadProjectSidebarData(webview);
+      return;
+    }
+    if (message.type === 'refresh' && this.isProjectFirst()) {
+      this.skipNextProjectRefreshCallback = true;
+      try {
+        await this.dataManager.refresh();
+      } catch (error) {
+        logger.error('Project Sidebar refresh failed', error as Error);
+      } finally {
+        this.skipNextProjectRefreshCallback = false;
+      }
+      await this.reloadProjectSidebarData(webview);
+      return;
+    }
+    if (message.type === 'openChangesExplorer' && this.isProjectFirst()) {
+      await this.openChangesExplorer(message.project, message.binding);
+      return;
+    }
+    if (message.type === 'openSpecsExplorer' && this.isProjectFirst()) {
+      await this.openSpecsExplorer(message.project, message.binding);
+      return;
+    }
     if (message.type === 'openChangeDetailInEditor' && message.changeName && this.panelManager) {
+      if (message.project || message.binding) {
+        const binding = await this.verifyProjectBinding(message.project, message.binding);
+        if (!binding) return;
+        this.panelManager.open(message.changeName, {
+          initialTab: message.initialTab,
+          interactiveAction: message.interactiveAction,
+          project: this.projectContext,
+          binding,
+        });
+        return;
+      }
       this.panelManager.open(message.changeName, {
         initialTab: message.initialTab,
         interactiveAction: message.interactiveAction,
@@ -231,7 +565,19 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     if (message.type === 'openSpecInEditor' && message.specId) {
-      this.openSpecPanel(message.specId, message.requirementIndex, message.scopeId);
+      if (message.project || message.binding) {
+        const binding = await this.verifyProjectBinding(message.project, message.binding);
+        if (!binding) return;
+        await this.openSpecPanel(
+          message.specId,
+          message.requirementIndex,
+          undefined,
+          this.projectContext,
+          binding
+        );
+        return;
+      }
+      await this.openSpecPanel(message.specId, message.requirementIndex, message.scopeId);
       return;
     }
 
@@ -254,11 +600,19 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     if (message.type === 'retryCliDetection') {
       try {
         const data = await this.dataManager.refresh();
-        webview.postMessage({ type: 'dashboardData', data, debug: vscode.workspace.getConfiguration('openspec').get<boolean>('debug') ?? false });
-        this.postCliActivationDiagnostic(webview, 'warning');
+        if (this.isProjectFirst()) {
+          await this.reloadProjectSidebarData(webview);
+        } else {
+          webview.postMessage({ type: 'dashboardData', data, debug: vscode.workspace.getConfiguration('openspec').get<boolean>('debug') ?? false });
+          this.postCliActivationDiagnostic(webview, 'warning');
+        }
       } catch (err) {
         logger.error('Retry CLI detection failed', err as Error);
-        this.postCliActivationDiagnostic(webview, 'blocking');
+        if (this.isProjectFirst()) {
+          await this.reloadProjectSidebarData(webview);
+        } else {
+          this.postCliActivationDiagnostic(webview, 'blocking');
+        }
       }
       return;
     }
@@ -267,20 +621,196 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       message,
       webview,
       this.dataManager,
-      this.interactiveTerminalManager
+      this.interactiveTerminalManager,
+      projectSidebarScope
     );
   }
 
-  private async openSpecPanel(specId: string, _requirementIndex?: number, scopeId?: string): Promise<void> {
+  private async verifyProjectBinding(
+    project: unknown,
+    binding: unknown
+  ): Promise<OpenSpecRootBinding | undefined> {
+    if (!this.projectContext || !this.projectDataGateway) return undefined;
+    if (!project || typeof project !== 'object' || !binding || typeof binding !== 'object') return undefined;
+    const requestedProject = project as Partial<ProjectContext>;
+    const requestedBinding = binding as Partial<OpenSpecRootBinding>;
+    if (
+      requestedProject.id !== this.projectContext.id
+      || requestedProject.projectPath !== this.projectContext.projectPath
+      || requestedBinding.projectId !== this.projectContext.id
+      || requestedBinding.commandCwd !== this.projectContext.projectPath
+      || typeof requestedBinding.rootPath !== 'string'
+      || typeof requestedBinding.rootSource !== 'string'
+    ) {
+      return undefined;
+    }
+
+    if (
+      this.currentProjectBinding
+      && this.sameBinding(this.currentProjectBinding, requestedBinding as OpenSpecRootBinding)
+    ) {
+      return this.currentProjectBinding;
+    }
+
+    try {
+      const resolved = await this.projectDataGateway.resolveBinding(
+        this.projectContext,
+        requestedBinding.storeId
+      );
+      return this.sameBinding(resolved, requestedBinding as OpenSpecRootBinding)
+        ? resolved
+        : undefined;
+    } catch (error) {
+      logger.warn('Rejected Project binding request', error as Error);
+      return undefined;
+    }
+  }
+
+  private explorerPanelKey(
+    pageKind: 'changesExplorer' | 'specsExplorer',
+    binding: OpenSpecRootBinding
+  ): string {
+    return [
+      pageKind,
+      binding.projectId,
+      binding.rootPath,
+      binding.rootSource,
+      binding.storeId ?? '',
+    ].join(DashboardViewProvider.scopedPanelKeySeparator);
+  }
+
+  private async openChangesExplorer(project: unknown, binding: unknown): Promise<void> {
+    const verifiedBinding = await this.verifyProjectBinding(project, binding);
+    if (!verifiedBinding || !this.projectContext || !this.projectDataGateway) return;
+    try {
+      const [changes, archived] = await Promise.all([
+        this.projectDataGateway.loadChanges(this.projectContext, verifiedBinding.storeId),
+        this.projectDataGateway.loadArchivedChanges(this.projectContext, verifiedBinding.storeId),
+      ]);
+      if (
+        !this.sameBinding(changes.binding, verifiedBinding)
+        || !this.sameBinding(archived.binding, verifiedBinding)
+      ) {
+        return;
+      }
+      const data: ProjectChangesExplorerData = {
+        project: this.projectContext,
+        binding: verifiedBinding,
+        changes: changes.changes,
+        archivedChanges: archived.archivedChanges,
+      };
+      await this.openExplorerPanel('changesExplorer', verifiedBinding, {
+        type: 'setContext',
+        view: 'changesExplorer',
+        data,
+      });
+    } catch (error) {
+      logger.error('Failed to open Changes Explorer', error as Error);
+    }
+  }
+
+  private async openSpecsExplorer(project: unknown, binding: unknown): Promise<void> {
+    const verifiedBinding = await this.verifyProjectBinding(project, binding);
+    if (!verifiedBinding || !this.projectContext || !this.projectDataGateway) return;
+    try {
+      const [projectSpecs, referencedStoreSpecs] = await Promise.all([
+        this.projectDataGateway.loadCanonicalSpecs(this.projectContext, verifiedBinding.storeId),
+        this.projectDataGateway.loadReferencedStoreSpecs(this.projectContext),
+      ]);
+      if (
+        !this.sameBinding(projectSpecs.binding, verifiedBinding)
+        || !this.sameBinding(referencedStoreSpecs.binding, verifiedBinding)
+      ) {
+        return;
+      }
+      const data: ProjectSpecsExplorerData = {
+        project: this.projectContext,
+        binding: verifiedBinding,
+        projectSpecs: projectSpecs.specs,
+        referencedStoreSpecs: referencedStoreSpecs.groups,
+      };
+      await this.openExplorerPanel('specsExplorer', verifiedBinding, {
+        type: 'setContext',
+        view: 'specsExplorer',
+        data,
+      });
+    } catch (error) {
+      logger.error('Failed to open Specs Explorer', error as Error);
+    }
+  }
+
+  private async openExplorerPanel(
+    pageKind: 'changesExplorer' | 'specsExplorer',
+    binding: OpenSpecRootBinding,
+    contextMessage: ExtensionMessage
+  ): Promise<void> {
+    const key = this.explorerPanelKey(pageKind, binding);
+    const existing = this.explorerPanels.get(key);
+    if (existing) {
+      existing.reveal(vscode.ViewColumn.One);
+      if (this.explorerPanels.get(key) === existing) {
+        existing.webview.postMessage(contextMessage);
+      }
+      return;
+    }
+
+    const title = pageKind === 'changesExplorer' ? 'OpenSpec Changes' : 'OpenSpec Specs';
+    const viewType = pageKind === 'changesExplorer'
+      ? 'openspecChangesExplorer'
+      : 'openspecSpecsExplorer';
+    const panel = vscode.window.createWebviewPanel(
+      viewType,
+      title,
+      vscode.ViewColumn.One,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+        localResourceRoots: [vscode.Uri.file(path.join(this.extensionPath, 'dist'))],
+      }
+    );
+    let disposed = false;
+    this.explorerPanels.set(key, panel);
+    this.pendingExplorerContexts.set(panel.webview, { message: contextMessage, sent: false });
+    panel.webview.html = getWebviewContent(panel.webview, this.extensionPath);
+    const boundScope = createProjectBoundScope(binding, this.projectContext?.label);
+    this.setupMessageHandler(panel.webview, boundScope);
+    panel.onDidDispose(() => {
+      disposed = true;
+      this.explorerPanels.delete(key);
+      this.pendingExplorerContexts.delete(panel.webview);
+    });
+    setTimeout(() => {
+      if (disposed || this.explorerPanels.get(key) !== panel) return;
+      const pending = this.pendingExplorerContexts.get(panel.webview);
+      if (pending && !pending.sent) {
+        pending.sent = true;
+        panel.webview.postMessage(pending.message);
+      }
+    }, DashboardViewProvider.initialDataPostDelayMs);
+  }
+
+  private async openSpecPanel(
+    specId: string,
+    _requirementIndex?: number,
+    scopeId?: string,
+    project?: ProjectContext,
+    binding?: OpenSpecRootBinding
+  ): Promise<void> {
     // Resolve the scope (store root) so the spec is read from the same root it was
     // listed from, not the workspace local root.
-    const scope = this.dataManager.resolveScope(scopeId);
-    const key = `${scope?.id ?? scopeId ?? 'default'}${DashboardViewProvider.scopedPanelKeySeparator}${specId}`;
+    const scope = binding
+      ? createProjectBoundScope(binding, project?.label)
+      : this.dataManager.resolveScope(scopeId);
+    const key = binding
+      ? `${this.explorerPanelKey('specsExplorer', binding)}${DashboardViewProvider.scopedPanelKeySeparator}${binding.storeId ?? 'project'}${DashboardViewProvider.scopedPanelKeySeparator}${specId}`
+      : `${scope?.id ?? scopeId ?? 'default'}${DashboardViewProvider.scopedPanelKeySeparator}${specId}`;
     const existing = this.specPanels.get(key);
     if (existing) {
       existing.reveal(vscode.ViewColumn.One);
       const content = await this.dataManager.readSpec(specId, scope);
-      existing.webview.postMessage({ type: 'specContent', specId, content });
+      if (this.specPanels.get(key) === existing) {
+        existing.webview.postMessage({ type: 'specContent', specId, content });
+      }
       return;
     }
 
@@ -297,16 +827,17 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         }
       );
       this.specPanels.set(key, panel);
+      let disposed = false;
       panel.webview.html = getWebviewContent(panel.webview, this.extensionPath);
-      setTimeout(() => {
-        panel.webview.postMessage({ type: 'specContent', specId, content });
-      }, 200);
-      panel.webview.onDidReceiveMessage(async (msg) => {
-        await handleWebviewMessage(msg, panel.webview, this.dataManager);
-      });
       panel.onDidDispose(() => {
+        disposed = true;
         this.specPanels.delete(key);
       });
+      this.setupMessageHandler(panel.webview, binding ? scope : undefined, true);
+      setTimeout(() => {
+        if (disposed || this.specPanels.get(key) !== panel) return;
+        panel.webview.postMessage({ type: 'specContent', specId, content });
+      }, 200);
     } catch (err) {
       vscode.window.showErrorMessage(`Failed to open spec: ${specId}`);
     }

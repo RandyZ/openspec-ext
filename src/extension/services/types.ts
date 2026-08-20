@@ -19,6 +19,97 @@ export interface ChangeInfo {
   searchText?: string;
 }
 
+export interface OpenSpecContextResult {
+  readonly root: {
+    readonly path: string;
+    readonly source: string;
+    readonly store_id?: string;
+  };
+  readonly references?: readonly OpenSpecReferenceEntry[];
+  readonly members?: readonly OpenSpecContextMember[];
+  readonly [key: string]: unknown;
+}
+
+export interface OpenSpecReferenceEntry {
+  readonly store_id: string;
+  readonly [key: string]: unknown;
+}
+
+export interface OpenSpecContextMember {
+  readonly role?: string;
+  readonly id?: string;
+  readonly store_id?: string;
+  readonly [key: string]: unknown;
+}
+
+export interface ProjectContext {
+  readonly id: string;
+  readonly label: string;
+  readonly projectPath: string;
+}
+
+export interface OpenSpecRootBinding {
+  readonly projectId: string;
+  readonly commandCwd: string;
+  readonly rootPath: string;
+  readonly rootSource: string;
+  readonly storeId?: string;
+}
+
+export class ProjectDataAccessError extends Error {
+  readonly projectId: string;
+  readonly phase: string;
+  readonly binding?: OpenSpecRootBinding;
+  readonly cause?: unknown;
+
+  constructor(
+    message: string,
+    projectId: string,
+    phase: string,
+    binding?: OpenSpecRootBinding,
+    cause?: unknown
+  ) {
+    super(message);
+    this.name = 'ProjectDataAccessError';
+    this.projectId = projectId;
+    this.phase = phase;
+    this.binding = binding;
+    this.cause = cause;
+  }
+}
+
+export interface ProjectChangesData {
+  readonly project: ProjectContext;
+  readonly binding: OpenSpecRootBinding;
+  readonly changes: readonly ChangeInfo[];
+}
+
+export interface ProjectCanonicalSpecsData {
+  readonly project: ProjectContext;
+  readonly binding: OpenSpecRootBinding;
+  readonly specs: readonly SpecInfo[];
+}
+
+export interface ProjectArchivedChangesData {
+  readonly project: ProjectContext;
+  readonly binding: OpenSpecRootBinding;
+  readonly archivedChanges: readonly ArchivedChangeInfo[];
+}
+
+export interface ReferencedStoreSpecGroup {
+  readonly storeId: string;
+  /** Host-resolved binding for this referenced Store; absent only when resolution failed. */
+  readonly binding?: OpenSpecRootBinding;
+  readonly specs: readonly SpecInfo[];
+  readonly error?: string;
+}
+
+export interface ProjectReferencedStoreSpecsData {
+  readonly project: ProjectContext;
+  readonly binding: OpenSpecRootBinding;
+  readonly groups: readonly ReferencedStoreSpecGroup[];
+}
+
 export interface ArtifactStatus {
   id: string;
   outputPath: string;

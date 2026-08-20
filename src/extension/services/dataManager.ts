@@ -98,6 +98,8 @@ export interface ArtifactChangedEvent {
   changeName: string;
   /** The artifact types whose cached content should be invalidated in the webview */
   artifactTypes: string[];
+  /** Canonical OpenSpec root for watcher-originated invalidation, when known. */
+  rootPath?: string;
 }
 
 export interface DataManagerOptions {
@@ -131,6 +133,7 @@ export class DataManager {
   private capabilities?: OpenSpecCapabilities;
   private scopedContentAccess = new Map<string, IOpenSpecContentAccess>();
   private scopedStateReaders = new Map<string, StateReader>();
+  private scopedTaskExecutors = new Map<string, TaskExecutorService>();
   /**
    * Per-scope CLI services for declared (non-store) project roots whose rootPath
    * differs from the activation root. These run local OpenSpec commands with
@@ -204,6 +207,7 @@ export class DataManager {
       this.scopedContentAccess.clear();
       this.scopedCliServices.clear();
       this.scopedStateReaders.clear();
+      this.scopedTaskExecutors.clear();
     });
   }
 
@@ -304,6 +308,16 @@ export class DataManager {
       this.scopedStateReaders.set(scope.id, stateReader);
     }
     return { stateReader, contentAccess, rootPath: scope.rootPath, scope };
+  }
+
+  private getTaskExecutorForScope(scope?: OpenSpecScope): TaskExecutorService {
+    if (!scope || scope.source === 'local') return this.taskExecutorService;
+    const cached = this.scopedTaskExecutors.get(scope.id);
+    if (cached) return cached;
+    const services = this.getScopedServices(scope);
+    const executor = new TaskExecutorService(services.rootPath, services.contentAccess);
+    this.scopedTaskExecutors.set(scope.id, executor);
+    return executor;
   }
 
   async openWorkset(name: string): Promise<void> {
@@ -495,7 +509,11 @@ export class DataManager {
 
       // Notify artifact-level change subscribers (e.g. open change detail panels)
       for (const [changeName, types] of artifactChanges) {
-        this.notifyArtifactChanged({ changeName, artifactTypes: [...types] });
+        this.notifyArtifactChanged({
+          changeName,
+          artifactTypes: [...types],
+          rootPath: this.canonicalRootPath(this.workspaceRoot),
+        });
       }
 
       logger.info(`File changes detected (${events.length} events), refreshing...`);
@@ -678,6 +696,14 @@ export class DataManager {
     return this.scopeManager?.getScopeOptions().find((scope) => (
       path.normalize(scope.rootPath) === normalizedRoot
     )) ?? this.resolveScope();
+  }
+
+  private canonicalRootPath(rootPath: string): string {
+    try {
+      return fs.realpathSync(rootPath);
+    } catch {
+      return path.normalize(rootPath);
+    }
   }
 
   private isCurrentScope(scope?: OpenSpecScope): boolean {
@@ -1116,8 +1142,13 @@ export class DataManager {
    * Execute task via current adapter (dependency check + mode handled inside).
    * @returns { success: boolean } for UI to clear running state.
    */
-  async executeTaskRequest(changeName: string, taskIndex: number, taskText: string): Promise<{ success: boolean }> {
-    return await this.taskExecutorService.execute(changeName, taskIndex, taskText);
+  async executeTaskRequest(
+    changeName: string,
+    taskIndex: number,
+    taskText: string,
+    scope?: OpenSpecScope,
+  ): Promise<{ success: boolean }> {
+    return await this.getTaskExecutorForScope(scope).execute(changeName, taskIndex, taskText);
   }
 
   /**
@@ -1176,8 +1207,11 @@ export class DataManager {
    * Read task execution state from the change's .openspec.yaml (extension.taskExecution).
    * Returns {} if file missing, parse error, or extension.taskExecution absent.
    */
-  async getTaskExecutionState(changeName: string): Promise<Record<number, { success: boolean; timestamp: number }>> {
-    const filePath = this.contentAccess.getChangeOpenspecYamlPath(changeName);
+  async getTaskExecutionState(
+    changeName: string,
+    scope?: OpenSpecScope,
+  ): Promise<Record<number, { success: boolean; timestamp: number }>> {
+    const filePath = this.getScopedServices(scope).contentAccess.getChangeOpenspecYamlPath(changeName);
     try {
       const raw = await fs.promises.readFile(filePath, 'utf8');
       const data = YAML.parse(raw) as { extension?: { taskExecution?: Record<string, { success?: boolean; timestamp?: number }> } } | null;
@@ -1200,8 +1234,13 @@ export class DataManager {
    * Persist execution result for a task in the change's .openspec.yaml (extension.taskExecution).
    * Preserves all other top-level keys; ensures parent directory exists.
    */
-  async setTaskExecutionState(changeName: string, taskIndex: number, success: boolean): Promise<void> {
-    const filePath = this.contentAccess.getChangeOpenspecYamlPath(changeName);
+  async setTaskExecutionState(
+    changeName: string,
+    taskIndex: number,
+    success: boolean,
+    scope?: OpenSpecScope,
+  ): Promise<void> {
+    const filePath = this.getScopedServices(scope).contentAccess.getChangeOpenspecYamlPath(changeName);
     const dir = path.dirname(filePath);
     await fs.promises.mkdir(dir, { recursive: true });
 

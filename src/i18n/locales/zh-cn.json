@@ -201,6 +201,11 @@
   "dashboard.searchEmpty": "没有匹配的 change。",
   "dashboard.searchNoResults": "没有匹配的 change。",
   "dashboard.proposalWhy": "Proposal Why",
+  "projectSidebar.currentProject": "当前项目",
+  "projectSidebar.project": "项目",
+  "projectSidebar.allChanges": "全部 Changes",
+  "projectSidebar.specs": "Specs",
+  "projectSidebar.emptyActive": "暂无 active change",
 
   "header.refresh": "刷新",
   "header.loading": "加载中...",

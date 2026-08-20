@@ -117,4 +117,26 @@ describe('TaskExecutorService workflow command generation', () => {
     );
     expect(fillChat).not.toHaveBeenCalled();
   });
+
+  it('passes the bound Project root to the adapter request', async () => {
+    mockConfig({
+      taskExecutionMode: 'auto',
+      taskDependencyPolicy: 'block',
+      workflowLaunchMode: 'clipboard',
+      preferredAgentAdapter: 'cursor',
+    });
+
+    const service = new TaskExecutorService('/project-root', {
+      readTasks: vi.fn(async () => [{ done: false, text: 'Task', indent: 0 }]),
+      getDirectChildIndices: vi.fn(() => []),
+      autoCompleteParents: vi.fn(),
+    } as any);
+
+    await service.execute('same-name', 0, 'Task');
+
+    expect(executeTask).toHaveBeenCalledWith(expect.objectContaining({
+      changeName: 'same-name',
+      workspaceRoot: '/project-root',
+    }));
+  });
 });

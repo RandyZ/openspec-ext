@@ -7,9 +7,16 @@ export interface SpecCardProps {
   onClick?: (spec: SpecInfo) => void;
   requirements?: string[];
   onRequirementClick?: (spec: SpecInfo, requirementIndex: number) => void;
+  sourceLabel?: string;
 }
 
-export const SpecCard: React.FC<SpecCardProps> = ({ spec, onClick, requirements, onRequirementClick }) => {
+export const SpecCard: React.FC<SpecCardProps> = ({
+  spec,
+  onClick,
+  requirements,
+  onRequirementClick,
+  sourceLabel,
+}) => {
   const [expanded, setExpanded] = useState(false);
 
   const handleToggle = (e: React.MouseEvent) => {
@@ -27,6 +34,7 @@ export const SpecCard: React.FC<SpecCardProps> = ({ spec, onClick, requirements,
       <div
         role="button"
         tabIndex={0}
+        aria-label={sourceLabel ? `${sourceLabel}: ${spec.id}` : spec.id}
         className="p-3 cursor-pointer transition-opacity hover:opacity-90 focus:outline-none focus:ring-1 flex items-center gap-2"
         style={{ outlineColor: 'var(--vscode-focusBorder)' }}
         onClick={() => onClick?.(spec)}

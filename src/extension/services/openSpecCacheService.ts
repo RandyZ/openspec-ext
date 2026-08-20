@@ -17,15 +17,30 @@ export interface ArtifactCacheKey {
   specId?: string;
 }
 
+export type ProjectPageKind = 'sidebar' | 'changesExplorer' | 'specsExplorer';
+
+export interface ProjectPageCacheKey {
+  pageKind: ProjectPageKind;
+  projectId: string;
+  rootPath: string;
+  rootSource: string;
+  storeId?: string;
+}
+
 export interface CacheMetadata {
   schemaVersion: 1;
   extensionVersion: string;
   workspaceHash: string;
   workspaceRoot: string;
-  scopeId: string;
-  scopeRootPath: string;
-  dataKind: 'dashboard' | 'artifact-content';
+  scopeId?: string;
+  scopeRootPath?: string;
+  dataKind: 'dashboard' | 'artifact-content' | 'project-page';
   generatedAt: number;
+  pageKind?: ProjectPageKind;
+  projectId?: string;
+  rootPath?: string;
+  rootSource?: string;
+  storeId?: string;
 }
 
 export interface CachedValue<T> {
@@ -131,6 +146,32 @@ export class OpenSpecCacheService {
     await this.writeEnvelope(this.dashboardPath(scope), 'dashboard', scope, data);
   }
 
+  async readProjectPage<T>(key: ProjectPageCacheKey): Promise<CachedValue<T> | undefined> {
+    const filePath = this.projectPagePath(key);
+    try {
+      const raw = await fs.readFile(filePath, 'utf8');
+      const parsed = JSON.parse(raw) as Partial<CacheEnvelope<T>>;
+      if (!this.isValidProjectPageEnvelope(parsed, key)) return undefined;
+      const { payload, ...metadata } = parsed as CacheEnvelope<T>;
+      return { metadata, payload, filePath };
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT') return undefined;
+      return undefined;
+    }
+  }
+
+  async writeProjectPage<T>(key: ProjectPageCacheKey, payload: T): Promise<void> {
+    const canonical = this.canonicalProjectPageKey(key);
+    await this.writeEnvelope(
+      this.projectPagePath(canonical),
+      'project-page',
+      undefined,
+      payload,
+      canonical,
+    );
+  }
+
   async readArtifactContent(key: ArtifactCacheKey): Promise<CachedValue<string> | undefined> {
     return this.readEnvelope<string>(this.artifactPath(key), 'artifact-content', key.scope);
   }
@@ -223,8 +264,9 @@ export class OpenSpecCacheService {
   private async writeEnvelope<T>(
     filePath: string,
     dataKind: CacheMetadata['dataKind'],
-    scope: ScopeInfo,
-    payload: T
+    scope: ScopeInfo | undefined,
+    payload: T,
+    projectPage?: ProjectPageCacheKey,
   ): Promise<void> {
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     const envelope: CacheEnvelope<T> = {
@@ -232,10 +274,16 @@ export class OpenSpecCacheService {
       extensionVersion: this.options.extensionVersion,
       workspaceHash: this.hash(this.normalize(this.options.workspaceRoot)),
       workspaceRoot: this.options.workspaceRoot,
-      scopeId: scope.id,
-      scopeRootPath: scope.rootPath,
+      ...(scope ? { scopeId: scope.id, scopeRootPath: scope.rootPath } : {}),
       dataKind,
       generatedAt: Date.now(),
+      ...(projectPage ? {
+        pageKind: projectPage.pageKind,
+        projectId: projectPage.projectId,
+        rootPath: projectPage.rootPath,
+        rootSource: projectPage.rootSource,
+        ...(projectPage.storeId ? { storeId: projectPage.storeId } : {}),
+      } : {}),
       payload,
     };
     await fs.writeFile(filePath, JSON.stringify(envelope, null, 2), 'utf8');
@@ -256,6 +304,23 @@ export class OpenSpecCacheService {
       && typeof value.generatedAt === 'number';
   }
 
+  private isValidProjectPageEnvelope<T>(
+    value: Partial<CacheEnvelope<T>>,
+    key: ProjectPageCacheKey
+  ): value is CacheEnvelope<T> {
+    const canonical = this.canonicalProjectPageKey(key);
+    return value.schemaVersion === OpenSpecCacheService.schemaVersion
+      && value.dataKind === 'project-page'
+      && value.workspaceHash === this.hash(this.normalize(this.options.workspaceRoot))
+      && value.pageKind === canonical.pageKind
+      && value.projectId === canonical.projectId
+      && value.rootPath === canonical.rootPath
+      && value.rootSource === canonical.rootSource
+      && (value.storeId ?? '') === (canonical.storeId ?? '')
+      && value.payload !== undefined
+      && typeof value.generatedAt === 'number';
+  }
+
   private dashboardPath(scope: ScopeInfo): string {
     return path.join(this.scopeDir(scope), 'dashboard.json');
   }
@@ -269,6 +334,17 @@ export class OpenSpecCacheService {
     return path.join(this.scopeDir(key.scope), 'artifacts', `${artifactHash}.json`);
   }
 
+  private projectPagePath(key: ProjectPageCacheKey): string {
+    const bindingHash = this.hash([
+      key.pageKind,
+      key.projectId,
+      key.rootPath,
+      key.rootSource,
+      key.storeId ?? '',
+    ].join('\n'));
+    return path.join(this.getCacheRootPath(), 'project-pages', `${bindingHash}.json`);
+  }
+
   private scopeDir(scope: ScopeInfo): string {
     return path.join(
       this.getCacheRootPath(),
@@ -278,6 +354,14 @@ export class OpenSpecCacheService {
 
   private normalize(value: string): string {
     return path.resolve(value);
+  }
+
+  private canonicalProjectPageKey(key: ProjectPageCacheKey): ProjectPageCacheKey {
+    return {
+      ...key,
+      projectId: this.normalize(key.projectId),
+      rootPath: this.normalize(key.rootPath),
+    };
   }
 
   private hash(value: string): string {

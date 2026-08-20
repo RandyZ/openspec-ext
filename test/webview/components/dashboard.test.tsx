@@ -5,10 +5,17 @@ import { AppProvider, appReducer, type AppState } from '../../../src/webview/con
 import {
   Dashboard,
   createScopeSelectHandler,
+  getDashboardActionScopeId,
   requestInitialDashboardData,
 } from '../../../src/webview/components/Dashboard';
 import { sendMessage } from '../../../src/webview/types/messages';
-import type { DashboardData, OpenSpecScopeView } from '../../../src/webview/types/messages';
+import type {
+  DashboardData,
+  OpenSpecScopeView,
+  ProjectContext,
+  OpenSpecRootBinding,
+  ProjectSidebarData,
+} from '../../../src/webview/types/messages';
 import { adaptLegacyDashboardData } from '../../../src/webview/types/legacyDashboardAdapter';
 import type { ChangeStatusCounts } from '../../../src/shared/changeLifecycle';
 
@@ -107,11 +114,52 @@ const dashboardData: DashboardData = {
   lastRefresh: 1,
 };
 
+const projectContext: ProjectContext = {
+  id: '/projects/project-a',
+  label: 'Project A',
+  projectPath: '/projects/project-a',
+};
+
+const projectBinding: OpenSpecRootBinding = {
+  projectId: projectContext.id,
+  commandCwd: projectContext.projectPath,
+  rootPath: '/projects/project-a/openspec',
+  rootSource: 'nearest',
+};
+
+const projectSidebarData: ProjectSidebarData = {
+  project: projectContext,
+  binding: projectBinding,
+  changes: [hostChange('active-change', { lifecycleStatus: 'planning' })],
+  lastRefresh: 2,
+};
+
 function renderDashboardWithData(data: DashboardData, state: Record<string, unknown> = {}) {
   return renderToStaticMarkup(
     <AppProvider
       initialState={{
         data,
+        loading: false,
+        error: null,
+        selectedChange: null,
+        debug: false,
+        cliDiagnostic: null,
+        activity: { kind: 'idle' },
+        ...state,
+      } as any}
+    >
+      <Dashboard />
+    </AppProvider>,
+  );
+}
+
+function renderProjectSidebar(data: ProjectSidebarData = projectSidebarData, state: Record<string, unknown> = {}) {
+  return renderToStaticMarkup(
+    <AppProvider
+      initialState={{
+        data: null,
+        projectSidebar: data,
+        projectFirst: true,
         loading: false,
         error: null,
         selectedChange: null,
@@ -226,6 +274,173 @@ describe('Dashboard CLI diagnostic states', () => {
     expect(html).toContain('openspec init');
     expect(html).not.toContain('Copy Diagnostics');
     expect(html).not.toContain('Open Settings');
+  });
+});
+
+describe('project page contract', () => {
+  it('does not forward a legacy selected Store scope from Project-first actions', () => {
+    expect(getDashboardActionScopeId(projectSidebarData, storeScope.id)).toBeUndefined();
+    expect(getDashboardActionScopeId(undefined, storeScope.id)).toBe(storeScope.id);
+  });
+
+  it('requires a complete Project/root binding for Explorer requests', () => {
+    const project: ProjectContext = {
+      id: '/projects/project-a',
+      label: 'same-label',
+      projectPath: '/projects/project-a',
+    };
+    const binding: OpenSpecRootBinding = {
+      projectId: project.id,
+      commandCwd: project.projectPath,
+      rootPath: '/planning/project-a',
+      rootSource: 'nearest',
+    };
+
+    expect(sendMessage.getProjectSidebarData()).toEqual({ type: 'getProjectSidebarData' });
+    expect(sendMessage.openChangesExplorer(project, binding)).toEqual({
+      type: 'openChangesExplorer',
+      project,
+      binding,
+    });
+    expect(sendMessage.openSpecsExplorer(project, binding)).toEqual({
+      type: 'openSpecsExplorer',
+      project,
+      binding,
+    });
+  });
+
+  it('renders the current Project, active work, and persistent Explorer entry points', () => {
+    const html = renderProjectSidebar({
+      ...projectSidebarData,
+      changes: [
+        ...projectSidebarData.changes,
+        hostChange('archive:old-change', { lifecycleStatus: 'archived' } as any),
+      ] as any,
+    });
+
+    expect(html).toContain('Project A');
+    expect(html).toContain('active-change');
+    expect(html).toContain('All Changes');
+    expect(html).toContain('Specs');
+    expect(html).toContain('New Change');
+    expect(html).not.toContain('archive:old-change');
+    expect(html).not.toContain('Root selector');
+    expect(html).not.toContain('Stores & Worksets');
+  });
+
+  it('keeps All Changes and Specs available when active work is empty', () => {
+    const html = renderProjectSidebar({ ...projectSidebarData, changes: [] });
+
+    expect(html).toMatch(/No active changes/i);
+    expect(html).toContain('All Changes');
+    expect(html).toContain('Specs');
+    expect(html).toContain('New Change');
+  });
+
+  it('keeps long Project labels bounded and cached data visibly stale', () => {
+    const html = renderProjectSidebar(
+      {
+        ...projectSidebarData,
+        project: {
+          ...projectContext,
+          label: 'A very long project label that must remain readable in a narrow sidebar',
+        },
+        cache: { source: 'memory', stale: true, generatedAt: 1 },
+      },
+      { stale: true },
+    );
+
+    expect(html).toContain('A very long project label that must remain readable in a narrow sidebar');
+    expect(html).toContain('truncate');
+    expect(html).toMatch(/cached data|refreshing/i);
+  });
+
+  it('keeps cached Project work visible under a CLI warning', () => {
+    const html = renderProjectSidebar(
+      {
+        ...projectSidebarData,
+        cache: { source: 'memory', stale: true },
+      },
+      {
+        stale: true,
+        cliDiagnostic: { diagnostic, mode: 'warning' },
+      },
+    );
+
+    expect(html).toContain('active-change');
+    expect(html).toContain('OpenSpec CLI unavailable');
+    expect(html).toContain('stale');
+    expect(html).not.toContain('Failed to load data. Try refreshing.');
+  });
+
+  it('renders a project cache diagnostic carried by the host payload', () => {
+    const html = renderProjectSidebar({
+      ...projectSidebarData,
+      cache: { source: 'memory', stale: true },
+      cliDiagnostic: diagnostic,
+    });
+
+    expect(html).toContain('OpenSpec CLI unavailable');
+    expect(html).toContain('Copy Diagnostics');
+  });
+
+  it('shows a blocking CLI diagnostic before Project data exists', () => {
+    const html = renderProjectSidebar(
+      { ...projectSidebarData, changes: [] },
+      { projectSidebar: null, cliDiagnostic: { diagnostic, mode: 'blocking' } },
+    );
+
+    expect(html).toContain('OpenSpec CLI unavailable');
+    expect(html).toContain('Copy Diagnostics');
+    expect(html).not.toContain('No active changes');
+  });
+
+  it('keeps Project-first default Sidebar free of legacy administration surfaces', () => {
+    const html = renderProjectSidebar();
+
+    expect(html).toContain('Project A');
+    expect(html).not.toContain('OpenSpec root context');
+    expect(html).not.toContain('Stores & Worksets');
+    expect(html).not.toContain('Worksets');
+    expect(html).not.toContain('Specs (');
+    expect(html).not.toContain('Archived — read only');
+  });
+
+  it('replaces a cached Project Sidebar only with the latest bound payload', () => {
+    const first = { ...projectSidebarData, cache: { source: 'memory' as const, stale: true } };
+    const secondProject: ProjectContext = {
+      id: '/projects/project-b',
+      label: 'Project B',
+      projectPath: '/projects/project-b',
+    };
+    const second = {
+      ...projectSidebarData,
+      project: secondProject,
+      binding: { ...projectBinding, projectId: secondProject.id, commandCwd: secondProject.projectPath },
+      changes: [hostChange('fresh-project-b-change')],
+      cache: { source: 'fresh' as const, stale: false },
+    };
+    const initial = {
+      data: null,
+      projectSidebar: null,
+      projectFirst: true,
+      loading: true,
+      error: null,
+      selectedChange: null,
+      debug: false,
+      cliDiagnostic: null,
+      activity: { kind: 'idle' },
+    };
+
+    const cached = appReducer(initial as any, { type: 'SET_PROJECT_SIDEBAR', payload: first } as any);
+    const fresh = appReducer(cached, { type: 'SET_PROJECT_SIDEBAR', payload: second } as any);
+
+    expect(cached.projectSidebar).toBe(first);
+    expect(cached.stale).toBe(true);
+    expect(fresh.projectSidebar).toBe(second);
+    expect(fresh.projectSidebar?.project.id).toBe(secondProject.id);
+    expect(fresh.projectSidebar?.changes[0].name).toBe('fresh-project-b-change');
+    expect(fresh.stale).toBe(false);
   });
 });
 

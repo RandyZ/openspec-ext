@@ -139,7 +139,7 @@ export function sortItems(
   const indexed = items.map((item, index) => ({ item, index }));
 
   indexed.sort((left, right) => {
-    let comparison = 0;
+    let comparison: number;
 
     switch (sort) {
       case 'updated-desc':

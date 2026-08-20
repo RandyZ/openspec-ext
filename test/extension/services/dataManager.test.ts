@@ -1,5 +1,7 @@
+import { realpathSync, rmSync } from 'fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DataManager } from '@extension/services/dataManager';
+import { TaskExecutorService } from '@extension/services/taskExecutorService';
 import type { ArchivedChangeInfo, ChangeInfo, SpecInfo } from '@extension/services/types';
 
 vi.mock('vscode', () => ({
@@ -190,6 +192,84 @@ function makeDataManagerWithTaskFixture({ cacheService }: { cacheService: Return
 describe('DataManager dashboard data loading', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('uses a Project-bound root for task execution and execution-state IO', async () => {
+    const activationRoot = '/tmp/openspec-p1-selected-store-root';
+    const projectRoot = '/tmp/openspec-p1-project-root';
+    const projectYamlPath = `${projectRoot}/openspec/changes/same-name/.openspec.yaml`;
+    const activationYamlPath = `${activationRoot}/openspec/changes/same-name/.openspec.yaml`;
+    const projectScope = {
+      id: 'project:/projects/current:/projects/current:nearest:',
+      rootPath: projectRoot,
+      source: 'declared',
+    };
+    const activationContent = {
+      getChangeOpenspecYamlPath: vi.fn().mockReturnValue(activationYamlPath),
+    };
+    const projectContent = {
+      getChangeOpenspecYamlPath: vi.fn().mockReturnValue(projectYamlPath),
+    };
+    const manager = new DataManager(activationRoot);
+    const scopedServices = vi.fn().mockReturnValue({
+      stateReader: {},
+      contentAccess: projectContent,
+      rootPath: projectRoot,
+      scope: projectScope,
+    });
+    const executeSpy = vi.spyOn(TaskExecutorService.prototype, 'execute').mockResolvedValue({ success: true });
+
+    Object.assign(manager as any, {
+      contentAccess: activationContent,
+      getScopedServices: scopedServices,
+    });
+
+    try {
+      await (manager as any).executeTaskRequest('same-name', 0, 'Task', projectScope);
+      await (manager as any).setTaskExecutionState('same-name', 0, true, projectScope);
+      await (manager as any).getTaskExecutionState('same-name', projectScope);
+
+      expect((executeSpy.mock.instances[0] as any).workspaceRoot).toBe(projectRoot);
+      expect(scopedServices).toHaveBeenCalledWith(projectScope);
+      expect(projectContent.getChangeOpenspecYamlPath).toHaveBeenCalledTimes(2);
+      expect(activationContent.getChangeOpenspecYamlPath).not.toHaveBeenCalled();
+    } finally {
+      executeSpy.mockRestore();
+      rmSync(activationRoot, { recursive: true, force: true });
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('includes the canonical workspace root in watcher artifact events', async () => {
+    const manager = new DataManager('/tmp');
+    const start = vi.fn();
+    const artifactChanged = vi.fn();
+    Object.assign(manager as any, {
+      cliService: {
+        checkAvailability: vi.fn().mockResolvedValue(false),
+        getCliActivationDiagnostic: vi.fn().mockReturnValue(null),
+      },
+      contentAccess: {
+        autoCompleteParents: vi.fn().mockResolvedValue(undefined),
+      },
+      fileWatcher: { start, stop: vi.fn() },
+    });
+    vi.spyOn(manager as any, 'migrateExecutionStateFromGlobalFile').mockResolvedValue(undefined);
+    vi.spyOn(manager as any, 'warmDashboardData').mockImplementation(() => undefined);
+    vi.spyOn(manager, 'refresh').mockResolvedValue({} as any);
+    manager.onArtifactChanged(artifactChanged);
+
+    await manager.initialize();
+    const watcherCallback = start.mock.calls[0][0];
+    watcherCallback([{
+      uri: { fsPath: '/tmp/openspec/changes/same-change/tasks.md' },
+    }]);
+
+    expect(artifactChanged).toHaveBeenCalledWith({
+      changeName: 'same-change',
+      artifactTypes: ['tasks'],
+      rootPath: realpathSync('/tmp'),
+    });
   });
 
   it('accepts an optional cache service dependency', () => {
