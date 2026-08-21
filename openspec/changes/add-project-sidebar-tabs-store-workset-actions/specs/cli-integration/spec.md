@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Command Execution
-The system SHALL execute OpenSpec commands on behalf of the user, preserving whether each official command expects JSON or ordinary CLI output.
+The system SHALL execute OpenSpec commands on behalf of the user while preserving whether each official command expects JSON or ordinary CLI output.
 
 #### Scenario: Create new change
 - **GIVEN** the user requests to create a change named "add-feature"
@@ -27,7 +27,8 @@ The system SHALL execute OpenSpec commands on behalf of the user, preserving whe
 
 #### Scenario: Open a Workset with ordinary CLI output
 - **GIVEN** a saved Workset exists
-- **WHEN** the user clicks Open Workset
-- **THEN** the extension MUST execute `openspec workset open <name>` without `--json`
-- **AND** it MUST NOT pass the command through a JSON parser
-- **AND** the command's exit status and diagnostic output MUST be preserved
+- **WHEN** the user invokes the whole-Workset open action
+- **THEN** the extension MUST execute the exact argument sequence `openspec workset open <name>`
+- **AND** the command MUST NOT include `--json`
+- **AND** ordinary stdout MUST NOT be passed through a JSON parser
+- **AND** a non-zero exit status, stderr, and safe diagnostic details MUST remain available to the caller

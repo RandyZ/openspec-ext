@@ -1,31 +1,35 @@
 ## Why
 
-Project-first Sidebar 当前只预加载 Changes，All Changes 与 Specs 通过重复的 CLI 解析和新的 Editor WebviewPanel 打开，导致明显等待和两套浏览体验。声明了 Store reference 的项目虽然能被官方 CLI 正确解析，但 Project-first UI 没有展示 referenced Store Specs；Workset 管理页又把无 JSON 模式的官方 `workset open` 当成 JSON 命令调用，造成点击无效。
+Project-first Sidebar 当前把核心入口堆成纵向按钮，Changes/Specs 浏览、Workset 模式与 Dashboard 的层级不一致；Dashboard Editor 又复用 Sidebar 页面，既浪费宽屏空间，也会重复触发数据加载。现在需要用一个共享的 Project workspace 快照同时支撑紧凑 Sidebar 和独立 Dashboard，并修正官方 Workset open 的非 JSON 语义。
 
 ## What Changes
 
-- 在 Project-first Sidebar 内提供 Changes / Specs tabs，列表浏览不再创建 Editor Explorer。
-- 统一 Project binding 下的 Changes、归档 Changes、Project Specs、referenced Store Specs 和 Workset navigation 数据加载，支持缓存优先与后台刷新，避免 tab 点击重复解析 CLI。
-- 按官方 `context --json` / `doctor --json` 读取项目的 Store references，并按 Store binding 展示 Store Specs；未引用 Store 不进入项目 Specs 视图。
-- 将 Workset 管理页的“打开工作集”改为直接调用官方 `openspec workset open <name>` 非 JSON 命令，让 CLI 负责工具选择、成员校验和 workspace 文件生成。
-- 明确“切换到 Project”和“打开整个 Workset”的操作语义，保留 legacy scope/store 管理和 Change/Spec Detail Editor 详情页。
+- 将 Project-first Sidebar 顶部改成固定顺序的 2×2 action grid：Changes、Specs、动态 Worksets、Dashboard。
+- Changes、Specs、Worksets 在 Sidebar 内本地切换；列表浏览不再创建 Editor Explorer，Change/Spec detail 继续按 binding 打开 Editor。
+- Dashboard action 打开或 reveal 独立 Project Dashboard Editor，展示真实 KPI、lifecycle distribution、artifact readiness 和 recent updates。
+- 统一当前 Project binding 下的 active/archived Changes、Project Specs、referenced Store Specs 与 Workset navigation 数据，供 Sidebar 和 Dashboard 复用缓存与 fresh refresh。
+- 将 New Change 与 Refresh 暴露为原生 VS Code view-title actions，避免占用四宫格和重复 Webview 操作条。
+- 按官方 context/Store selector 读取 referenced Store Specs；Store 失败只降级对应分组且不得污染 Project Dashboard 指标。
+- 将 whole-Workset 操作路由到官方 `openspec workset open <name>` 普通输出命令，并明确区分 Project picker 与完整 Workset 打开。
+- 保留 legacy Dashboard/Store/Workset 管理、watcher、workflow 和详情 Editor；Tasks 分组与 Specs 分栏详情作为 Phase 2，不在本 Change 实现。
 
 ## Capabilities
 
 ### New Capabilities
 
-- `project-sidebar-tabs`: Project-first Sidebar 中 Changes / Specs tab 的浏览与缓存数据契约。
-- `referenced-store-specs`: 项目声明的 referenced Store Specs 分组、绑定与 fail-soft 展示。
-- `workset-cli-open`: 使用官方非 JSON Workset open 命令打开完整工作集，并区分 Project 切换动作。
+- `project-sidebar-tabs`: Project-first 四宫格入口、本地 Changes/Specs/Worksets 浏览、Dashboard 路由与共享 Project payload 契约。
+- `referenced-store-specs`: 项目声明的 referenced Store Specs 分组、binding 隔离、fail-soft 展示与 Dashboard 指标隔离。
+- `workset-cli-open`: 动态 Worksets 入口、Project 切换粒度和官方非 JSON whole-Workset open。
 
 ### Modified Capabilities
 
-- `dashboard`: Project-first 列表浏览入口、缓存优先加载和 Sidebar tab 行为发生变化。
-- `cli-integration`: 增加无 JSON 输出的官方 `workset open` 调用路径，并保留 CLI 错误语义。
+- `dashboard`: 缓存感知行为、原生操作入口和独立 Project Dashboard summary surface。
+- `cli-integration`: 增加无 JSON 输出的官方 `workset open` 调用路径，并保留 CLI 退出与诊断语义。
 
 ## Impact
 
-- Extension Host：`DashboardViewProvider`、`ProjectDataGateway`、`DataManager`、`OpenSpecCliService`、项目页缓存与 Webview message routing。
-- Webview：`Dashboard`、Header、Changes/Specs/Worksets 组件、消息类型和本地 tab 状态。
-- Tests：Gateway/CLI/provider 单元测试、Sidebar tab 交互测试、真实 XDG reference Store fixture、官方 Workset open smoke 与 VS Code/Cursor GUI 验收。
-- 不修改 OpenSpec CLI、Store registry、Workset registry 或其他项目仓库。
+- Extension Host：`DashboardViewProvider`、`ProjectDataGateway`、`OpenSpecCliService`、`DataManager`、Project page cache 与 Webview message routing。
+- VS Code contribution：现有 New Change/Refresh commands 的 `view/title` 菜单与图标。
+- Webview：`Dashboard`、`Header`、`App` routing、`ProjectDashboard`、Changes/Specs/Worksets 组件、消息类型和 i18n。
+- Tests：Gateway/CLI/provider/App/component 单元测试、真实 reference Store fixture、Extension Development Host GUI 验收与完整构建门禁。
+- 不修改 OpenSpec CLI、Store registry、Workset registry、其他项目仓库或 Change Detail 的 Tasks/Specs 布局。

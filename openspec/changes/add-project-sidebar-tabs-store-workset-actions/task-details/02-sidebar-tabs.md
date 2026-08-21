@@ -1,95 +1,113 @@
-# Task 2. Sidebar Changes / Specs tabs
+# Task 2. Project action launcher and local views
 
 <!-- covers: Task 2.1, Task 2.2, Task 2.3 -->
 
-### Task 2.1: Add RED Webview tests for local tabs, Project/Store Specs grouping, and narrow keyboard operation.
+### Task 2.1: Add RED Webview tests for the four-action grid, dynamic Worksets, and accessible narrow layout.
 
-**Spec coverage:** `project-sidebar-tabs` / Project-first Sidebar tab browsing / Switch between Changes and Specs tabs; Open a Change or Spec detail; Narrow Sidebar remains operable. `referenced-store-specs` / Project and Store contain Specs with the same id.
+**Spec coverage:** `project-sidebar-tabs` / Project action launcher and local browsing / all scenarios. `workset-cli-open` / Dynamic Worksets launcher / both scenarios. `referenced-store-specs` / Project and Store contain Specs with the same id.
 
-**Dependencies / order:** Requires the Task 1 data shape and existing `Dashboard`, `Header`, `ChangesSection`, `SpecsSection`, and Specs Explorer tests.
+**Dependencies / order:** Task 1 data shape is available. Reuse current `Dashboard`, `Header`, `ChangesSection`, `SpecsSection`, and `WorksetProjectPicker` tests. Must be RED before Task 2.2.
 
-**Implementation notes:** Keep tabs local to the Project-first Sidebar and preserve existing detail message contracts.
+**Implementation notes:** The grid mixes local views with an Editor-opening Dashboard action. Test semantic buttons and `aria-pressed` for local selection; do not require one ARIA tablist. Prefer existing test files over a new launcher test abstraction.
 
 **Files:**
 - Modify: `test/webview/components/dashboard.test.tsx`
 - Modify: `test/webview/components/header.test.tsx`
 - Modify: `test/webview/components/specsSection.test.tsx`
-- Create or modify: `test/webview/components/projectSidebarTabs.test.tsx`
+- Modify: `test/webview/components/worksetProjectPicker.test.tsx`
+- Modify: `test/webview/app.test.tsx`
 
-- [ ] **Step 1: Write failing tab tests**
-  - Render Project-first data with active Changes, Project Specs, and a duplicate-id Store Spec group.
-  - Assert tab activation changes local content and does not emit an Explorer-open message.
-- [ ] **Step 2: Write failing accessibility tests**
-  - Assert both tabs have keyboard-focusable controls, labels, and bounded long paths/names in narrow layout.
-  - Assert Store groups are labeled and their entries remain distinct from Project entries.
-- [ ] **Step 3: Write failing detail routing tests**
-  - Select a Change/Spec row and assert the existing detail message includes the current Project/Store binding.
-- [ ] **Step 4: Run test — expect FAIL**
-  - Run: `pnpm test -- test/webview/components/dashboard.test.tsx test/webview/components/header.test.tsx test/webview/components/specsSection.test.tsx test/webview/components/projectSidebarTabs.test.tsx`
-  - Expected: FAIL because Project-first actions still open list Explorers.
+- [ ] **Step 1: Write the failing grid contract test**
+  - Render Project-first data and assert Changes, Specs, Worksets, Dashboard appear in stable 2×2 order.
+  - Assert Changes is the default local view and local selection does not emit Explorer-open messages.
+- [ ] **Step 2: Write dynamic Worksets tests**
+  - Assert a trusted membership enables Worksets and exposes its count.
+  - Assert no membership, unsupported capability, or unavailable trusted navigation keeps the grid cell visible but non-operable with an explanation.
+  - Assert Worksets activation shows the local picker and never emits `openWorkset`.
+- [ ] **Step 3: Write accessibility and routing tests**
+  - Assert keyboard focus, accessible names, visible selection semantics, and bounded long labels.
+  - Assert Dashboard emits the dedicated Host request without changing the active local view.
+  - Assert Project and same-id Store Spec rows retain separate detail bindings.
+- [ ] **Step 4: Run the focused RED command**
+  - Run: `pnpm test -- test/webview/components/dashboard.test.tsx test/webview/components/header.test.tsx test/webview/components/specsSection.test.tsx test/webview/components/worksetProjectPicker.test.tsx test/webview/app.test.tsx`
+  - Expected: FAIL because the current Header is not the approved launcher and Dashboard has no distinct request/route.
 
-**Verification:** RED failures are limited to tab state, grouping, accessibility, and message routing.
+**Verification:** RED failures are limited to launcher order/state, dynamic Worksets, local view behavior, and accessibility.
 
-**Risks / edge cases:** Empty Project Specs, Store error groups, duplicate ids, and no referenced Stores must all render without collapsing the tab.
+**Risks / edge cases:** An empty Specs view or failed Store group must not disable unrelated launcher actions. Dashboard action must remain available even when Worksets is unavailable.
 
 ---
 
-### Task 2.2: Implement Sidebar tab state and render Changes, archived Changes, Project Specs, and Store Specs in place.
+### Task 2.2: Implement native title actions and local Changes, Specs, and Worksets views.
 
-**Spec coverage:** `project-sidebar-tabs` / all requirements. `dashboard` / Existing cache avoids click-time reload.
+**Spec coverage:** `project-sidebar-tabs` / Render the four actions in a stable grid; Browse Changes locally; Browse Specs locally; Open Workset mode locally; Worksets action is unavailable; Narrow Sidebar remains operable. `dashboard` / Dashboard Actions / Create new change; Refresh data.
 
-**Dependencies / order:** Task 2.1 RED tests and Task 1.2 payload implementation.
+**Dependencies / order:** Task 2.1 RED tests and Task 1.2 payload are complete.
 
-**Implementation notes:** Reuse existing section components where possible; add only the smallest tab state and grouped Store rendering.
+**Implementation notes:** Reuse existing New Change/Refresh commands and current section components. Keep one local `changes | specs | worksets` state in Project-first Dashboard; reset only when accepted Project/root binding changes.
 
 **Files:**
+- Modify: `package.json`
 - Modify: `src/webview/components/Dashboard.tsx`
 - Modify: `src/webview/components/Header.tsx`
-- Modify: `src/webview/components/ChangesSection.tsx` or `src/webview/components/SpecsSection.tsx` only when existing props cannot represent the unified payload
+- Modify: `src/webview/components/ChangesSection.tsx` only if the existing props cannot render active/archived groups
+- Modify: `src/webview/components/SpecsSection.tsx` only if the existing props cannot render Project/Store groups
 - Modify: `src/i18n/locales/en.json`
 - Modify: `src/i18n/locales/zh-cn.json`
 
-- [ ] **Step 1: Add local tab state**
-  - Add a Project-first tab state with Changes as the default and reset it only when the Project binding changes.
-  - Make Header All Changes/Specs actions call local tab setters rather than post list Explorer messages.
-- [ ] **Step 2: Render grouped content**
-  - Render active/archived Changes in the Changes tab and Project/Referenced Store Specs in the Specs tab.
-  - Show safe loading, empty, and Store-error states without hiding Project Specs.
-- [ ] **Step 3: Preserve narrow keyboard behavior**
-  - Use semantic buttons/tabs, visible focus styles, truncation, titles, and stable tab order.
-- [ ] **Step 4: Run focused tests — expect PASS**
-  - Run: `pnpm test -- test/webview/components/dashboard.test.tsx test/webview/components/header.test.tsx test/webview/components/specsSection.test.tsx test/webview/components/projectSidebarTabs.test.tsx`
-  - Expected: PASS.
+- [ ] **Step 1: Expose existing commands in the native view title**
+  - Add `view/title` menu entries and icons for existing Refresh and New Change commands scoped to `openspec.dashboard`.
+  - Do not add a duplicate command or use a grid slot for either operation.
+- [ ] **Step 2: Replace stacked Project-first actions with the 2×2 launcher**
+  - Render the fixed order and local selection state.
+  - Keep Dashboard as an external action and preserve the selected local view.
+- [ ] **Step 3: Render local content from the shared snapshot**
+  - Changes view renders active and archived Changes.
+  - Specs view renders Project Specs plus independently labeled Store groups and safe group errors.
+  - Worksets view renders the existing picker only when trusted navigation is available; otherwise its action is disabled.
+- [ ] **Step 4: Run the focused GREEN command**
+  - Run: `pnpm test -- test/webview/components/dashboard.test.tsx test/webview/components/header.test.tsx test/webview/components/specsSection.test.tsx test/webview/components/worksetProjectPicker.test.tsx`
+  - Expected: PASS without any Project-first list Explorer message.
 
-**Verification:** No tab click creates a WebviewPanel or posts an Explorer list request.
+**Verification:** All local view changes are Webview state transitions, native title commands remain callable, and narrow keyboard operation passes.
 
-**Risks / edge cases:** Do not accidentally alter legacy Dashboard tab/scope state; guard the new state behind Project-first data.
+**Risks / edge cases:** Guard the launcher behind Project-first data so legacy scope Dashboard controls and state remain unchanged. Do not remove remaining legacy Explorer components.
 
 ---
 
-### Task 2.3: Preserve binding-aware Change/Spec detail actions while removing list Explorer creation from tab navigation.
+### Task 2.3: Preserve binding-aware detail routing and connect the Dashboard action without list Explorers.
 
-**Spec coverage:** `project-sidebar-tabs` / Open a Change or Spec detail. `referenced-store-specs` / Store binding selection.
+**Spec coverage:** `project-sidebar-tabs` / Open Project Dashboard; Open a Change or Spec detail. `referenced-store-specs` / Project and Store contain Specs with the same id. `dashboard` / Dashboard Actions / Open Project Dashboard.
 
-**Dependencies / order:** Task 2.2.
+**Dependencies / order:** Task 2.2 renders the launcher. Task 1.3 supplies surface-aware messages; Task 4 will implement the distinct Dashboard view.
 
-**Implementation notes:** Remove list-panel navigation only from Project-first tab actions; leave detail and legacy Explorer callers intact.
+**Implementation notes:** Add one explicit `openProjectDashboard` Webview request and route it to existing `DashboardViewProvider.openInEditor()`. Remove only Project-first list Explorer entry points; keep detail and legacy callers.
 
 **Files:**
-- Modify: `src/webview/components/SpecsExplorer.tsx` or shared Specs row component
+- Modify: `src/webview/types/messages.ts`
+- Modify: `src/webview/components/Dashboard.tsx`
 - Modify: `src/extension/providers/dashboardViewProvider.ts`
+- Modify: `src/extension/providers/webviewMessageHandler.ts`
+- Modify: `src/webview/components/SpecsSection.tsx` or the shared Spec row only if binding props are missing
 - Modify: `test/extension/providers/dashboardViewProvider.test.ts`
+- Modify: `test/extension/providers/webviewMessageHandler.test.ts`
 - Modify: `test/webview/components/specsExplorer.messages.test.tsx`
 
-- [ ] **Step 1: Keep detail messages explicit**
-  - Project Specs use the current Project binding; Store Specs use the group binding and store id.
-  - Reject a missing Store binding with the existing safe error path.
-- [ ] **Step 2: Remove only list-panel entry points**
-  - Stop Project-first Header tab actions from invoking `openExplorerPanel` while retaining direct detail handlers and legacy callers.
-- [ ] **Step 3: Run focused tests**
-  - Run: `pnpm test -- test/extension/providers/dashboardViewProvider.test.ts test/webview/components/specsExplorer.messages.test.tsx`
-  - Expected: PASS with detail isolation preserved.
+- [ ] **Step 1: Write failing message-routing assertions**
+  - Assert Dashboard action emits `openProjectDashboard`.
+  - Assert Changes/Specs local actions emit neither `openChangesExplorer` nor `openSpecsExplorer`.
+  - Assert the Host request calls the existing Dashboard Editor entry point.
+- [ ] **Step 2: Implement the explicit Dashboard request**
+  - Add the smallest message type, builder, and Host handler.
+  - Keep local view state unchanged when the request is sent.
+- [ ] **Step 3: Preserve detail binding isolation**
+  - Project rows send current Project binding.
+  - Store Spec rows send the verified Store group binding and Store id.
+  - Missing Store binding follows the existing safe error path.
+- [ ] **Step 4: Run the focused GREEN command**
+  - Run: `pnpm test -- test/extension/providers/dashboardViewProvider.test.ts test/extension/providers/webviewMessageHandler.test.ts test/webview/components/specsExplorer.messages.test.tsx test/webview/components/dashboard.test.tsx`
+  - Expected: PASS with distinct Dashboard routing and no Project-first list Panel creation.
 
-**Verification:** Detail messages remain binding-scoped; no list Explorer is created by tab navigation.
+**Verification:** Dashboard request reaches one Editor entry point; Change/Spec detail messages remain root-isolated; local lists stay in Sidebar.
 
-**Risks / edge cases:** Same-named Specs in Project and Store must open different roots; verify both bindings in assertions.
+**Risks / edge cases:** Do not alter the command-palette `openspec.openDashboard` path or legacy Explorer callers. Same-name Specs must never fall back to the current Project root when a Store binding is missing.

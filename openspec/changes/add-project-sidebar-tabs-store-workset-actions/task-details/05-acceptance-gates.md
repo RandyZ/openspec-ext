@@ -2,91 +2,105 @@
 
 <!-- covers: Task 5.1, Task 5.2, Task 5.3 -->
 
-### Task 5.1: Verify a real reference Project plus registered Store returns separate Project and Store Specs through official CLI JSON.
+### Task 5.1: Verify real Project and referenced Store Specs remain separately rooted through official CLI JSON.
 
-**Spec coverage:** `referenced-store-specs` / Project declares a referenced Store; Project and Store contain Specs with the same id; Project has no references. `project-sidebar-tabs` / Fresh load reuses one binding.
+**Spec coverage:** `referenced-store-specs` / all scenarios. `project-sidebar-tabs` / Unified Project workspace payload / Fresh load reuses one binding. `dashboard` / Referenced Store data does not alter Project metrics.
 
-**Dependencies / order:** Tasks 1–4 complete; use an isolated XDG data/config directory or a read-only real fixture and clean all temporary files afterward.
+**Dependencies / order:** Tasks 1–4 complete. Use the named real Project read-only; if unavailable, use an isolated XDG fixture and remove only files created by the task.
 
-**Implementation notes:** Treat official CLI output as the source of truth and never mutate the real Store registry or Worksets during fixture setup.
+**Implementation notes:** Treat official CLI JSON as the source of truth. Never mutate the real Store registry, Worksets, referenced Project, or another repository. Record root/store identities without copying unrelated sensitive content.
 
 **Files:**
-- Modify: `test/extension/services/projectDataGateway.test.ts` only for a durable fixture regression
-- Create: temporary fixture files outside the repository, removed after verification
+- Modify: `test/extension/services/projectDataGateway.test.ts` only for a durable official-shape regression
+- Create: temporary fixture files outside the repository only when fallback is required; remove them after verification
 - Read: `/Users/randy/workspace/projects/aihelp/ai/aihelp-knowledge-agent/openspec/config.yaml`
 
-- [ ] **Step 1: Probe the real Project**
-  - Run `openspec context --json` and `openspec doctor --json` from `aihelp-knowledge-agent`.
-  - Confirm `aihelp-workspace` is a referenced Store member and the health response is readable.
-- [ ] **Step 2: Probe both Spec roots**
-  - Run `openspec list --specs --json` from the Project and `openspec list --specs --json --store aihelp-workspace` for the Store.
-  - Confirm outputs remain separately rooted and same-named ids, if present, are not merged.
-- [ ] **Step 3: Exercise the extension Gateway**
-  - Feed the official-shaped context into the Gateway fixture and assert separate groups, Store binding, and safe failure behavior.
-- [ ] **Step 4: Clean the fixture**
-  - Remove only temporary XDG/config/fixture paths created by this task; do not modify the real Store registry, Worksets, or referenced Project.
+- [ ] **Step 1: Probe the real Project context**
+  - From `aihelp-knowledge-agent`, run `openspec context --json` and `openspec doctor --json`.
+  - Confirm `aihelp-workspace` is reported as a referenced Store and capture only the root/source/store identity needed for evidence.
+- [ ] **Step 2: Probe Project and Store canonical Specs**
+  - Run selector-free `openspec list --specs --json` for the Project.
+  - Run `openspec list --specs --json --store aihelp-workspace` for the Store.
+  - Confirm the outputs remain separately rooted and same-id entries, if present, are not merged.
+- [ ] **Step 3: Exercise the Gateway and summary fixture**
+  - Feed the official-shaped responses into Gateway tests.
+  - Assert separate groups/bindings, Store fail-soft behavior, one Project binding, and Store exclusion from Project Dashboard metrics.
+- [ ] **Step 4: Clean fallback artifacts and record result**
+  - Remove only temporary XDG/config/fixture paths created in this task.
+  - If the real Store is unavailable, record the exact safe failure classification and the isolated fallback result separately.
 
-**Verification:** CLI JSON and Gateway evidence both show Project Specs and referenced Store Specs with correct roots.
+**Verification:** Official CLI and deterministic Gateway/summary evidence agree on Project versus Store ownership.
 
-**Risks / edge cases:** If the real Store is unavailable, report the exact failure and run the isolated fixture fallback; never silently substitute a guessed Store root.
+**Risks / edge cases:** A real Store outage is not permission to guess a root. Same-id absence in the live fixture does not replace the deterministic same-id regression.
 
 ---
 
-### Task 5.2: Verify Sidebar tabs, Store Spec binding, Project switching, and official Workset open in the real Extension Development Host.
+### Task 5.2: Verify the launcher, local views, Project Dashboard, Project switching, and official Workset open in the Extension Host.
 
-**Spec coverage:** all user-facing scenarios in `project-sidebar-tabs`, `referenced-store-specs`, and `workset-cli-open`.
+**Spec coverage:** All user-facing scenarios in `project-sidebar-tabs`, `referenced-store-specs`, `workset-cli-open`, and `dashboard` / Project Dashboard summary surface.
 
-**Dependencies / order:** Task 5.1 and all implementation/tests complete.
+**Dependencies / order:** Task 5.1 and all focused automated tests complete.
 
-**Implementation notes:** GUI evidence belongs to the delegated Luna/xhigh execution thread; report unavailable Cursor coverage explicitly.
+**Implementation notes:** Use the official VS Code Extension Development Host with a real or isolated Project fixture. Cursor coverage is additional; if authentication or host behavior prevents it, report the gap without reducing the official Host acceptance.
 
 **Files:**
 - Create: screenshots/evidence only under `/Users/randy/.codex/visualizations/...`
-- Read: `/Users/randy/.local/share/openspec/worksets/`
+- Read: real or isolated Project/Store/Workset fixtures selected for acceptance
+- Modify: no repository source or planning files during GUI observation
 
-- [ ] **Step 1: Launch the isolated Host**
-  - Use the existing Extension Development Host workflow from the execution thread with a real or isolated Project fixture.
-  - Confirm the Sidebar shows Changes and Specs tabs without opening list Editors.
-- [ ] **Step 2: Verify referenced Store behavior**
-  - Open the Specs tab for `aihelp-knowledge-agent`.
-  - Confirm Project Specs and `aihelp-workspace` Store Specs are separate, and a Store Spec opens from the correct Store root.
-- [ ] **Step 3: Verify Workset granularity**
-  - Confirm Project picker member action switches only the Sidebar Project.
-  - Confirm Workset management card action invokes official `workset open` and opens the saved whole Workset using its tool preference.
-- [ ] **Step 4: Capture and clean evidence**
-  - Capture same-viewport screenshots for initial Sidebar, Changes tab, Specs/Store group, Project switch, and Workset open.
-  - Close temporary Hosts and remove only temporary fixtures.
+- [ ] **Step 1: Verify the Project-first Sidebar shell**
+  - Launch the Extension Development Host and open the target Project.
+  - Confirm native New Change/Refresh title actions and the stable 2×2 Changes/Specs/Worksets/Dashboard grid.
+  - Confirm Changes is default and no list Editor opens when switching local views.
+- [ ] **Step 2: Verify Specs and dynamic Worksets**
+  - Confirm Project Specs and `aihelp-workspace` Store Specs render as separate groups and a Store Spec opens from its Store binding.
+  - Confirm Worksets is enabled with trusted memberships and opens only the local picker.
+  - In a no-membership/unsupported fixture, confirm the Worksets grid position remains visibly unavailable and does not guess.
+- [ ] **Step 3: Verify Project Dashboard behavior**
+  - Open Dashboard and confirm a distinct wide Editor with truthful KPI, lifecycle, readiness, recent updates, and accessible text.
+  - Activate Dashboard again and confirm the existing Panel is revealed rather than duplicated.
+  - Refresh with Sidebar and Dashboard open and confirm both update for the same binding without visible cross-Project data.
+- [ ] **Step 4: Verify Workset granularity and capture evidence**
+  - Confirm Project picker changes only the Sidebar Project.
+  - Confirm the management card invokes official whole-Workset open and honors CLI tool preference.
+  - Capture same-viewport evidence for grid, Changes, Specs/Store, Worksets enabled/disabled, Dashboard, Project switch, and whole-Workset open; then close temporary Hosts.
 
-**Verification:** GUI evidence covers the changed UX; the execution thread must report model `gpt-5.6-luna` and reasoning `xhigh`.
+**Verification:** GUI evidence covers every changed surface and distinguishes observed VS Code Host success from any unavailable Cursor coverage.
 
-**Risks / edge cases:** Cursor may require login; if unavailable, record that limitation and complete the official VS Code Host path without claiming Cursor success.
+**Risks / edge cases:** External tool launch may open another window; verify the originating action and CLI result without assuming the new window proves correct members. Missing Dashboard text equivalents or duplicate Panels is a failed acceptance item.
 
 ---
 
-### Task 5.3: Run full tests, lint, build, strict OpenSpec validation, task-detail validation, diff checks, and final status review.
+### Task 5.3: Run full tests, lint, build, strict OpenSpec validation, task-detail validation, and final diff review.
 
 **Spec coverage:** `cli-integration`, `dashboard`, and every new capability's final acceptance gate.
 
-**Dependencies / order:** Tasks 5.1 and 5.2.
+**Dependencies / order:** Tasks 5.1 and 5.2 complete with recorded evidence.
 
-**Implementation notes:** Mark task checkboxes only after fresh command output and evidence are captured; keep archive/merge/push outside this Change.
+**Implementation notes:** Mark `tasks.md` checkboxes only after fresh evidence for each Task group. Keep archive, push, merge, and worktree deletion outside this Change unless separately authorized.
 
 **Files:**
-- Read: all current Change artifacts and implementation diff
-- Modify: only task checkboxes in `tasks.md` after the corresponding verification succeeds
+- Read: all current Change artifacts, task-details, implementation diff, and GUI evidence
+- Modify: only the matching Task checkboxes in `tasks.md` after their requirements pass
 
-- [ ] **Step 1: Run automated gates**
-  - Run `pnpm test`, `npx eslint src/`, `pnpm run build`, and `git diff --check`.
-  - Expected: tests/build exit 0; lint has 0 errors; diff check is clean.
-- [ ] **Step 2: Run OpenSpec gates**
-  - Run `openspec validate add-project-sidebar-tabs-store-workset-actions --strict --json`, fresh `openspec list --json`, `openspec status --change ... --json`, and `openspec instructions apply --change ... --json`.
-  - Run `node /Users/randy/.codex/plugins/cache/aihelp-dev/aihelp-agent-plugin/0.1.7/skills/aihelp-writing-task/scripts/validate-task-details.mjs --change-dir <resolved-change-dir> --json`.
-  - Expected: valid=true, task-detail validator has no error findings, and progress is 15/15.
-- [ ] **Step 3: Review final diff and status**
-  - Confirm only the intended Change and implementation files changed, no temporary fixture is tracked, and the execution thread reports the exact worktree, branch, commit, tests, GUI evidence, and model/reasoning.
-- [ ] **Step 4: Preserve integration boundary**
-  - Do not archive, push, delete the worktree, or merge into the main checkout until the user explicitly authorizes the finishing step.
+- [ ] **Step 1: Run automated project gates**
+  - Run: `pnpm test`
+  - Run: `npx eslint src/`
+  - Run: `pnpm run build`
+  - Run: `git diff --check`
+  - Expected: tests/build/diff exit 0 and lint reports 0 errors.
+- [ ] **Step 2: Run OpenSpec planning gates**
+  - Run: `openspec validate add-project-sidebar-tabs-store-workset-actions --strict --json`
+  - Run fresh `openspec list --json`, `openspec status --change add-project-sidebar-tabs-store-workset-actions --json`, and `openspec instructions apply --change add-project-sidebar-tabs-store-workset-actions --json`.
+  - Run the AIHelp plugin validator with the status-owned canonical changeRoot.
+  - Expected: strict valid, task-details 0 errors, and implementation progress 15/15.
+- [ ] **Step 3: Review scope and dependency diff**
+  - Confirm only approved implementation/planning paths changed, no temporary fixture is tracked, and `package.json` adds no chart or Dashboard data dependency.
+  - Confirm every spec scenario maps to at least one Task and every Task id maps bidirectionally to exactly one task-detail block.
+- [ ] **Step 4: Produce the evidence-backed handoff**
+  - Report worktree/root, branch/commit if one exists, Git status, 15 Task results, focused/full commands, real CLI evidence, GUI evidence paths, and remaining gaps.
+  - Do not archive, push, merge, or delete a worktree without explicit authorization.
 
-**Verification:** Final receipt is evidence-backed and distinguishes automated gates, official CLI fixture, and real GUI acceptance.
+**Verification:** The final handoff distinguishes automated tests, official CLI fixture, GUI observations, and any unverified environment-specific behavior.
 
-**Risks / edge cases:** A missing fresh GUI screenshot is a reported acceptance gap, not a reason to claim full UX verification.
+**Risks / edge cases:** Build success or HTTP/process exit alone is not GUI acceptance. A missing fresh screenshot or real CLI failure remains an explicit gap rather than an assumed pass.

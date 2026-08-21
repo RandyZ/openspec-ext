@@ -1,34 +1,34 @@
 ## Task 1. Unified Project workspace data
 <!-- details: task-details/01-project-workspace-data.md -->
 
-- [x] Task 1.1 Add RED Gateway tests for one binding-scoped payload, cache identity, and official referenced Store data.
-- [x] Task 1.2 Implement unified Project Sidebar data loading with binding reuse and fail-soft Store groups.
-- [x] Task 1.3 Add GREEN provider/cache coverage for stale-safe refresh and no duplicate tab scans.
+- [ ] Task 1.1 Add RED Gateway tests for one binding-scoped Project snapshot and official Store isolation.
+- [ ] Task 1.2 Implement one-binding Project payload assembly with fail-soft Store and Workset groups.
+- [ ] Task 1.3 Add GREEN provider/cache coverage for one accepted snapshot shared across Project surfaces.
 
-## Task 2. Sidebar Changes / Specs tabs
+## Task 2. Project action launcher and local views
 <!-- details: task-details/02-sidebar-tabs.md -->
 
-- [x] Task 2.1 Add RED Webview tests for local tabs, Project/Store Specs grouping, and narrow keyboard operation.
-- [x] Task 2.2 Implement Sidebar tab state and render Changes, archived Changes, Project Specs, and Store Specs in place.
-- [x] Task 2.3 Preserve binding-aware Change/Spec detail actions while removing list Explorer creation from tab navigation.
+- [ ] Task 2.1 Add RED Webview tests for the four-action grid, dynamic Worksets, and accessible narrow layout.
+- [ ] Task 2.2 Implement native title actions and local Changes, Specs, and Worksets views.
+- [ ] Task 2.3 Preserve binding-aware detail routing and connect the Dashboard action without list Explorers.
 
 ## Task 3. Official Workset open command
 <!-- details: task-details/03-workset-cli-open.md -->
 
-- [x] Task 3.1 Add RED CLI/DataManager tests proving Workset open is non-JSON and receives the exact Workset name.
-- [x] Task 3.2 Implement the ordinary-output CLI execution path and route the Workset management action through it.
-- [x] Task 3.3 Rename and test Project picker versus whole-Workset actions so their messages and focus targets are unambiguous.
+- [ ] Task 3.1 Add RED CLI/DataManager tests proving Workset open is non-JSON and receives the exact Workset name.
+- [ ] Task 3.2 Implement the ordinary-output CLI path and route whole-Workset management through it.
+- [ ] Task 3.3 Test the distinct launcher, Project picker, and whole-Workset action messages and labels.
 
-## Task 4. Compatibility and performance regression
+## Task 4. Project Dashboard and compatibility
 <!-- details: task-details/04-compatibility-performance.md -->
 
-- [x] Task 4.1 Add RED regressions for active Project switching, same-named Project/Store Specs, and legacy scope-only behavior.
-- [x] Task 4.2 Remove duplicate Project-first Explorer loading while preserving detail panels, watcher routing, and legacy management flows.
-- [x] Task 4.3 Add GREEN command-count, cache, error-state, and message-routing coverage for the complete Sidebar path.
+- [ ] Task 4.1 Add RED route, singleton, metric-semantics, and binding-isolation regressions for Project Dashboard.
+- [ ] Task 4.2 Implement the Dashboard surface route, warm-open singleton Panel, and shared refresh publishing.
+- [ ] Task 4.3 Implement the accessible Project summary UI and GREEN compatibility/performance coverage.
 
 ## Task 5. Real CLI fixture, GUI acceptance, and final gates
 <!-- details: task-details/05-acceptance-gates.md -->
 
-- [x] Task 5.1 Verify a real reference Project plus registered Store returns separate Project and Store Specs through official CLI JSON.
-- [ ] Task 5.2 Verify Sidebar tabs, Store Spec binding, Project switching, and official Workset open in the real Extension Development Host.
-- [x] Task 5.3 Run full tests, lint, build, strict OpenSpec validation, task-detail validation, diff checks, and final status review.
+- [ ] Task 5.1 Verify real Project and referenced Store Specs remain separately rooted through official CLI JSON.
+- [ ] Task 5.2 Verify the launcher, local views, Project Dashboard, Project switching, and official Workset open in the Extension Host.
+- [ ] Task 5.3 Run full tests, lint, build, strict OpenSpec validation, task-detail validation, and final diff review.
