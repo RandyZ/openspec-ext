@@ -183,6 +183,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       if (
         state.page === page
         && ((page === 'sidebar' && state.projectSidebar === action.payload.data)
+          || (page === 'dashboard' && state.projectSidebar === action.payload.data)
           || (page === 'changesExplorer' && state.changesExplorer === action.payload.data)
           || (page === 'specsExplorer' && state.specsExplorer === action.payload.data))
       ) {
@@ -191,18 +192,18 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         data: null,
-        projectSidebar: page === 'sidebar' ? action.payload.data : null,
+        projectSidebar: page === 'sidebar' || page === 'dashboard' ? action.payload.data : null,
         changesExplorer: page === 'changesExplorer' ? action.payload.data : null,
         specsExplorer: page === 'specsExplorer' ? action.payload.data : null,
         page,
-        projectFirst: page === 'sidebar',
+        projectFirst: page === 'sidebar' || page === 'dashboard',
         loading: false,
         loadingReason: undefined,
         pendingScopeId: undefined,
         stale: false,
         error: null,
         selectedChange: null,
-        cliDiagnostic: page === 'sidebar' && action.payload.data.cliDiagnostic
+        cliDiagnostic: (page === 'sidebar' || page === 'dashboard') && action.payload.data.cliDiagnostic
           ? { diagnostic: action.payload.data.cliDiagnostic, mode: 'warning' }
           : null,
         activity: { kind: 'idle' },

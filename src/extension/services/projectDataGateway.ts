@@ -104,10 +104,17 @@ export class ProjectDataGateway {
 
   async loadWorksetNavigation(project: ProjectContext): Promise<ProjectWorksetNavigationData> {
     const empty: ProjectWorksetNavigationData = { project, worksets: [] };
+    return this.loadWorksetNavigationFromCli(project, this.createCli(project.projectPath), empty);
+  }
+
+  private async loadWorksetNavigationFromCli(
+    project: ProjectContext,
+    cli: ProjectCli,
+    empty: ProjectWorksetNavigationData = { project, worksets: [] },
+  ): Promise<ProjectWorksetNavigationData> {
     const currentPath = await this.canonicalizeMemberPath(project.projectPath);
     if (!currentPath) return empty;
 
-    const cli = this.createCli(project.projectPath);
     if (!cli.listWorksets) return empty;
 
     let worksetPayload: unknown;
@@ -370,8 +377,8 @@ export class ProjectDataGateway {
         readers.cli.listChanges(readers.scope),
         readers.contentAccess.listArchivedChanges(),
         readers.cli.listSpecs(readers.scope),
-        this.loadReferencedStoreSpecsFromReaders(project, readers).catch(() => []),
-        this.loadWorksetNavigation(project).catch(() => undefined),
+        this.loadReferencedStoreSpecsFromReaders(project, readers),
+        this.loadWorksetNavigationFromCli(project, readers.cli).catch(() => undefined),
       ]);
 
       return {

@@ -4,6 +4,51 @@ import { describe, expect, it, vi } from 'vitest';
 import { Header } from '../../../src/webview/components/Header';
 
 describe('Project-first Header', () => {
+  it('renders the four actions in a narrow, non-tablist launcher', () => {
+    const html = renderToStaticMarkup(
+      <Header
+        onRefresh={vi.fn()}
+        onNewChange={vi.fn()}
+        loading={false}
+        project={{ id: '/projects/current', label: 'Current Project', projectPath: '/projects/current' }}
+        onOpenChanges={vi.fn()}
+        onOpenSpecs={vi.fn()}
+        onOpenWorksets={vi.fn()}
+        activeProjectTab="changes"
+      />
+    );
+
+    expect(html).toContain('data-project-action-grid');
+    expect(html).not.toContain('role="tablist"');
+    expect(html).toContain('aria-pressed="true"');
+    expect(html.indexOf('data-project-action="changes"')).toBeLessThan(
+      html.indexOf('data-project-action="specs"'),
+    );
+    expect(html.indexOf('data-project-action="specs"')).toBeLessThan(
+      html.indexOf('data-project-action="worksets"'),
+    );
+    expect(html.indexOf('data-project-action="worksets"')).toBeLessThan(
+      html.indexOf('data-project-action="dashboard"'),
+    );
+  });
+
+  it('keeps the Worksets cell visible and disabled when navigation is unavailable', () => {
+    const html = renderToStaticMarkup(
+      <Header
+        onRefresh={vi.fn()}
+        onNewChange={vi.fn()}
+        loading={false}
+        project={{ id: '/projects/current', label: 'Current Project', projectPath: '/projects/current' }}
+        onOpenChanges={vi.fn()}
+        onOpenSpecs={vi.fn()}
+        activeProjectTab="changes"
+      />
+    );
+
+    expect(html).toMatch(/data-project-action="worksets"[^>]*disabled/);
+    expect(html).toMatch(/No trusted Workset membership|Worksets unavailable/i);
+  });
+
   it('keeps project identity and explorer navigation in separate vertical regions', () => {
     const html = renderToStaticMarkup(
       <Header
@@ -42,9 +87,10 @@ describe('Project-first Header', () => {
       />
     );
 
-    expect(html).toContain('Worksets');
-    expect(html).toContain('aria-label="Open Worksets"');
-    expect(html).toContain('title="Open Worksets"');
-    expect(html.indexOf('data-project-identity')).toBeLessThan(html.indexOf('Open Worksets'));
+    expect(html).toContain('Browse Workset Projects');
+    expect(html).toContain('data-project-action="worksets"');
+    expect(html).toContain('aria-label="Browse Workset Projects"');
+    expect(html).toContain('title="Browse Workset Projects"');
+    expect(html.indexOf('data-project-identity')).toBeLessThan(html.indexOf('Browse Workset Projects'));
   });
 });

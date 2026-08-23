@@ -80,15 +80,19 @@ const initialState = {
   cliDiagnostic: null,
 } as AppState;
 
-function context(view: ProjectPageContextMessage['view']): ProjectPageContextMessage {
+function context(view: ProjectPageContextMessage['view'] | 'dashboard'): ProjectPageContextMessage {
   if (view === 'sidebar') return { type: 'setContext', view, data: sidebar };
   if (view === 'changesExplorer') return { type: 'setContext', view, data: changes };
+  if (view === 'dashboard') {
+    return { type: 'setContext', view, data: sidebar } as ProjectPageContextMessage;
+  }
   return { type: 'setContext', view, data: specs };
 }
 
 describe('project page context routing', () => {
-  it('preserves all five host page discriminants', () => {
+  it('preserves all host page discriminants including Project Dashboard', () => {
     expect(resolveAppMessageRoute(context('sidebar'))).toBe('sidebar');
+    expect(resolveAppMessageRoute(context('dashboard'))).toBe('dashboard');
     expect(resolveAppMessageRoute(context('changesExplorer'))).toBe('changesExplorer');
     expect(resolveAppMessageRoute(context('specsExplorer'))).toBe('specsExplorer');
     expect(resolveAppMessageRoute({
@@ -105,6 +109,7 @@ describe('project page context routing', () => {
 
   it('accepts each of the three bound project page contexts', () => {
     expect(isProjectPageContext(context('sidebar'))).toBe(true);
+    expect(isProjectPageContext(context('dashboard'))).toBe(true);
     expect(isProjectPageContext(context('changesExplorer'))).toBe(true);
     expect(isProjectPageContext(context('specsExplorer'))).toBe(true);
   });
@@ -114,6 +119,36 @@ describe('project page context routing', () => {
     expect(renderToStaticMarkup(<App initialState={{ ...initialState, page: 'changesExplorer', changesExplorer: changes }} />)).toContain('data-page="changesExplorer"');
     expect(renderToStaticMarkup(<App initialState={{ ...initialState, page: 'specsExplorer', specsExplorer: specs }} />)).toContain('data-page="specsExplorer"');
     expect(renderToStaticMarkup(<App initialState={{ ...initialState, page: 'dashboard', selectedChange: 'same-name' }} />)).toContain('data-page="changeDetail"');
+  });
+
+  it('renders Project Dashboard as a distinct surface from the Sidebar route', () => {
+    const html = renderToStaticMarkup(
+      <App initialState={{
+        ...initialState,
+        page: 'dashboard',
+        projectSidebar: sidebar,
+        selectedChange: null,
+      }} />
+    );
+
+    expect(html).toContain('data-page="projectDashboard"');
+    expect(html).not.toContain('data-page="sidebar"');
+  });
+
+  it('keeps Project Dashboard routing distinct from local Sidebar views', () => {
+    const sidebarState = appReducer(initialState, {
+      type: 'SET_PAGE_CONTEXT',
+      payload: context('sidebar'),
+    });
+    const dashboardState = appReducer(sidebarState, {
+      type: 'SET_PAGE_CONTEXT',
+      payload: context('dashboard'),
+    });
+
+    expect(sidebarState.page).toBe('sidebar');
+    expect(dashboardState.page).toBe('dashboard');
+    expect(dashboardState.projectSidebar).toBe(sidebar);
+    expect(resolveAppMessageRoute({ type: 'openProjectDashboard' })).toBe('unknown');
   });
 
   it('rejects malformed and project/binding-mismatched contexts', () => {

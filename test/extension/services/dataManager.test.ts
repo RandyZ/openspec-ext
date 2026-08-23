@@ -1439,10 +1439,15 @@ describe('DataManager workset data contract', () => {
     const runCommand = vi.fn().mockResolvedValue('Opened platform\n');
     (manager as any).cliService.runCommand = runCommand;
 
-    await manager.openWorkset('platform');
+    await manager.openWorkset('ai-self-serve-builder');
 
-    expect(runCommand).toHaveBeenCalledWith(['workset', 'open', 'platform']);
-    expect(runJson).not.toHaveBeenCalledWith(['workset', 'open', 'platform']);
+    expect(runCommand).toHaveBeenCalledWith(['workset', 'open', 'ai-self-serve-builder']);
+    expect(runJson).not.toHaveBeenCalledWith(['workset', 'open', 'ai-self-serve-builder']);
+    expect(runJson.mock.calls.some(([args]) => (
+      Array.isArray(args)
+      && args[0] === 'workset'
+      && args[1] === 'open'
+    ))).toBe(false);
   });
 
   it('propagates Workset open failures without changing scope state', async () => {

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { AppProvider, useAppState, type AppState } from './context/AppContext';
 import { useVscode } from './hooks/useVscode';
 import { Dashboard } from './components/Dashboard';
+import { ProjectDashboard } from './components/ProjectDashboard';
 import { ChangeDetail } from './components/ChangeDetail';
 import { SpecViewer } from './components/SpecViewer';
 import { ChangesExplorer } from './components/ChangesExplorer';
@@ -12,6 +13,7 @@ import { isProjectPageContext } from './types/messages';
 
 export type AppMessageRoute =
   | 'sidebar'
+  | 'dashboard'
   | 'changesExplorer'
   | 'specsExplorer'
   | 'changeDetail'
@@ -93,7 +95,7 @@ function AppContent() {
           dispatch({ type: 'SET_DEBUG', payload: msg.debug });
         }
       } else if (
-        (route === 'sidebar' || route === 'changesExplorer' || route === 'specsExplorer')
+        (route === 'sidebar' || route === 'dashboard' || route === 'changesExplorer' || route === 'specsExplorer')
         && isProjectPageContext(msg)
       ) {
         setPanelChangeName(null);
@@ -140,8 +142,9 @@ function AppContent() {
       return state.changesExplorer ? <ChangesExplorer data={state.changesExplorer} /> : <Dashboard />;
     case 'specsExplorer':
       return state.specsExplorer ? <SpecsExplorer data={state.specsExplorer} /> : <Dashboard />;
-    case 'sidebar':
     case 'dashboard':
+      return <ProjectDashboard />;
+    case 'sidebar':
     case 'loading':
     default:
       return <Dashboard />;

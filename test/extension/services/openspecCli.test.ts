@@ -245,13 +245,32 @@ describe('OpenSpecCliService', () => {
   });
 
   describe('Workset navigation lists', () => {
+    it('passes the exact whole-Workset arguments to the process without JSON mode', async () => {
+      mockSpawnSuccess('Opened ai-self-serve-builder\n');
+      const service = new OpenSpecCliService(workspaceRoot);
+
+      await expect(service.runCommand(['workset', 'open', 'ai-self-serve-builder']))
+        .resolves.toBe('Opened ai-self-serve-builder\n');
+
+      const calls = vi.mocked(spawn).mock.calls;
+      const commandArgs = calls[calls.length - 1]?.[1];
+      expect(commandArgs).toEqual(['workset', 'open', 'ai-self-serve-builder']);
+      expect(commandArgs).not.toContain('--json');
+    });
+
     it('runs Workset open through the ordinary-output path without JSON parsing', async () => {
       const service = new OpenSpecCliService(workspaceRoot);
       const exec = vi.spyOn(service as any, 'execOpenSpec').mockResolvedValue('Opened planning\n');
+      const parse = vi.spyOn(JSON, 'parse');
 
-      await expect((service as any).runCommand(['workset', 'open', 'planning']))
-        .resolves.toBe('Opened planning\n');
-      expect(exec).toHaveBeenCalledWith(['workset', 'open', 'planning']);
+      try {
+        await expect(service.runCommand(['workset', 'open', 'planning']))
+          .resolves.toBe('Opened planning\n');
+        expect(exec).toHaveBeenCalledWith(['workset', 'open', 'planning']);
+        expect(parse).not.toHaveBeenCalled();
+      } finally {
+        parse.mockRestore();
+      }
     });
 
     it('propagates ordinary Workset open failures', async () => {
@@ -260,6 +279,26 @@ describe('OpenSpecCliService', () => {
 
       await expect((service as any).runCommand(['workset', 'open', 'planning']))
         .rejects.toThrow('workset open failed');
+    });
+
+    it('preserves non-zero exit diagnostics for ordinary Workset output', async () => {
+      mockSpawnExit(2, 'No tool is available\n');
+      const service = new OpenSpecCliService(workspaceRoot);
+      (service as any).resolver.resolveRuntime = vi.fn().mockResolvedValue({
+        command: 'openspec',
+        argsPrefix: [],
+        env: process.env,
+        version: '1.5.0',
+        source: 'installed',
+        sourceLabel: 'installed',
+        diagnostics: [],
+      });
+
+      await expect(service.runCommand(['workset', 'open', 'ai-self-serve-builder']))
+        .rejects.toMatchObject({
+          exitCode: 2,
+          stderr: 'No tool is available\n',
+        });
     });
 
     it('loads Worksets with a selector-free machine-global command', async () => {

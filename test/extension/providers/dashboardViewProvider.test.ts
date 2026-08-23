@@ -107,6 +107,316 @@ describe('DashboardViewProvider', () => {
     }));
   });
 
+  it('publishes the accepted Project snapshot to Dashboard without a second Gateway load', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture();
+    const payload = {
+      project: fixture.project,
+      binding: fixture.binding,
+      changes: [makeProjectChange('project-change')],
+      archivedChanges: [],
+      projectSpecs: [{ id: 'project-spec', requirementCount: 1 }],
+      referencedStoreSpecs: [],
+      lastRefresh: 1,
+    };
+    const gateway = {
+      loadProjectSidebarData: vi.fn().mockResolvedValue(payload),
+    };
+    const sidebarPostMessage = vi.fn();
+    const panel = makeEditorPanel();
+    const vscode = await import('vscode');
+    vi.mocked(vscode.window.createWebviewPanel).mockReturnValue(panel as any);
+    const provider = makeProjectProvider(makeDataManager(), gateway, fixture);
+
+    provider.resolveWebviewView(makeWebviewView(makeWebview(sidebarPostMessage)) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const loadCount = gateway.loadProjectSidebarData.mock.calls.length;
+
+    provider.openInEditor();
+    await vi.advanceTimersByTimeAsync(100);
+    await Promise.resolve();
+
+    const dashboardMessage = panel.webview.postMessage.mock.calls
+      .map(([message]) => message)
+      .find((message) => message.type === 'setContext' && message.view === 'dashboard');
+    const sidebarMessage = sidebarPostMessage.mock.calls
+      .map(([message]) => message)
+      .find((message) => message.type === 'setContext' && message.view === 'sidebar');
+
+    expect(gateway.loadProjectSidebarData).toHaveBeenCalledTimes(loadCount);
+    expect(dashboardMessage).toEqual(expect.objectContaining({
+      type: 'setContext',
+      view: 'dashboard',
+      data: expect.objectContaining({ project: fixture.project }),
+    }));
+    expect(dashboardMessage.data.project).toBe(sidebarMessage.data.project);
+    expect(dashboardMessage.data.changes).toBe(sidebarMessage.data.changes);
+  });
+
+  it('routes the Project Dashboard request to the existing Editor entry point', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture();
+    const gateway = {
+      loadProjectSidebarData: vi.fn().mockResolvedValue({
+        project: fixture.project,
+        binding: fixture.binding,
+        changes: [],
+        archivedChanges: [],
+        projectSpecs: [],
+        referencedStoreSpecs: [],
+      }),
+    };
+    const webview = makeWebview();
+    const provider = makeProjectProvider(makeDataManager(), gateway, fixture);
+    const openInEditor = vi.spyOn(provider, 'openInEditor');
+
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+
+    await handler?.({ type: 'openProjectDashboard' });
+
+    expect(openInEditor).toHaveBeenCalledTimes(1);
+  });
+
+  it('creates one Project Dashboard panel and reveals it on a warm second open', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture();
+    const gateway = {
+      loadProjectSidebarData: vi.fn().mockResolvedValue({
+        project: fixture.project,
+        binding: fixture.binding,
+        changes: [],
+        archivedChanges: [],
+        projectSpecs: [],
+        referencedStoreSpecs: [],
+      }),
+    };
+    const panel = makeEditorPanel();
+    const vscode = await import('vscode');
+    vi.mocked(vscode.window.createWebviewPanel).mockReturnValue(panel as any);
+    const provider = makeProjectProvider(makeDataManager(), gateway, fixture);
+
+    provider.openInEditor();
+    await vi.runAllTimersAsync();
+    const loadCount = gateway.loadProjectSidebarData.mock.calls.length;
+    panel.webview.postMessage.mockClear();
+
+    provider.openInEditor();
+    await vi.runAllTimersAsync();
+
+    expect(vscode.window.createWebviewPanel).toHaveBeenCalledTimes(1);
+    expect(panel.reveal).toHaveBeenCalledTimes(1);
+    expect(gateway.loadProjectSidebarData).toHaveBeenCalledTimes(loadCount);
+    expect(panel.webview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'setContext',
+      view: 'dashboard',
+      data: expect.objectContaining({ project: fixture.project }),
+    }));
+  });
+
+  it('rejects a warm Project Dashboard snapshot from another Project binding', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture();
+    const otherProject: ProjectContext = {
+      id: '/projects/other',
+      label: 'Other Project',
+      projectPath: '/projects/other',
+    };
+    const otherBinding: OpenSpecRootBinding = {
+      ...fixture.binding,
+      projectId: otherProject.id,
+      commandCwd: otherProject.projectPath,
+      rootPath: '/planning/other',
+    };
+    const gateway = {
+      loadProjectSidebarData: vi.fn().mockResolvedValue({
+        project: fixture.project,
+        binding: fixture.binding,
+        changes: [makeProjectChange('current-project-change')],
+        archivedChanges: [],
+        projectSpecs: [],
+        referencedStoreSpecs: [],
+      }),
+    };
+    const panel = makeEditorPanel();
+    const vscode = await import('vscode');
+    vi.mocked(vscode.window.createWebviewPanel).mockReturnValue(panel as any);
+    const provider = makeProjectProvider(makeDataManager(), gateway, fixture) as any;
+    provider.currentProjectBinding = otherBinding;
+    provider.cachedProjectSidebarData = {
+      project: otherProject,
+      binding: otherBinding,
+      changes: [makeProjectChange('wrong-project-change')],
+      archivedChanges: [],
+      projectSpecs: [],
+      referencedStoreSpecs: [],
+      lastRefresh: 1,
+    };
+
+    provider.openInEditor();
+    await vi.runAllTimersAsync();
+
+    const dashboardMessages = panel.webview.postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'setContext' && message.view === 'dashboard');
+    expect(dashboardMessages.some((message) => message.data.project.id === otherProject.id)).toBe(false);
+    expect(dashboardMessages.at(-1)).toEqual(expect.objectContaining({
+      view: 'dashboard',
+      data: expect.objectContaining({ project: fixture.project }),
+    }));
+  });
+
+  it('publishes one fresh Project snapshot to both open Project surfaces', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture();
+    const first = {
+      project: fixture.project,
+      binding: fixture.binding,
+      changes: [makeProjectChange('first-change')],
+      archivedChanges: [],
+      projectSpecs: [],
+      referencedStoreSpecs: [],
+    };
+    const second = { ...first, changes: [makeProjectChange('second-change')] };
+    const gateway = {
+      loadProjectSidebarData: vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second),
+    };
+    const sidebarPostMessage = vi.fn();
+    const panel = makeEditorPanel();
+    const vscode = await import('vscode');
+    vi.mocked(vscode.window.createWebviewPanel).mockReturnValue(panel as any);
+    const dataManager = makeDataManager();
+    const provider = makeProjectProvider(dataManager, gateway, fixture);
+    const sidebarWebview = makeWebview(sidebarPostMessage);
+
+    provider.resolveWebviewView(makeWebviewView(sidebarWebview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    provider.openInEditor();
+    await vi.advanceTimersByTimeAsync(100);
+    await Promise.resolve();
+    sidebarPostMessage.mockClear();
+    panel.webview.postMessage.mockClear();
+
+    const refreshCallback = (dataManager.onRefresh as any).mock.calls[0]?.[0] as (() => void) | undefined;
+    refreshCallback?.();
+    await vi.runAllTimersAsync();
+
+    expect(sidebarPostMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'setContext',
+      view: 'sidebar',
+      data: expect.objectContaining({ changes: [second.changes[0] ] }),
+    }));
+    expect(panel.webview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'setContext',
+      view: 'dashboard',
+      data: expect.objectContaining({ changes: [second.changes[0] ] }),
+    }));
+  });
+
+  it('publishes Workset Project selection only to the Sidebar', async () => {
+    vi.useFakeTimers();
+    const current = makeProjectFixture();
+    const selectedProject: ProjectContext = {
+      id: '/projects/server-dotnetcore',
+      label: 'server-dotnetcore',
+      projectPath: '/projects/server-dotnetcore',
+    };
+    const selectedBinding: OpenSpecRootBinding = {
+      projectId: selectedProject.id,
+      commandCwd: selectedProject.projectPath,
+      rootPath: '/planning/server-dotnetcore',
+      rootSource: 'nearest',
+    };
+    const gateway = {
+      loadProjectSidebarData: vi.fn(async (project: ProjectContext) => ({
+        project,
+        binding: project.id === current.project.id ? current.binding : selectedBinding,
+        changes: [makeProjectChange(project.id === current.project.id ? 'current-change' : 'server-change')],
+        archivedChanges: [],
+        projectSpecs: [],
+        referencedStoreSpecs: [],
+      })),
+      resolveWorksetProject: vi.fn().mockResolvedValue(selectedProject),
+      resolveBinding: vi.fn().mockResolvedValue(selectedBinding),
+    };
+    const sidebarPostMessage = vi.fn();
+    const panel = makeEditorPanel();
+    const vscode = await import('vscode');
+    vi.mocked(vscode.window.createWebviewPanel).mockReturnValue(panel as any);
+    const provider = makeProjectProvider(makeDataManager(), gateway, current);
+    const sidebarWebview = makeWebview(sidebarPostMessage);
+
+    provider.resolveWebviewView(makeWebviewView(sidebarWebview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    provider.openInEditor();
+    await vi.runAllTimersAsync();
+    panel.webview.postMessage.mockClear();
+
+    const handler = vi.mocked(sidebarWebview.onDidReceiveMessage).mock.calls[0]?.[0];
+    await handler?.({
+      type: 'selectWorksetProject',
+      worksetName: 'shared-workset',
+      memberPath: selectedProject.projectPath,
+    });
+
+    expect(sidebarPostMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'setContext',
+      view: 'sidebar',
+      data: expect.objectContaining({ project: selectedProject, binding: selectedBinding }),
+    }));
+    expect(panel.webview.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not render a legacy Project cache payload missing unified fields', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture();
+    let resolveFresh: ((value: unknown) => void) | undefined;
+    const gateway = {
+      resolveBinding: vi.fn().mockResolvedValue(fixture.binding),
+      loadProjectSidebarData: vi.fn(() => new Promise((resolve) => { resolveFresh = resolve; })),
+    };
+    const cacheService = {
+      readProjectPage: vi.fn().mockResolvedValue({
+        payload: {
+          project: fixture.project,
+          binding: fixture.binding,
+          changes: [],
+          lastRefresh: 1,
+        },
+        metadata: { generatedAt: 1 },
+      }),
+      writeProjectPage: vi.fn().mockResolvedValue(undefined),
+    };
+    const postMessage = vi.fn();
+    const provider = new (DashboardViewProvider as any)(
+      makeDataManager({ cacheService }),
+      '/ext',
+      undefined,
+      undefined,
+      fixture.project,
+      gateway,
+      cacheService,
+    ) as DashboardViewProvider;
+
+    provider.resolveWebviewView(makeWebviewView(makeWebview(postMessage)) as any, {} as any, {} as any);
+    await vi.advanceTimersByTimeAsync(100);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(postMessage.mock.calls.some(([message]) => (
+      message.type === 'setContext' && message.view === 'sidebar'
+    ))).toBe(false);
+    resolveFresh?.({
+      project: fixture.project,
+      binding: fixture.binding,
+      changes: [],
+      archivedChanges: [],
+      projectSpecs: [],
+      referencedStoreSpecs: [],
+    });
+  });
+
   it('project page contract keeps Sidebar and Explorer payloads distinguishable and fully bound', () => {
     const projectA: ProjectContext = {
       id: '/projects/project-a',
@@ -666,6 +976,9 @@ describe('DashboardViewProvider', () => {
           project: fixture.project,
           binding: fixture.binding,
           changes: [cached],
+          archivedChanges: [],
+          projectSpecs: [],
+          referencedStoreSpecs: [],
           lastRefresh: 1,
         },
         metadata: { generatedAt: 1 },

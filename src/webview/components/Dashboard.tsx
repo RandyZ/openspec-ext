@@ -41,7 +41,7 @@ import {
 
 type DashboardDispatch = React.Dispatch<AppAction>;
 export type DashboardPostMessage = (message: WebviewMessage) => void;
-export type ProjectFirstTab = 'changes' | 'specs';
+export type ProjectFirstTab = 'changes' | 'specs' | 'worksets';
 
 export function selectProjectFirstTab(
   setTab: (tab: ProjectFirstTab) => void,
@@ -74,10 +74,10 @@ export function getDashboardActionScopeId(
 }
 
 export function returnToCurrentProject(
-  setProjectFirstView: (view: 'project') => void,
+  setProjectFirstView: (view: ProjectFirstTab) => void,
   postMessage: DashboardPostMessage,
 ): void {
-  setProjectFirstView('project');
+  setProjectFirstView('changes');
   postMessage(sendMessage.selectCurrentProject());
 }
 
@@ -140,7 +140,6 @@ export const Dashboard: React.FC = () => {
   const { postMessage, onMessage, getState, setState } = useVscode();
   const { state, dispatch } = useAppState();
   const [dashboardView, setDashboardView] = useState<'overview' | 'worksets'>('overview');
-  const [projectFirstView, setProjectFirstView] = useState<'project' | 'workset'>('project');
   const [projectFirstTab, setProjectFirstTab] = useState<ProjectFirstTab>('changes');
   const [specRequirements, setSpecRequirements] = useState<Record<string, string[]>>({});
   const [cacheStats, setCacheStats] = useState<CacheStatsView | null>(null);
@@ -162,7 +161,6 @@ export const Dashboard: React.FC = () => {
       : null);
 
   useEffect(() => {
-    setProjectFirstView('project');
     setProjectFirstTab('changes');
   }, [projectSidebar?.project.id, projectSidebar?.binding.rootPath]);
 
@@ -442,9 +440,13 @@ export const Dashboard: React.FC = () => {
           onOpenSpecs={projectSidebar
             ? () => selectProjectFirstTab(setProjectFirstTab, 'specs')
             : undefined}
+          onOpenDashboard={projectSidebar
+            ? () => postMessage(sendMessage.openProjectDashboard())
+            : undefined}
           activeProjectTab={projectSidebar ? projectFirstTab : undefined}
-          onOpenWorksets={projectSidebar?.worksetNavigation?.worksets.length && projectFirstView === 'project'
-            ? () => setProjectFirstView('workset')
+          worksetCount={projectSidebar?.worksetNavigation?.worksets.length ?? 0}
+          onOpenWorksets={projectSidebar?.worksetNavigation?.worksets.length
+            ? () => selectProjectFirstTab(setProjectFirstTab, 'worksets')
             : undefined}
         />
 
@@ -479,13 +481,16 @@ export const Dashboard: React.FC = () => {
                 {t('dashboard.staleData')}
               </div>
             )}
-            {projectFirstView === 'workset' && projectSidebar.worksetNavigation ? (
+            {projectFirstTab === 'worksets' && projectSidebar.worksetNavigation ? (
               <WorksetProjectPicker
                 navigation={projectSidebar.worksetNavigation}
                 onSelectProject={(worksetName, memberPath) => {
                   postMessage(sendMessage.selectWorksetProject(worksetName, memberPath));
                 }}
-                onBackToCurrentProject={() => returnToCurrentProject(setProjectFirstView, postMessage)}
+                onOpenWorkset={(name) => {
+                  postMessage(sendMessage.openWorkset(name));
+                }}
+                onBackToCurrentProject={() => returnToCurrentProject(setProjectFirstTab, postMessage)}
               />
             ) : (
               <>

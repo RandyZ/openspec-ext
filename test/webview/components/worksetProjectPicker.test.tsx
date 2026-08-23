@@ -54,6 +54,7 @@ describe('WorksetProjectPicker', () => {
       <WorksetProjectPicker
         navigation={navigation}
         onSelectProject={vi.fn()}
+        onOpenWorkset={vi.fn()}
         onBackToCurrentProject={vi.fn()}
       />,
     );
@@ -65,7 +66,7 @@ describe('WorksetProjectPicker', () => {
     expect(html).toContain('Planning Store');
     expect(html).toContain('data-workset-project="/repos/docs-worktree"');
     expect(html).toContain('title="/repos/docs-worktree"');
-    expect(html).toContain('aria-label="Switch to Docs Worktree project"');
+    expect(html).toContain('aria-label="Switch Sidebar Project to Docs Worktree"');
     expect(html).not.toContain('aria-label="Open Docs Worktree project"');
     expect(html).not.toContain('data-workset-project="/stores/team-plans"');
     expect(html).toContain('data-workset-store="team-plans"');
@@ -76,6 +77,7 @@ describe('WorksetProjectPicker', () => {
       <WorksetProjectPicker
         navigation={navigation}
         onSelectProject={vi.fn()}
+        onOpenWorkset={vi.fn()}
         onBackToCurrentProject={vi.fn()}
       />,
     );
@@ -87,6 +89,45 @@ describe('WorksetProjectPicker', () => {
     expect(html).toContain('title="Return to Current Project"');
     expect(html).toContain('min-w-0');
     expect(html).toContain('truncate');
+  });
+
+  it('exposes an accessible whole-Workset open action for each Workset', () => {
+    const html = renderToStaticMarkup(
+      <WorksetProjectPicker
+        navigation={navigation}
+        onSelectProject={vi.fn()}
+        onOpenWorkset={vi.fn()}
+        onBackToCurrentProject={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain('data-action="open-workset"');
+    expect(html).toContain('aria-label="Open Whole Workset planning"');
+    expect(html).toContain('title="Open Whole Workset planning"');
+  });
+
+  it('bounds long Workset and Project labels while keeping every switch keyboard-focusable', () => {
+    const longNavigation: ProjectWorksetNavigationData = {
+      ...navigation,
+      project: { ...current, label: 'A very long current Project label that must remain bounded' },
+      worksets: [{
+        ...navigation.worksets[0],
+        name: 'A very long Workset label that must remain bounded',
+      }],
+    };
+    const html = renderToStaticMarkup(
+      <WorksetProjectPicker
+        navigation={longNavigation}
+        onSelectProject={vi.fn()}
+        onOpenWorkset={vi.fn()}
+        onBackToCurrentProject={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain('A very long Workset label');
+    expect(html).toContain('truncate');
+    expect(html).toContain('type="button"');
+    expect(html).toContain('focus:ring-1');
   });
 
   it('shows a concise empty state when no selectable Project member exists', () => {
@@ -108,6 +149,7 @@ describe('WorksetProjectPicker', () => {
       <WorksetProjectPicker
         navigation={emptyNavigation}
         onSelectProject={vi.fn()}
+        onOpenWorkset={vi.fn()}
         onBackToCurrentProject={vi.fn()}
       />,
     );

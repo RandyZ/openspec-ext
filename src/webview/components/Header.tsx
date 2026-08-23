@@ -28,7 +28,9 @@ export interface HeaderProps {
   onOpenChanges?: () => void;
   onOpenSpecs?: () => void;
   onOpenWorksets?: () => void;
-  activeProjectTab?: 'changes' | 'specs';
+  onOpenDashboard?: () => void;
+  worksetCount?: number;
+  activeProjectTab?: 'changes' | 'specs' | 'worksets';
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -47,6 +49,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenChanges,
   onOpenSpecs,
   onOpenWorksets,
+  onOpenDashboard,
+  worksetCount,
   activeProjectTab,
 }) => {
   const showSelector = scope && scopes.length > 1 && onSelectScope;
@@ -135,105 +139,81 @@ export const Header: React.FC<HeaderProps> = ({
             aria-label="Project navigation"
             data-project-navigation
           >
-            {onOpenWorksets && (
+            <div className="grid grid-cols-2 gap-1" data-project-action-grid>
               <button
                 type="button"
-                onClick={onOpenWorksets}
-                aria-label={t('worksetNavigation.openWorksets')}
-                title={t('worksetNavigation.openWorksets')}
-                className="w-full rounded px-2 py-1.5 text-left text-xs"
+                onClick={onOpenChanges}
+                data-project-action="changes"
+                aria-pressed={activeProjectTab === 'changes'}
+                aria-label={t('projectSidebar.allChanges')}
+                title={t('projectSidebar.allChanges')}
+                className="min-w-0 rounded px-2 py-1.5 text-left text-xs focus:outline-none focus:ring-1"
                 style={{
                   background: 'var(--vscode-button-secondaryBackground)',
                   color: 'var(--vscode-button-secondaryForeground)',
+                  outlineColor: 'var(--vscode-focusBorder)',
                 }}
               >
-                {t('worksetNavigation.openWorksets')}
+                <span className="block truncate">{t('projectSidebar.allChanges')}</span>
               </button>
-            )}
-            {activeProjectTab ? (
-              <div
-                role="tablist"
-                data-project-first-tabs
-                aria-label="Project views"
-                className="flex flex-col gap-1"
+              <button
+                type="button"
+                onClick={onOpenSpecs}
+                data-project-action="specs"
+                aria-pressed={activeProjectTab === 'specs'}
+                aria-label={t('projectSidebar.specs')}
+                title={t('projectSidebar.specs')}
+                className="min-w-0 rounded px-2 py-1.5 text-left text-xs focus:outline-none focus:ring-1"
+                style={{
+                  background: 'var(--vscode-button-secondaryBackground)',
+                  color: 'var(--vscode-button-secondaryForeground)',
+                  outlineColor: 'var(--vscode-focusBorder)',
+                }}
               >
-                {onOpenChanges && (
-                  <button
-                    type="button"
-                    onClick={onOpenChanges}
-                    role="tab"
-                    data-project-first-tab="changes"
-                    aria-selected={activeProjectTab === 'changes'}
-                    aria-controls="project-first-changes-panel"
-                    tabIndex={0}
-                    aria-label={t('projectSidebar.allChanges')}
-                    title={t('projectSidebar.allChanges')}
-                    className="w-full rounded px-2 py-1.5 text-left text-xs focus:outline-none focus:ring-1"
-                    style={{
-                      background: 'var(--vscode-button-secondaryBackground)',
-                      color: 'var(--vscode-button-secondaryForeground)',
-                      outlineColor: 'var(--vscode-focusBorder)',
-                    }}
-                  >
-                    {t('projectSidebar.allChanges')}
-                  </button>
+                <span className="block truncate">{t('projectSidebar.specs')}</span>
+              </button>
+              <button
+                type="button"
+                onClick={onOpenWorksets}
+                disabled={!onOpenWorksets || worksetCount === 0}
+                data-project-action="worksets"
+                aria-pressed={activeProjectTab === 'worksets'}
+                aria-label={t('projectSidebar.worksets')}
+                title={onOpenWorksets && worksetCount !== 0
+                  ? t('projectSidebar.worksets')
+                  : t('projectSidebar.worksetsUnavailable')}
+                className="min-w-0 rounded px-2 py-1.5 text-left text-xs focus:outline-none focus:ring-1 disabled:cursor-not-allowed disabled:opacity-60"
+                style={{
+                  background: 'var(--vscode-button-secondaryBackground)',
+                  color: 'var(--vscode-button-secondaryForeground)',
+                  outlineColor: 'var(--vscode-focusBorder)',
+                }}
+              >
+                <span className="block truncate">
+                  {t('projectSidebar.worksets')}{worksetCount ? ` (${worksetCount})` : ''}
+                </span>
+                {(!onOpenWorksets || worksetCount === 0) && (
+                  <span className="block truncate text-[10px]" style={{ color: 'var(--vscode-descriptionForeground)' }}>
+                    {t('projectSidebar.worksetsUnavailable')}
+                  </span>
                 )}
-                {onOpenSpecs && (
-                  <button
-                    type="button"
-                    onClick={onOpenSpecs}
-                    role="tab"
-                    data-project-first-tab="specs"
-                    aria-selected={activeProjectTab === 'specs'}
-                    aria-controls="project-first-specs-panel"
-                    tabIndex={0}
-                    aria-label={t('projectSidebar.specs')}
-                    title={t('projectSidebar.specs')}
-                    className="w-full rounded px-2 py-1.5 text-left text-xs focus:outline-none focus:ring-1"
-                    style={{
-                      background: 'var(--vscode-button-secondaryBackground)',
-                      color: 'var(--vscode-button-secondaryForeground)',
-                      outlineColor: 'var(--vscode-focusBorder)',
-                    }}
-                  >
-                    {t('projectSidebar.specs')}
-                  </button>
-                )}
-              </div>
-            ) : (
-              <>
-                {onOpenChanges && (
-                  <button
-                    type="button"
-                    onClick={onOpenChanges}
-                    aria-label={t('projectSidebar.allChanges')}
-                    title={t('projectSidebar.allChanges')}
-                    className="w-full rounded px-2 py-1.5 text-left text-xs"
-                    style={{
-                      background: 'var(--vscode-button-secondaryBackground)',
-                      color: 'var(--vscode-button-secondaryForeground)',
-                    }}
-                  >
-                    {t('projectSidebar.allChanges')}
-                  </button>
-                )}
-                {onOpenSpecs && (
-                  <button
-                    type="button"
-                    onClick={onOpenSpecs}
-                    aria-label={t('projectSidebar.specs')}
-                    title={t('projectSidebar.specs')}
-                    className="w-full rounded px-2 py-1.5 text-left text-xs"
-                    style={{
-                      background: 'var(--vscode-button-secondaryBackground)',
-                      color: 'var(--vscode-button-secondaryForeground)',
-                    }}
-                  >
-                    {t('projectSidebar.specs')}
-                  </button>
-                )}
-              </>
-            )}
+              </button>
+              <button
+                type="button"
+                onClick={onOpenDashboard}
+                data-project-action="dashboard"
+                aria-label={t('projectSidebar.dashboard')}
+                title={t('projectSidebar.dashboard')}
+                className="min-w-0 rounded px-2 py-1.5 text-left text-xs focus:outline-none focus:ring-1"
+                style={{
+                  background: 'var(--vscode-button-secondaryBackground)',
+                  color: 'var(--vscode-button-secondaryForeground)',
+                  outlineColor: 'var(--vscode-focusBorder)',
+                }}
+              >
+                <span className="block truncate">{t('projectSidebar.dashboard')}</span>
+              </button>
+            </div>
           </nav>
         </div>
       )}

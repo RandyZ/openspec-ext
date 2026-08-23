@@ -15,6 +15,7 @@ import type {
   ProjectContext,
   ProjectSidebarWorkspaceData,
   ProjectWorksetNavigationData,
+  WorksetNavigationMember,
 } from '../../extension/services/types';
 
 export type {
@@ -22,6 +23,7 @@ export type {
   ProjectContext,
   ProjectSidebarWorkspaceData,
   ProjectWorksetNavigationData,
+  WorksetNavigationMember,
 } from '../../extension/services/types';
 
 export type LoadingReason =
@@ -38,6 +40,7 @@ export type WebviewMessage =
   | { type: 'getProjectSidebarData' }
   | { type: 'selectWorksetProject'; worksetName: string; memberPath: string }
   | { type: 'selectCurrentProject' }
+  | { type: 'openProjectDashboard' }
   | { type: 'openChangesExplorer'; project: ProjectContext; binding: OpenSpecRootBinding }
   | { type: 'openSpecsExplorer'; project: ProjectContext; binding: OpenSpecRootBinding }
   | { type: 'getCacheStats'; force?: boolean }
@@ -142,6 +145,7 @@ export type ExtensionMessage =
     binding?: OpenSpecRootBinding;
   }
   | { type: 'setContext'; view: 'sidebar'; data: ProjectSidebarData }
+  | { type: 'setContext'; view: 'dashboard'; data: ProjectSidebarData }
   | { type: 'setContext'; view: 'changesExplorer'; data: ProjectChangesExplorerData }
   | { type: 'setContext'; view: 'specsExplorer'; data: ProjectSpecsExplorerData }
   | { type: 'archivedChanges'; items: ArchivedChangeInfo[]; scopeId?: string }
@@ -230,6 +234,7 @@ export interface ProjectSidebarData extends ProjectSidebarWorkspaceData {
 
 export type ProjectPageContextMessage =
   | { type: 'setContext'; view: 'sidebar'; data: ProjectSidebarData }
+  | { type: 'setContext'; view: 'dashboard'; data: ProjectSidebarData }
   | { type: 'setContext'; view: 'changesExplorer'; data: ProjectChangesExplorerData }
   | { type: 'setContext'; view: 'specsExplorer'; data: ProjectSpecsExplorerData };
 
@@ -318,6 +323,7 @@ export function isProjectPageContext(message: unknown): message is ProjectPageCo
 
   switch (message.view) {
     case 'sidebar':
+    case 'dashboard':
       return Array.isArray(data.changes);
     case 'changesExplorer':
       return Array.isArray(data.changes) && Array.isArray(data.archivedChanges);
@@ -362,6 +368,11 @@ export const sendMessage = {
   selectCurrentProject: (): WebviewMessage => ({
     type: 'selectCurrentProject',
   }),
+
+  openProjectDashboard: (): WebviewMessage => ({
+    type: 'openProjectDashboard',
+  }),
+
 
   openChangesExplorer: (project: ProjectContext, binding: OpenSpecRootBinding): WebviewMessage => ({
     type: 'openChangesExplorer',

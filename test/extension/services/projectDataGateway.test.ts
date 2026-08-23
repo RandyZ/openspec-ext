@@ -8,6 +8,7 @@ import {
   createProjectContext,
   ProjectDataGateway,
 } from '@extension/services/projectDataGateway';
+import { deriveProjectDashboardSummary } from '../../../src/webview/components/ProjectDashboard';
 import { OpenSpecCliService } from '@extension/services/openspecCli';
 import type {
   OpenSpecContextResult,
@@ -1497,6 +1498,78 @@ describe('ProjectDataGateway unified Project Sidebar data', () => {
     expect(contexts).toEqual([undefined, { storeId: 'referenced-store' }]);
   });
 
+  it('accepts official context members and keeps Store Specs out of Project metrics', async () => {
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'openspec-sidebar-official-shape-'));
+    temporaryDirectories.push(base);
+    const projectRoot = path.join(base, 'project-root');
+    const storeRoot = path.join(base, 'store-root');
+    await fs.mkdir(path.join(projectRoot, 'openspec'), { recursive: true });
+    await fs.mkdir(path.join(storeRoot, 'openspec'), { recursive: true });
+    const project = await createProjectContext('Project', projectRoot);
+    const contexts: unknown[] = [];
+    const gateway = new ProjectDataGateway({
+      createCli: () => ({
+        getContext: async (scope) => {
+          contexts.push(scope);
+          return scope?.storeId
+            ? {
+                root: { path: storeRoot, source: 'store', store_id: 'aihelp-workspace' },
+              }
+            : {
+                root: { path: projectRoot, source: 'nearest' },
+                members: [
+                  { role: 'referenced_store', id: 'aihelp-workspace', path: storeRoot },
+                  { role: 'registered_store', id: 'unreferenced-store', path: path.join(base, 'other-store') },
+                ],
+              };
+        },
+        listChanges: async () => [{
+          name: 'project-change',
+          completedTasks: 1,
+          totalTasks: 2,
+          lastModified: '2026-08-23T00:00:00.000Z',
+          status: 'draft',
+          lifecycleStatus: 'planning',
+        }] as any,
+        listSpecs: async (scope) => scope?.storeId
+          ? [{ id: 'shared-spec', requirementCount: 99 }]
+          : [{ id: 'shared-spec', requirementCount: 1 }],
+        listWorksets: async () => ({ worksets: [] }),
+        listStores: async () => ({ stores: [] }),
+      }),
+      createContentAccess: () => ({ listArchivedChanges: async () => [] }),
+    });
+
+    const data = await gateway.loadProjectSidebarData(project);
+
+    expect(data.binding).toMatchObject({
+      projectId: project.id,
+      rootPath: await fs.realpath(projectRoot),
+      rootSource: 'nearest',
+    });
+    expect(data.projectSpecs).toEqual([{ id: 'shared-spec', requirementCount: 1 }]);
+    expect(data.referencedStoreSpecs).toEqual([{
+      storeId: 'aihelp-workspace',
+      binding: expect.objectContaining({
+        rootPath: await fs.realpath(storeRoot),
+        rootSource: 'store',
+        storeId: 'aihelp-workspace',
+      }),
+      specs: [{ id: 'shared-spec', requirementCount: 99 }],
+    }]);
+    expect(contexts).toEqual([undefined, { storeId: 'aihelp-workspace' }]);
+
+    const summary = deriveProjectDashboardSummary(data);
+    expect(summary).toMatchObject({
+      totalChanges: 1,
+      activeChanges: 1,
+      activeTasks: 2,
+      lifecycle: { planning: 1, archived: 0 },
+    });
+    expect(summary.activeTaskCompletionRate).toBe(0.5);
+    expect(summary.artifactReadiness).toEqual([]);
+  });
+
   it('keeps Project Specs usable when one referenced Store cannot load Specs', async () => {
     const base = await fs.mkdtemp(path.join(os.tmpdir(), 'openspec-sidebar-store-error-'));
     temporaryDirectories.push(base);
@@ -1535,5 +1608,53 @@ describe('ProjectDataGateway unified Project Sidebar data', () => {
       specs: [],
       error: expect.stringContaining('broken-store'),
     }]);
+  });
+
+  it('reuses one bound Project CLI for the unified snapshot and Workset navigation', async () => {
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'openspec-sidebar-single-binding-'));
+    temporaryDirectories.push(base);
+    const projectRoot = path.join(base, 'project-root');
+    await fs.mkdir(path.join(projectRoot, 'openspec'), { recursive: true });
+    const project = await createProjectContext('Project', projectRoot);
+    const cli = {
+      getContext: vi.fn(async () => context(projectRoot, 'nearest')),
+      listChanges: vi.fn(async () => []),
+      listSpecs: vi.fn(async () => []),
+      listWorksets: vi.fn(async () => ({ worksets: [] })),
+      listStores: vi.fn(async () => ({ stores: [] })),
+    };
+    const createCli = vi.fn(() => cli);
+    const gateway = new ProjectDataGateway({
+      createCli,
+      createContentAccess: () => ({ listArchivedChanges: async () => [] }),
+      readGitMetadata: async () => ({}),
+    });
+
+    const data = await gateway.loadProjectSidebarData(project);
+
+    expect(data.worksetNavigation).toEqual({ project, worksets: [] });
+    expect(createCli).toHaveBeenCalledTimes(2);
+    expect(cli.getContext).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails closed when the Project context contains a malformed Store reference', async () => {
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'openspec-sidebar-malformed-reference-'));
+    temporaryDirectories.push(base);
+    const projectRoot = path.join(base, 'project-root');
+    await fs.mkdir(path.join(projectRoot, 'openspec'), { recursive: true });
+    const project = await createProjectContext('Project', projectRoot);
+    const gateway = new ProjectDataGateway({
+      createCli: () => ({
+        getContext: async () => context(projectRoot, 'nearest', { references: [{}] }),
+        listChanges: async () => [],
+        listSpecs: async () => [],
+      }),
+      createContentAccess: () => ({ listArchivedChanges: async () => [] }),
+    });
+
+    await expect(gateway.loadProjectSidebarData(project)).rejects.toMatchObject({
+      name: 'ProjectDataAccessError',
+      phase: 'sidebar',
+    });
   });
 });

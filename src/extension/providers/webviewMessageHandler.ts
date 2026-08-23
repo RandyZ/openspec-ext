@@ -1103,7 +1103,12 @@ export async function handleWebviewMessage(
     }
 
     case 'openWorkset': {
-      await dataManager.openWorkset(message.name);
+      try {
+        await dataManager.openWorkset(message.name);
+      } catch (error) {
+        logger.error('openWorkset message failed', error as Error);
+        postError(error, t('worksetsPage.openFailed', { name: message.name }));
+      }
       break;
     }
 

@@ -179,7 +179,8 @@ describe('WorksetsPage', () => {
 
       // The Open button must be present.
     expect(html).toContain('Open');
-    expect(html).toContain('Open Workset');
+    expect(html).toContain('Open Whole Workset');
+    expect(html).toContain('aria-label="Open Whole Workset platform"');
 
       // Simulate the click via the handler directly (SSR test pattern).
       onOpenWorkset('platform');

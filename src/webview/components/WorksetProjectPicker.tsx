@@ -5,6 +5,7 @@ import type { ProjectWorksetNavigationData, WorksetNavigationMember } from '../t
 export interface WorksetProjectPickerProps {
   navigation: ProjectWorksetNavigationData;
   onSelectProject: (worksetName: string, memberPath: string) => void;
+  onOpenWorkset: (name: string) => void;
   onBackToCurrentProject: () => void;
 }
 
@@ -15,6 +16,7 @@ function isCurrentProject(navigation: ProjectWorksetNavigationData, member: Work
 export const WorksetProjectPicker: React.FC<WorksetProjectPickerProps> = ({
   navigation,
   onSelectProject,
+  onOpenWorkset,
   onBackToCurrentProject,
 }) => (
   <section className="mb-6" data-workset-project-picker data-workset-picker-scene>
@@ -62,19 +64,36 @@ export const WorksetProjectPicker: React.FC<WorksetProjectPickerProps> = ({
             style={{ borderColor: 'var(--vscode-panel-border)' }}
             aria-labelledby={`workset-${workset.name}`}
           >
-            <div className="mb-2 min-w-0">
-              <h3
-                id={`workset-${workset.name}`}
-                className="truncate text-sm font-semibold"
-                title={workset.name}
+            <div className="mb-2 flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h3
+                  id={`workset-${workset.name}`}
+                  className="truncate text-sm font-semibold"
+                  title={workset.name}
+                >
+                  {workset.name}
+                </h3>
+                {workset.tool && (
+                  <div className="truncate text-xs" style={{ color: 'var(--vscode-descriptionForeground)' }}>
+                    {workset.tool}
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                data-action="open-workset"
+                onClick={() => onOpenWorkset(workset.name)}
+                aria-label={t('worksetsPage.openWholeWorkset', { name: workset.name })}
+                title={t('worksetsPage.openWholeWorkset', { name: workset.name })}
+                className="shrink-0 rounded px-2 py-0.5 text-xs focus:outline-none focus:ring-1"
+                style={{
+                  background: 'var(--vscode-button-background)',
+                  color: 'var(--vscode-button-foreground)',
+                  outlineColor: 'var(--vscode-focusBorder)',
+                }}
               >
-                {workset.name}
-              </h3>
-              {workset.tool && (
-                <div className="truncate text-xs" style={{ color: 'var(--vscode-descriptionForeground)' }}>
-                  {workset.tool}
-                </div>
-              )}
+                {t('worksetsPage.openWholeWorksetShort')}
+              </button>
             </div>
 
             <div className="space-y-1">

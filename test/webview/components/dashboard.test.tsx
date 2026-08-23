@@ -322,14 +322,36 @@ describe('project page contract', () => {
       }],
     });
 
-    expect(html).toContain('data-project-first-tabs');
-    expect(html).toContain('data-project-first-tab="changes"');
-    expect(html).toContain('data-project-first-tab="specs"');
-    expect(html).toContain('role="tablist"');
-    expect(html).toContain('aria-selected="true"');
+    expect(html).toContain('data-project-action-grid');
+    expect(html).toContain('data-project-action="changes"');
+    expect(html).toContain('data-project-action="specs"');
+    expect(html).toContain('data-project-action="worksets"');
+    expect(html).toContain('data-project-action="dashboard"');
+    expect(html).not.toContain('role="tablist"');
+    expect(html).toContain('aria-pressed="true"');
+    expect(html.indexOf('data-project-action="changes"')).toBeLessThan(
+      html.indexOf('data-project-action="specs"'),
+    );
+    expect(html.indexOf('data-project-action="specs"')).toBeLessThan(
+      html.indexOf('data-project-action="worksets"'),
+    );
+    expect(html.indexOf('data-project-action="worksets"')).toBeLessThan(
+      html.indexOf('data-project-action="dashboard"'),
+    );
     expect(html).toContain('active-change');
     expect(html).not.toContain('Project Specs');
     expect(html).not.toContain('Referenced Store Specs: aihelp-workspace');
+    expect(html).not.toContain('openChangesExplorer');
+    expect(html).not.toContain('openSpecsExplorer');
+  });
+
+  it('keeps Worksets visible but unavailable without trusted membership', () => {
+    const html = renderProjectSidebar({ ...projectSidebarData, worksetNavigation: undefined });
+
+    expect(html).toContain('data-project-action="worksets"');
+    expect(html).toMatch(/data-project-action="worksets"[^>]*disabled/);
+    expect(html).toMatch(/No trusted Workset membership|Worksets unavailable/i);
+    expect(html).toContain('data-project-action="dashboard"');
   });
 
   it('changes only local Project-first tab state without posting an Explorer request', () => {
@@ -340,6 +362,16 @@ describe('project page contract', () => {
 
     expect(setTab).toHaveBeenCalledWith('specs');
     expect(postMessage).not.toHaveBeenCalled();
+  });
+
+  it('builds a dedicated Project Dashboard request instead of a list Explorer request', () => {
+    const openProjectDashboard = (
+      sendMessage as typeof sendMessage & { openProjectDashboard?: () => unknown }
+    ).openProjectDashboard;
+
+    expect(openProjectDashboard?.()).toEqual({ type: 'openProjectDashboard' });
+    expect(sendMessage.openChangesExplorer(projectContext, projectBinding).type).toBe('openChangesExplorer');
+    expect(sendMessage.openSpecsExplorer(projectContext, projectBinding).type).toBe('openSpecsExplorer');
   });
 
   it('keeps Project and Store Spec detail messages on their explicit bindings', () => {
@@ -363,7 +395,7 @@ describe('project page contract', () => {
 
   it('returns from the Workset picker locally when Host keeps the current Project selected', () => {
     const events: string[] = [];
-    const setProjectFirstView = (view: 'project') => {
+    const setProjectFirstView = (view: 'changes' | 'specs' | 'worksets') => {
       events.push(view);
     };
     const postMessage = vi.fn(() => {
@@ -372,7 +404,7 @@ describe('project page contract', () => {
 
     returnToCurrentProject(setProjectFirstView, postMessage);
 
-    expect(events).toEqual(['project', 'host']);
+    expect(events).toEqual(['changes', 'host']);
     expect(postMessage).toHaveBeenCalledWith(sendMessage.selectCurrentProject());
   });
 
@@ -432,7 +464,8 @@ describe('project page contract', () => {
       worksetNavigation: projectWorksetNavigation,
     });
 
-    expect(html).toContain('Open Worksets');
+    expect(html).toContain('data-project-action="worksets"');
+    expect(html).toContain('Browse Workset Projects (1)');
     expect(html).toContain('active-change');
     expect(html).not.toContain('data-workset-project-picker');
     expect(sendMessage.selectWorksetProject('planning', '/projects/other')).toEqual({
@@ -441,6 +474,10 @@ describe('project page contract', () => {
       memberPath: '/projects/other',
     });
     expect(sendMessage.selectCurrentProject()).toEqual({ type: 'selectCurrentProject' });
+    expect(sendMessage.openWorkset('planning')).toEqual({
+      type: 'openWorkset',
+      name: 'planning',
+    });
   });
 
   it('keeps All Changes and Specs available when active work is empty', () => {
@@ -516,7 +553,7 @@ describe('project page contract', () => {
     expect(html).toContain('Project A');
     expect(html).not.toContain('OpenSpec root context');
     expect(html).not.toContain('Stores & Worksets');
-    expect(html).not.toContain('Worksets');
+    expect(html).toContain('data-project-action="worksets"');
     expect(html).not.toContain('Specs (');
     expect(html).not.toContain('Archived — read only');
   });

@@ -26,6 +26,7 @@ import {
 
 type ProjectPageCache = Pick<OpenSpecCacheService, 'readProjectPage' | 'writeProjectPage'>;
 type PendingExplorerContext = { message: ExtensionMessage; sent: boolean };
+type ProjectSurface = 'sidebar' | 'dashboard';
 
 export class DashboardViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'openspec.dashboard';
@@ -173,8 +174,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     };
   }
 
-  private postProjectSidebarData(
+  private postProjectData(
     data: ProjectSidebarData,
+    view: ProjectSurface,
     targetWebview?: vscode.Webview,
     cache: ProjectSidebarData['cache'] = { source: 'fresh', stale: false }
   ): void {
@@ -182,13 +184,47 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     if (!webview) return;
     webview.postMessage({
       type: 'setContext',
-      view: 'sidebar',
+      view,
       data: { ...data, cache },
     });
     this.postWorkflowLaunchConfig(webview);
   }
 
-  private postProjectLoadFailure(targetWebview: vscode.Webview, error: unknown): void {
+  private isCompleteProjectSnapshot(value: unknown): value is ProjectSidebarData {
+    if (!value || typeof value !== 'object') return false;
+    const data = value as Partial<ProjectSidebarData>;
+    return Boolean(data.project && data.binding)
+      && Array.isArray(data.changes)
+      && Array.isArray(data.archivedChanges)
+      && Array.isArray(data.projectSpecs)
+      && Array.isArray(data.referencedStoreSpecs);
+  }
+
+  private publishProjectSnapshot(
+    data: ProjectSidebarData,
+    targetWebview: vscode.Webview | undefined,
+    targetSurface: ProjectSurface,
+    cache: ProjectSidebarData['cache'],
+    publishDashboard = true,
+  ): void {
+    const posted = new Set<vscode.Webview>();
+    const post = (webview: vscode.Webview | undefined, view: ProjectSurface) => {
+      if (!webview || posted.has(webview)) return;
+      posted.add(webview);
+      this.postProjectData(data, view, webview, cache);
+    };
+
+    post(targetWebview, targetSurface);
+    post(this._view?.webview, 'sidebar');
+    if (publishDashboard) post(this.dashboardPanel?.webview, 'dashboard');
+  }
+
+  private postProjectLoadFailure(
+    targetWebview: vscode.Webview,
+    error: unknown,
+    targetSurface: ProjectSurface,
+    publishDashboard = true,
+  ): void {
     const diagnostic = this.toCliDiagnosticView();
     const cached = this.cachedProjectSidebarData;
     if (
@@ -198,13 +234,15 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       && this.projectContext
       && this.sameProject(cached.project, this.projectContext)
     ) {
-      this.postProjectSidebarData(
+      this.publishProjectSnapshot(
         {
           ...cached,
           ...(diagnostic ? { cliDiagnostic: diagnostic } : {}),
         },
         targetWebview,
-        { source: 'memory', stale: true, generatedAt: cached.lastRefresh }
+        targetSurface,
+        { source: 'memory', stale: true, generatedAt: cached.lastRefresh },
+        publishDashboard,
       );
       if (diagnostic) {
         targetWebview.postMessage({ type: 'cliActivationDiagnostic', diagnostic, mode: 'warning' });
@@ -239,7 +277,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         : 'Project data load failed';
   }
 
-  private async reloadProjectSidebarData(targetWebview?: vscode.Webview): Promise<void> {
+  private async reloadProjectSidebarData(
+    targetWebview?: vscode.Webview,
+    targetSurface: ProjectSurface = 'sidebar',
+    publishDashboard = true,
+  ): Promise<void> {
     if (!this.projectContext || !this.projectDataGateway) return;
     const generation = ++this.projectRequestGeneration;
     try {
@@ -278,9 +320,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         project: result.project,
         binding: result.binding,
         changes,
-        ...(result.archivedChanges ? { archivedChanges: result.archivedChanges } : {}),
-        ...(result.projectSpecs ? { projectSpecs: result.projectSpecs } : {}),
-        ...(result.referencedStoreSpecs ? { referencedStoreSpecs: result.referencedStoreSpecs } : {}),
+        archivedChanges: result.archivedChanges ?? [],
+        projectSpecs: result.projectSpecs ?? [],
+        referencedStoreSpecs: result.referencedStoreSpecs ?? [],
         ...(result.worksetNavigation?.worksets.length
           ? { worksetNavigation: result.worksetNavigation }
           : worksetNavigation?.worksets.length ? { worksetNavigation } : {}),
@@ -289,22 +331,32 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       };
       this.currentProjectBinding = result.binding;
       this.cachedProjectSidebarData = data;
-      this.postProjectSidebarData(data, targetWebview);
+      this.publishProjectSnapshot(
+        data,
+        targetWebview,
+        targetSurface,
+        { source: 'fresh', stale: false },
+        publishDashboard,
+      );
       await this.writeProjectSidebarCache(data);
     } catch (error) {
       if (generation !== this.projectRequestGeneration) return;
       const webview = targetWebview ?? this._view?.webview;
       if (!webview) return;
       logger.error('Failed to load current Project Sidebar data', error as Error);
-      this.postProjectLoadFailure(webview, error);
+      this.postProjectLoadFailure(webview, error, targetSurface, publishDashboard);
     }
   }
 
-  private postInitialProjectSidebarData(targetWebview: vscode.Webview): void {
+  private postInitialProjectSidebarData(
+    targetWebview: vscode.Webview,
+    targetSurface: ProjectSurface = 'sidebar',
+  ): void {
     setTimeout(() => {
       void (async () => {
-        await this.postCachedProjectSidebarData(targetWebview);
-        await this.reloadProjectSidebarData(targetWebview);
+        const postedCache = await this.postCachedProjectSidebarData(targetWebview, targetSurface);
+        if (targetSurface === 'dashboard' && postedCache) return;
+        await this.reloadProjectSidebarData(targetWebview, targetSurface);
       })();
     }, DashboardViewProvider.initialDataPostDelayMs);
   }
@@ -319,8 +371,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     };
   }
 
-  private async postCachedProjectSidebarData(targetWebview: vscode.Webview): Promise<void> {
-    if (!this.projectContext) return;
+  private async postCachedProjectSidebarData(
+    targetWebview: vscode.Webview,
+    targetSurface: ProjectSurface = 'sidebar',
+  ): Promise<boolean> {
+    if (!this.projectContext) return false;
     const cached = this.cachedProjectSidebarData;
     if (
       cached
@@ -328,46 +383,49 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       && this.sameBinding(cached.binding, this.currentProjectBinding)
       && this.sameProject(cached.project, this.projectContext)
     ) {
-      this.postProjectSidebarData(
+      this.postProjectData(
         cached,
+        targetSurface,
         targetWebview,
         { source: 'memory', stale: true, generatedAt: cached.lastRefresh },
       );
-      return;
+      return true;
     }
 
-    if (!this.projectPageCache || !this.projectDataGateway) return;
+    if (!this.projectPageCache || !this.projectDataGateway) return false;
     let binding = this.currentProjectBinding;
     if (!binding) {
       try {
         binding = await this.projectDataGateway.resolveBinding(this.projectContext);
       } catch {
-        return;
+        return false;
       }
     }
     if (
       binding.projectId !== this.projectContext.id
       || binding.commandCwd !== this.projectContext.projectPath
-    ) return;
+    ) return false;
 
     const cachedPage = await this.projectPageCache.readProjectPage<ProjectSidebarData>(
       this.projectSidebarCacheKey(binding),
     );
-    if (!cachedPage) return;
+    if (!cachedPage) return false;
     const data = cachedPage.payload;
     if (
-      !data
+      !this.isCompleteProjectSnapshot(data)
       || !this.sameProject(data.project, this.projectContext)
       || !this.sameBinding(data.binding, binding)
-    ) return;
+    ) return false;
 
     this.currentProjectBinding = binding;
     this.cachedProjectSidebarData = data;
-    this.postProjectSidebarData(
+    this.postProjectData(
       data,
+      targetSurface,
       targetWebview,
       { source: 'disk', stale: true, generatedAt: cachedPage.metadata.generatedAt },
     );
+    return true;
   }
 
   private async writeProjectSidebarCache(data: ProjectSidebarData): Promise<void> {
@@ -404,7 +462,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     if (this.dashboardPanel) {
       this.dashboardPanel.reveal(vscode.ViewColumn.One);
       if (this.isProjectFirst()) {
-        this.postInitialProjectSidebarData(this.dashboardPanel.webview);
+        this.postInitialProjectSidebarData(this.dashboardPanel.webview, 'dashboard');
       } else {
         this.postInitialDashboardData(this.dashboardPanel.webview);
       }
@@ -429,7 +487,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     });
     logger.info('Dashboard editor panel opened');
     if (this.isProjectFirst()) {
-      this.postInitialProjectSidebarData(panel.webview);
+      this.postInitialProjectSidebarData(panel.webview, 'dashboard');
     } else {
       this.postInitialDashboardData(panel.webview);
     }
@@ -554,6 +612,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       await this.selectCurrentProject(webview);
       return;
     }
+    if (message.type === 'openProjectDashboard' && this.isProjectFirst()) {
+      this.openInEditor();
+      return;
+    }
 
     const projectSidebarScope = boundScope ?? this.projectSidebarBoundScope();
     if (
@@ -568,8 +630,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
     if (message.type === 'getProjectSidebarData' && this.isProjectFirst()) {
       if (explorerContextConsumed) return;
-      await this.postCachedProjectSidebarData(webview);
-      await this.reloadProjectSidebarData(webview);
+      const surface = webview === this.dashboardPanel?.webview ? 'dashboard' : 'sidebar';
+      await this.postCachedProjectSidebarData(webview, surface);
+      await this.reloadProjectSidebarData(webview, surface);
       return;
     }
     if (message.type === 'refresh' && this.isProjectFirst()) {
@@ -581,7 +644,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       } finally {
         this.skipNextProjectRefreshCallback = false;
       }
-      await this.reloadProjectSidebarData(webview);
+      const surface = webview === this.dashboardPanel?.webview ? 'dashboard' : 'sidebar';
+      await this.reloadProjectSidebarData(webview, surface);
       return;
     }
     if (message.type === 'openChangesExplorer' && this.isProjectFirst()) {
@@ -793,7 +857,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       this.projectContext = nextProject;
       this.currentProjectBinding = nextBinding;
       this.cachedProjectSidebarData = undefined;
-      await this.reloadProjectSidebarData(targetWebview);
+      await this.reloadProjectSidebarData(targetWebview, 'sidebar', false);
     } catch (error) {
       logger.warn('Rejected Workset Project selection', error as Error);
     }

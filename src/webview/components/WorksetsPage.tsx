@@ -145,15 +145,15 @@ export const WorksetsPage: React.FC<WorksetsPageProps> = ({
                       type="button"
                       data-action="open-workset"
                       onClick={() => onOpenWorkset(workset.name)}
-                      aria-label={t('worksetsPage.open', { name: workset.name })}
-                      title={t('worksetsPage.open', { name: workset.name })}
+                      aria-label={t('worksetsPage.openWholeWorkset', { name: workset.name })}
+                      title={t('worksetsPage.openWholeWorkset', { name: workset.name })}
                       className="rounded px-2 py-0.5 text-xs"
                       style={{
                         background: 'var(--vscode-button-background)',
                         color: 'var(--vscode-button-foreground)',
                       }}
                     >
-                      {t('worksetsPage.open')}
+                      {t('worksetsPage.openWholeWorksetShort')}
                     </button>
                     <button
                       type="button"

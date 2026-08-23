@@ -196,7 +196,8 @@
       {
         "command": "openspec.newChange",
         "title": "OpenSpec: Create New Change",
-        "category": "OpenSpec"
+        "category": "OpenSpec",
+        "icon": "$(add)"
       },
       {
         "command": "openspec.archiveChange",
@@ -213,7 +214,21 @@
         "title": "OpenSpec: Create Artifact with AI",
         "category": "OpenSpec"
       }
-    ]
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "openspec.refreshData",
+          "when": "view == openspec.dashboard",
+          "group": "navigation"
+        },
+        {
+          "command": "openspec.newChange",
+          "when": "view == openspec.dashboard",
+          "group": "navigation"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "pnpm run build",

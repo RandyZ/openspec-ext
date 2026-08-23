@@ -4,6 +4,30 @@ import { describe, expect, it } from 'vitest';
 import { SpecsSection } from '../../../src/webview/components/SpecsSection';
 
 describe('SpecsSection root-scoped empty states', () => {
+  it('keeps same-id Project and Store Specs visibly bound to separate groups', () => {
+    const html = renderToStaticMarkup(
+      <div>
+        <SpecsSection
+          specs={[{ id: 'same-id', requirementCount: 1 }]}
+          heading="Project Specs"
+          sourceLabel="Project"
+          readOnly
+        />
+        <SpecsSection
+          specs={[{ id: 'same-id', requirementCount: 2 }]}
+          heading="Referenced Store Specs: team-plans"
+          sourceLabel="team-plans"
+          readOnly
+        />
+      </div>,
+    );
+
+    expect(html).toContain('data-source="Project"');
+    expect(html).toContain('data-source="team-plans"');
+    expect(html).toContain('aria-label="Project: same-id"');
+    expect(html).toContain('aria-label="team-plans: same-id"');
+  });
+
   it('names the selected root when no specs exist', () => {
     const html = renderToStaticMarkup(
       <SpecsSection specs={[]} rootLabel="Store: team-plans" />,

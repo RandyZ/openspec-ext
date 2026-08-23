@@ -1358,6 +1358,44 @@ describe('handleWebviewMessage toggleTask', () => {
     expect(dataManager.selectScope).not.toHaveBeenCalled();
     expect(dataManager.refresh).not.toHaveBeenCalled();
   });
+
+  it('reports whole-Workset open failures as recoverable webview errors', async () => {
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      openWorkset: vi.fn().mockRejectedValue(new Error('No tool is available')),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'openWorkset', name: 'platform' },
+      webview as any,
+      dataManager as any,
+    );
+
+    expect(webview.postMessage).toHaveBeenCalledWith({
+      type: 'error',
+      message: 'No tool is available',
+    });
+  });
+});
+
+describe('handleWebviewMessage Project Dashboard boundary', () => {
+  it('does not turn the dedicated Project Dashboard request into legacy list data', async () => {
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      getDashboardData: vi.fn(),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await (handleWebviewMessage as any)(
+      { type: 'openProjectDashboard' },
+      webview,
+      dataManager,
+    );
+
+    expect(dataManager.getDashboardData).not.toHaveBeenCalled();
+    expect(webview.postMessage).not.toHaveBeenCalled();
+  });
 });
 
 describe('handleWebviewMessage removeWorkset message contract', () => {
