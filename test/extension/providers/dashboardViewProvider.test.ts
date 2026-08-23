@@ -417,6 +417,143 @@ describe('DashboardViewProvider', () => {
     });
   });
 
+  it('short-circuits matching memory cache but refreshes after disk warm-open', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture();
+    const memoryData = {
+      project: fixture.project,
+      binding: fixture.binding,
+      changes: [makeProjectChange('memory-change')],
+      archivedChanges: [],
+      projectSpecs: [],
+      referencedStoreSpecs: [],
+      lastRefresh: 1,
+    };
+    const memoryGateway = {
+      resolveBinding: vi.fn(),
+      loadProjectSidebarData: vi.fn(),
+    };
+    const memoryPanel = makeEditorPanel();
+    const vscode = await import('vscode');
+    vi.mocked(vscode.window.createWebviewPanel).mockReturnValueOnce(memoryPanel as any);
+    const memoryProvider = makeProjectProvider(makeDataManager(), memoryGateway, fixture) as any;
+    memoryProvider.currentProjectBinding = fixture.binding;
+    memoryProvider.cachedProjectSidebarData = memoryData;
+
+    memoryProvider.openInEditor();
+    await vi.runAllTimersAsync();
+
+    expect(memoryGateway.resolveBinding).not.toHaveBeenCalled();
+    expect(memoryGateway.loadProjectSidebarData).not.toHaveBeenCalled();
+    expect(memoryPanel.webview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'setContext',
+      view: 'dashboard',
+      data: expect.objectContaining({ cache: { source: 'memory', stale: true, generatedAt: 1 } }),
+    }));
+
+    const freshData = {
+      ...memoryData,
+      changes: [makeProjectChange('fresh-change')],
+      lastRefresh: 2,
+    };
+    const diskGateway = {
+      resolveBinding: vi.fn().mockResolvedValue(fixture.binding),
+      loadProjectSidebarData: vi.fn().mockResolvedValue(freshData),
+    };
+    const diskCache = {
+      readProjectPage: vi.fn().mockResolvedValue({ payload: memoryData, metadata: { generatedAt: 1 } }),
+      writeProjectPage: vi.fn().mockResolvedValue(undefined),
+    };
+    const diskPanel = makeEditorPanel();
+    vi.mocked(vscode.window.createWebviewPanel).mockReturnValueOnce(diskPanel as any);
+    const diskProvider = new (DashboardViewProvider as any)(
+      makeDataManager({ cacheService: diskCache }),
+      '/ext',
+      undefined,
+      undefined,
+      fixture.project,
+      diskGateway,
+      diskCache,
+    ) as DashboardViewProvider;
+
+    diskProvider.openInEditor();
+    await vi.runAllTimersAsync();
+
+    expect(diskGateway.loadProjectSidebarData).toHaveBeenCalledTimes(1);
+    const diskMessages = diskPanel.webview.postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'setContext' && message.view === 'dashboard');
+    expect(diskMessages[0]).toEqual(expect.objectContaining({
+      data: expect.objectContaining({ cache: { source: 'disk', stale: true, generatedAt: 1 } }),
+    }));
+    expect(diskMessages.at(-1)).toEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        changes: [freshData.changes[0]],
+        cache: { source: 'fresh', stale: false },
+      }),
+    }));
+  });
+
+  it('rejects a Project cache snapshot with a missing lifecycle status', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture();
+    let resolveFresh: ((value: unknown) => void) | undefined;
+    const gateway = {
+      resolveBinding: vi.fn().mockResolvedValue(fixture.binding),
+      loadProjectSidebarData: vi.fn(() => new Promise((resolve) => { resolveFresh = resolve; })),
+    };
+    const cacheService = {
+      readProjectPage: vi.fn().mockResolvedValue({
+        payload: {
+          project: fixture.project,
+          binding: fixture.binding,
+          changes: [{
+            name: 'legacy-change',
+            completedTasks: 0,
+            totalTasks: 1,
+            lastModified: '2026-08-19T00:00:00.000Z',
+            status: 'draft',
+          }],
+          archivedChanges: [],
+          projectSpecs: [],
+          referencedStoreSpecs: [],
+          lastRefresh: 1,
+        },
+        metadata: { generatedAt: 1 },
+      }),
+      writeProjectPage: vi.fn().mockResolvedValue(undefined),
+    };
+    const postMessage = vi.fn();
+    const provider = new (DashboardViewProvider as any)(
+      makeDataManager({ cacheService }),
+      '/ext',
+      undefined,
+      undefined,
+      fixture.project,
+      gateway,
+      cacheService,
+    ) as DashboardViewProvider;
+
+    provider.resolveWebviewView(makeWebviewView(makeWebview(postMessage)) as any, {} as any, {} as any);
+    await vi.advanceTimersByTimeAsync(100);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(postMessage.mock.calls.some(([message]) => (
+      message.type === 'setContext' && message.view === 'sidebar'
+    ))).toBe(false);
+    expect(gateway.loadProjectSidebarData).toHaveBeenCalledTimes(1);
+
+    resolveFresh?.({
+      project: fixture.project,
+      binding: fixture.binding,
+      changes: [makeProjectChange('fresh-change')],
+      archivedChanges: [],
+      projectSpecs: [],
+      referencedStoreSpecs: [],
+    });
+  });
+
   it('project page contract keeps Sidebar and Explorer payloads distinguishable and fully bound', () => {
     const projectA: ProjectContext = {
       id: '/projects/project-a',

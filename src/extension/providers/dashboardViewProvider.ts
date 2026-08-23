@@ -193,11 +193,33 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   private isCompleteProjectSnapshot(value: unknown): value is ProjectSidebarData {
     if (!value || typeof value !== 'object') return false;
     const data = value as Partial<ProjectSidebarData>;
+    const lifecycleStatuses = [
+      'planning',
+      'ready-to-apply',
+      'applying',
+      'ready-to-verify',
+      'archived',
+    ] as const;
+    const hasLifecycleStatuses = (items: unknown): boolean => Array.isArray(items)
+      && items.every((item) => {
+        if (!item || typeof item !== 'object') return false;
+        const status = (item as { lifecycleStatus?: unknown }).lifecycleStatus;
+        return lifecycleStatuses.includes(status as (typeof lifecycleStatuses)[number]);
+      });
+    const hasOptionalLifecycleStatuses = (items: unknown): boolean => Array.isArray(items)
+      && items.every((item) => {
+        if (!item || typeof item !== 'object') return false;
+        const status = (item as { lifecycleStatus?: unknown }).lifecycleStatus;
+        return status === undefined
+          || lifecycleStatuses.includes(status as (typeof lifecycleStatuses)[number]);
+      });
     return Boolean(data.project && data.binding)
       && Array.isArray(data.changes)
       && Array.isArray(data.archivedChanges)
       && Array.isArray(data.projectSpecs)
-      && Array.isArray(data.referencedStoreSpecs);
+      && Array.isArray(data.referencedStoreSpecs)
+      && hasLifecycleStatuses(data.changes)
+      && hasOptionalLifecycleStatuses(data.archivedChanges);
   }
 
   private publishProjectSnapshot(
@@ -354,8 +376,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   ): void {
     setTimeout(() => {
       void (async () => {
-        const postedCache = await this.postCachedProjectSidebarData(targetWebview, targetSurface);
-        if (targetSurface === 'dashboard' && postedCache) return;
+        const cacheSource = await this.postCachedProjectSidebarData(targetWebview, targetSurface);
+        if (targetSurface === 'dashboard' && cacheSource === 'memory') return;
         await this.reloadProjectSidebarData(targetWebview, targetSurface);
       })();
     }, DashboardViewProvider.initialDataPostDelayMs);
@@ -374,8 +396,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   private async postCachedProjectSidebarData(
     targetWebview: vscode.Webview,
     targetSurface: ProjectSurface = 'sidebar',
-  ): Promise<boolean> {
-    if (!this.projectContext) return false;
+  ): Promise<'memory' | 'disk' | undefined> {
+    if (!this.projectContext) return undefined;
     const cached = this.cachedProjectSidebarData;
     if (
       cached
@@ -389,33 +411,33 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         targetWebview,
         { source: 'memory', stale: true, generatedAt: cached.lastRefresh },
       );
-      return true;
+      return 'memory';
     }
 
-    if (!this.projectPageCache || !this.projectDataGateway) return false;
+    if (!this.projectPageCache || !this.projectDataGateway) return undefined;
     let binding = this.currentProjectBinding;
     if (!binding) {
       try {
         binding = await this.projectDataGateway.resolveBinding(this.projectContext);
       } catch {
-        return false;
+        return undefined;
       }
     }
     if (
       binding.projectId !== this.projectContext.id
       || binding.commandCwd !== this.projectContext.projectPath
-    ) return false;
+    ) return undefined;
 
     const cachedPage = await this.projectPageCache.readProjectPage<ProjectSidebarData>(
       this.projectSidebarCacheKey(binding),
     );
-    if (!cachedPage) return false;
+    if (!cachedPage) return undefined;
     const data = cachedPage.payload;
     if (
       !this.isCompleteProjectSnapshot(data)
       || !this.sameProject(data.project, this.projectContext)
       || !this.sameBinding(data.binding, binding)
-    ) return false;
+    ) return undefined;
 
     this.currentProjectBinding = binding;
     this.cachedProjectSidebarData = data;
@@ -425,7 +447,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       targetWebview,
       { source: 'disk', stale: true, generatedAt: cachedPage.metadata.generatedAt },
     );
-    return true;
+    return 'disk';
   }
 
   private async writeProjectSidebarCache(data: ProjectSidebarData): Promise<void> {

@@ -54,6 +54,21 @@ const binding = {
 } as const;
 
 const sidebar: ProjectSidebarData = { project, binding, changes: [] };
+const legacyDashboardData = {
+  changes: [],
+  specs: [],
+  archivedChanges: [],
+  changeStatusCounts: {
+    all: 0,
+    planning: 0,
+    readyToApply: 0,
+    applying: 0,
+    readyToVerify: 0,
+    archived: 0,
+    needsAttention: 0,
+  },
+  lastRefresh: 1,
+};
 const changes: ProjectChangesExplorerData = {
   project,
   binding,
@@ -133,6 +148,17 @@ describe('project page context routing', () => {
 
     expect(html).toContain('data-page="projectDashboard"');
     expect(html).not.toContain('data-page="sidebar"');
+  });
+
+  it('keeps legacy SET_DATA payloads on the original Dashboard route', () => {
+    const state = appReducer(initialState, {
+      type: 'SET_DATA',
+      payload: legacyDashboardData,
+    });
+
+    expect(state.page).toBe('dashboard');
+    expect(state.projectSidebar).toBeNull();
+    expect(renderToStaticMarkup(<App initialState={state} />)).toContain('data-page="sidebar"');
   });
 
   it('keeps Project Dashboard routing distinct from local Sidebar views', () => {

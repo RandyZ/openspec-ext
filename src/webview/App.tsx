@@ -143,7 +143,7 @@ function AppContent() {
     case 'specsExplorer':
       return state.specsExplorer ? <SpecsExplorer data={state.specsExplorer} /> : <Dashboard />;
     case 'dashboard':
-      return <ProjectDashboard />;
+      return state.projectSidebar ? <ProjectDashboard /> : <Dashboard />;
     case 'sidebar':
     case 'loading':
     default:
