@@ -337,30 +337,17 @@ export class CommandManager {
    * Copy /opsx:continue with artifact-specific prompt to clipboard.
    * Each artifact type gets a different prompt so the AI knows exactly what to create.
    */
-  private async handleContinueArtifact(changeName?: string, artifactType?: string): Promise<void> {
+  private async handleContinueArtifact(changeName?: string, _artifactType?: string): Promise<void> {
     const name = changeName?.trim();
-    const text = this.buildContinuePrompt(name, artifactType);
+    const text = this.buildContinuePrompt(name, _artifactType);
     await vscode.env.clipboard.writeText(text);
-    const artifactLabel = this.getArtifactLabel(artifactType);
     vscode.window.showInformationMessage(
-      name
-        ? t('command.copiedContinue', { artifact: artifactLabel })
-        : t('command.copiedContinueGeneric')
+      t('command.copiedContinueGeneric')
     );
   }
 
   private buildContinuePrompt(changeName: string | undefined, _artifactType: string | undefined): string {
     return changeName ? `/opsx:continue ${changeName}` : '/opsx:continue';
-  }
-
-  private getArtifactLabel(artifactType: string | undefined): string {
-    switch (artifactType) {
-      case 'proposal': return 'Proposal';
-      case 'specs': return 'Specs';
-      case 'design': return 'Design';
-      case 'tasks': return 'Tasks';
-      default: return 'artifact';
-    }
   }
 
   /**

@@ -29,7 +29,7 @@ interface ChangesSectionProps {
   onRequestNewChange?: () => void;
   onCopyFf?: (changeName: string) => void;
   onCopyApply?: (changeName: string) => void;
-  onLaunchWorkflow?: (action: WorkflowAction, changeName: string) => void;
+  onLaunchWorkflow?: (action: WorkflowAction, changeName: string, bindingKey?: string) => void;
   archivedItems?: ArchivedChangeInfo[];
   onOpenArchivedChange?: (directoryName: string) => void;
   workflowLaunchConfig?: WorkflowLaunchConfigView | null;

@@ -211,7 +211,7 @@
       },
       {
         "command": "openspec.continueArtifact",
-        "title": "OpenSpec: Create Artifact with AI",
+        "title": "OpenSpec: Continue planning with AI",
         "category": "OpenSpec"
       }
     ],

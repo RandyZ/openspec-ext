@@ -54,7 +54,7 @@ export const ChangesExplorer: React.FC<ChangesExplorerProps> = ({ data }) => {
     })));
   };
 
-  const launchWorkflow = (action: WorkflowAction, changeName: string) => {
+  const launchWorkflow = (action: WorkflowAction, changeName: string, bindingKey?: string) => {
     if (action === 'verify' || action === 'archive') {
       postMessage(sendMessage.openChangeDetailInEditor(
         changeName,
@@ -66,7 +66,7 @@ export const ChangesExplorer: React.FC<ChangesExplorerProps> = ({ data }) => {
       ));
       return;
     }
-    postMessage(sendMessage.launchWorkflowAction(action, changeName));
+    postMessage(sendMessage.launchWorkflowAction(action, changeName, undefined, undefined, bindingKey));
   };
 
   return (

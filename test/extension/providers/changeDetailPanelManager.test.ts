@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as vscode from 'vscode';
 import { ChangeDetailPanelManager } from '@extension/providers/changeDetailPanelManager';
+import { getWorkflowBindingKey } from '@/shared/changeWorkflow';
 
 const { handleWebviewMessageMock } = vi.hoisted(() => ({
   handleWebviewMessageMock: vi.fn().mockResolvedValue(undefined),
@@ -384,5 +385,141 @@ describe('ChangeDetailPanelManager scope binding', () => {
       expect.objectContaining({ id: legacyScope.id, rootPath: legacyScope.rootPath }),
       expect.objectContaining({ id: legacyScope.id, rootPath: legacyScope.rootPath }),
     ]);
+  });
+
+  it('propagates only a snapshot whose binding matches the detail panel root', async () => {
+    const project = {
+      id: '/projects/current',
+      label: 'Current Project',
+      projectPath: '/projects/current',
+    };
+    const binding = {
+      projectId: project.id,
+      commandCwd: project.projectPath,
+      rootPath: '/planning/current',
+      rootSource: 'nearest',
+    };
+    const workflowSnapshot = {
+      changeName: 'same-change',
+      schema: 'custom-schema',
+      bindingKey: getWorkflowBindingKey(binding),
+      artifacts: [{
+        id: 'custom-ready',
+        status: 'ready',
+        requires: [],
+        missingDeps: [],
+        outputPath: 'openspec/changes/same-change/custom-ready.md',
+        existingOutputPaths: [],
+      }],
+    };
+    const panel = createPanel();
+    const dataManager = {
+      resolveScope: vi.fn(),
+      getSelectedScope: vi.fn(),
+      getDashboardData: vi.fn().mockResolvedValue({
+        scope: { rootPath: binding.rootPath },
+        changes: [{ name: 'same-change', workflowSnapshot }],
+        specs: [],
+        lastRefresh: 1,
+      }),
+      artifactExists: vi.fn().mockResolvedValue(false),
+    };
+    vi.mocked(vscode.window.createWebviewPanel).mockReturnValue(panel as any);
+
+    const manager = new ChangeDetailPanelManager(dataManager as any, '/ext', {} as any);
+    manager.open('same-change', { project, binding });
+    await vi.runAllTimersAsync();
+
+    expect(panel.webview.postMessage).toHaveBeenCalledWith(expect.objectContaining({ workflowSnapshot }));
+  });
+
+  it('uses the project-bound snapshot gateway when legacy dashboard data has no snapshot', async () => {
+    const project = {
+      id: '/projects/current',
+      label: 'Current Project',
+      projectPath: '/projects/current',
+    };
+    const binding = {
+      projectId: project.id,
+      commandCwd: project.projectPath,
+      rootPath: '/planning/current',
+      rootSource: 'nearest',
+    };
+    const workflowSnapshot = {
+      changeName: 'same-change',
+      schema: 'custom-schema',
+      bindingKey: getWorkflowBindingKey(binding),
+      artifacts: [{
+        id: 'proposal',
+        status: 'done',
+        requires: [],
+        missingDeps: [],
+        outputPath: 'openspec/changes/same-change/proposal.md',
+        existingOutputPaths: ['/planning/current/openspec/changes/same-change/proposal.md'],
+      }],
+    };
+    const panel = createPanel();
+    const dataManager = {
+      resolveScope: vi.fn(),
+      getSelectedScope: vi.fn(),
+      getDashboardData: vi.fn().mockResolvedValue({ changes: [], specs: [], lastRefresh: 1 }),
+      getChangeWorkflowSnapshot: vi.fn().mockResolvedValue(workflowSnapshot),
+      artifactExists: vi.fn().mockResolvedValue(false),
+    };
+    vi.mocked(vscode.window.createWebviewPanel).mockReturnValue(panel as any);
+
+    const manager = new ChangeDetailPanelManager(dataManager as any, '/ext', {} as any);
+    manager.open('same-change', { project, binding });
+    await vi.runAllTimersAsync();
+
+    expect(dataManager.getChangeWorkflowSnapshot).toHaveBeenCalledWith(
+      'same-change',
+      expect.objectContaining({ rootPath: binding.rootPath }),
+      binding,
+    );
+    expect(panel.webview.postMessage).toHaveBeenCalledWith(expect.objectContaining({ workflowSnapshot }));
+  });
+
+  it('does not propagate a same-named snapshot from another root', async () => {
+    const project = {
+      id: '/projects/current',
+      label: 'Current Project',
+      projectPath: '/projects/current',
+    };
+    const binding = {
+      projectId: project.id,
+      commandCwd: project.projectPath,
+      rootPath: '/planning/current',
+      rootSource: 'nearest',
+    };
+    const panel = createPanel();
+    const dataManager = {
+      resolveScope: vi.fn(),
+      getSelectedScope: vi.fn(),
+      getDashboardData: vi.fn().mockResolvedValue({
+        scope: { rootPath: '/planning/other' },
+        changes: [{
+          name: 'same-change',
+          workflowSnapshot: {
+            changeName: 'same-change',
+            schema: 'custom-schema',
+            bindingKey: getWorkflowBindingKey({ ...binding, rootPath: '/planning/other' }),
+            artifacts: [],
+          },
+        }],
+        specs: [],
+        lastRefresh: 1,
+      }),
+      artifactExists: vi.fn().mockResolvedValue(false),
+    };
+    vi.mocked(vscode.window.createWebviewPanel).mockReturnValue(panel as any);
+
+    const manager = new ChangeDetailPanelManager(dataManager as any, '/ext', {} as any);
+    manager.open('same-change', { project, binding });
+    await vi.runAllTimersAsync();
+
+    expect(panel.webview.postMessage).toHaveBeenCalledWith(
+      expect.not.objectContaining({ workflowSnapshot: expect.anything() })
+    );
   });
 });

@@ -86,4 +86,20 @@ describe('CommandManager cache commands', () => {
     expect(vi.mocked(vscode.workspace.fs.createDirectory).mock.invocationCallOrder[0])
       .toBeLessThan(vi.mocked(vscode.commands.executeCommand).mock.invocationCallOrder[0]);
   });
+
+  it('uses generic Continue semantics for the legacy command entry', async () => {
+    const manager = new CommandManager(
+      {} as any,
+      { subscriptions: [] } as any,
+      {} as any
+    );
+
+    manager.register();
+    await registeredCommands.get('openspec.continueArtifact')?.('demo-change', 'proposal');
+
+    expect(vscode.env.clipboard.writeText).toHaveBeenCalledWith('/opsx:continue demo-change');
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      'Copied /opsx:continue. Paste into AI chat to generate artifact'
+    );
+  });
 });

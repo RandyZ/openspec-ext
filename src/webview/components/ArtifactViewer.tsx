@@ -1,6 +1,7 @@
 import React from 'react';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { t } from '../../i18n';
+import type { ArtifactOutputDescriptor } from '../types/messages';
 
 export interface ArtifactViewerProps {
   content: string | null;
@@ -13,6 +14,9 @@ export interface ArtifactViewerProps {
   onExplore?: () => void;
   /** When set, "用 AI 创建" renders as disabled with this tooltip reason */
   createDisabledReason?: string;
+  outputs?: ArtifactOutputDescriptor[];
+  selectedOutputPath?: string;
+  onSelectOutput?: (outputPath: string) => void;
 }
 
 export const ArtifactViewer: React.FC<ArtifactViewerProps> = ({
@@ -25,6 +29,9 @@ export const ArtifactViewer: React.FC<ArtifactViewerProps> = ({
   onContinue,
   onExplore,
   createDisabledReason,
+  outputs,
+  selectedOutputPath,
+  onSelectOutput,
 }) => {
   if (loading) {
     return (
@@ -71,7 +78,7 @@ export const ArtifactViewer: React.FC<ArtifactViewerProps> = ({
                     cursor: 'not-allowed',
                   }}
                 >
-                  Continue
+                  {t('artifact.continue')}
                 </button>
                 <span className="text-xs" style={{ color: 'var(--vscode-descriptionForeground)' }}>
                   {createDisabledReason}
@@ -89,7 +96,7 @@ export const ArtifactViewer: React.FC<ArtifactViewerProps> = ({
                     }}
                     onClick={onContinue}
                   >
-                    Continue
+                    {t('artifact.continue')}
                   </button>
                 )}
                 {!onContinue && onCreateWithAi && (
@@ -102,7 +109,7 @@ export const ArtifactViewer: React.FC<ArtifactViewerProps> = ({
                     }}
                     onClick={onCreateWithAi}
                   >
-                    用 AI 创建
+                    {t('artifact.createWithAi')}
                   </button>
                 )}
                 {onExplore && (
@@ -115,7 +122,7 @@ export const ArtifactViewer: React.FC<ArtifactViewerProps> = ({
                     }}
                     onClick={onExplore}
                   >
-                    Explore
+                    {t('artifact.explore')}
                   </button>
                 )}
               </>
@@ -154,6 +161,26 @@ export const ArtifactViewer: React.FC<ArtifactViewerProps> = ({
 
   return (
     <div className="artifact-content overflow-auto">
+      {outputs && outputs.length > 1 && onSelectOutput && (
+        <label className="flex items-center gap-2 mb-3 text-xs">
+          <span style={{ color: 'var(--vscode-descriptionForeground)' }}>{t('artifact.outputLabel')}</span>
+          <select
+            aria-label={t('artifact.outputAriaLabel')}
+            className="rounded px-2 py-1"
+            style={{
+              background: 'var(--vscode-input-background)',
+              color: 'var(--vscode-input-foreground)',
+              border: '1px solid var(--vscode-input-border)',
+            }}
+            value={selectedOutputPath ?? outputs[0].path}
+            onChange={(event) => onSelectOutput(event.target.value)}
+          >
+            {outputs.map((output) => (
+              <option key={output.path} value={output.path}>{output.label}</option>
+            ))}
+          </select>
+        </label>
+      )}
       <MarkdownRenderer content={content} />
     </div>
   );

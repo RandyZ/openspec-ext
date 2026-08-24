@@ -1,16 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useVscode } from '../hooks/useVscode';
-import { sendMessage } from '../types/messages';
+import { sendMessage, type ArtifactOutputDescriptor } from '../types/messages';
 import { ActionBar } from './ActionBar';
 import { ArtifactViewer } from './ArtifactViewer';
 import { TaskList } from './TaskList';
 import { ConfirmDialog } from './ui/ConfirmDialog';
-import { WorkflowStepIndicator } from './WorkflowStepIndicator';
 import { VerifyArchivePanel } from './VerifyArchivePanel';
 import { IconButton } from './ui/IconButton';
-import { deriveWorkflowState, type WorkflowStep } from '../utils/workflowState';
 import { t } from '../../i18n';
-import { buildWorkflowCommand } from '../../shared/workflowCommand';
+import { buildWorkflowCommand, type WorkflowAction } from '../../shared/workflowCommand';
+import {
+  createWorkflowRequestId,
+  resolveWorkflowActions,
+  type ChangeWorkflowSnapshot,
+} from '../../shared/changeWorkflow';
 import type { WorkflowLaunchConfigView } from '../utils/workflowLaunchLabels';
 import type {
   ChangeDetailTabId,
@@ -26,21 +29,17 @@ export interface ChangeDetailProps {
   debug?: boolean;
   initialTab?: ChangeDetailTabId;
   interactiveAction?: InteractiveWorkflowAction;
+  workflowSnapshot?: ChangeWorkflowSnapshot;
+  projectLabel?: string;
+  planningRoot?: string;
+  scopeSource?: string;
   /** Scope id this panel was opened under; binds reads/writes to a store root. */
   scopeId?: string;
 }
 
-const ALL_TABS = [
-  { id: 'proposal' as const, label: 'Proposal' },
-  { id: 'specs' as const, label: 'Specs' },
-  { id: 'design' as const, label: 'Design' },
-  { id: 'tasks' as const, label: 'Tasks' },
-  { id: 'verifyArchive' as const, label: 'Verify & Archive' },
-];
-
 // Cache key includes scopeId so the same change name in two roots never shares content.
 const cacheKey = (scopeId: string | undefined, type: string, specId?: string | null) =>
-  `${scopeId ? `${scopeId}::` : ''}${type === 'specs' && specId ? `specs:${specId}` : type}`;
+  `${scopeId ? `${scopeId}::` : ''}${type === 'specs' && specId ? `specs:${specId}` : specId ? `${type}:${specId}` : type}`;
 
 function getCreateDisabledReason(
   artifactType: string,
@@ -82,16 +81,35 @@ function getStatusSummary(
   return t('verifyArchive.statusArtifacts', { count: artifactCount });
 }
 
+function artifactLabel(id: string): string {
+  return id
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+export function reconcileSelectedOutputPath(
+  selectedPath: string | undefined,
+  outputs: readonly ArtifactOutputDescriptor[],
+): string | undefined {
+  return selectedPath && outputs.some((output) => output.path === selectedPath)
+    ? selectedPath
+    : outputs[0]?.path;
+}
+
 export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   changeName,
   existingArtifactIds,
   debug = false,
   initialTab,
   interactiveAction,
+  workflowSnapshot,
+  projectLabel,
+  planningRoot,
+  scopeSource,
   scopeId,
 }) => {
   const { postMessage, onMessage } = useVscode();
-  const [activeTab, setActiveTab] = useState<ChangeDetailTabId>(initialTab ?? 'proposal');
+  const [activeTab, setActiveTab] = useState<string>(initialTab ?? 'proposal');
   const contentCacheRef = useRef<Map<string, string>>(new Map());
   const [completedTasks, setCompletedTasks] = useState(0);
   const [totalTasks, setTotalTasks] = useState(0);
@@ -101,6 +119,8 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   const [errorCode, setErrorCode] = useState<string | undefined>(undefined);
   const [deltaSpecIds, setDeltaSpecIds] = useState<string[]>([]);
   const [selectedSpecId, setSelectedSpecId] = useState<string | null>(null);
+  const [artifactOutputs, setArtifactOutputs] = useState<Record<string, ArtifactOutputDescriptor[]>>({});
+  const [selectedOutputPaths, setSelectedOutputPaths] = useState<Record<string, string | undefined>>({});
   const [agentAdapters, setAgentAdapters] = useState<{
     available: { id: string; displayName: string }[];
     currentId: string | null;
@@ -118,6 +138,14 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   });
   const [pendingInteractiveAction, setPendingInteractiveAction] = useState<InteractiveWorkflowAction | null>(interactiveAction ?? null);
   const [copiedName, setCopiedName] = useState(false);
+  const [artifactStateMessage, setArtifactStateMessage] = useState<string | null>(null);
+  const [pendingWorkflowAction, setPendingWorkflowAction] = useState<WorkflowAction | null>(null);
+  const [workflowReceipt, setWorkflowReceipt] = useState<{
+    requestId: string;
+    bindingKey: string;
+    status: string;
+    message?: string;
+  } | null>(null);
 
   const handleCopyChangeName = () => {
     postMessage(sendMessage.copyToClipboard(changeName));
@@ -126,28 +154,56 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   };
 
   const isArchived = changeName.startsWith('archive:');
-  const workflowState = useMemo(
-    () =>
-      deriveWorkflowState(
-        changeName,
-        existingArtifactIds,
+  const resolvedWorkflowActions = useMemo(
+    () => workflowSnapshot
+      ? resolveWorkflowActions(workflowSnapshot, {
         completedTasks,
         totalTasks,
         isArchived,
-        false
-      ),
-    [changeName, existingArtifactIds, completedTasks, totalTasks, isArchived]
+        hasDeltaSpecs: deltaSpecIds.length > 0,
+      })
+      : undefined,
+    [workflowSnapshot, completedTasks, totalTasks, isArchived, deltaSpecIds.length]
   );
   const showVerifyArchiveTab = debug || (completedTasks > 0 && totalTasks > 0);
-  const tabs = showVerifyArchiveTab ? ALL_TABS : ALL_TABS.filter((tab) => tab.id !== 'verifyArchive');
+  const navigationArtifacts = useMemo(() => {
+    if (workflowSnapshot) return workflowSnapshot.artifacts;
+    return (existingArtifactIds ?? []).map((id) => ({
+      id,
+      status: 'done' as const,
+      requires: [],
+      missingDeps: [],
+      outputPath: '',
+      existingOutputPaths: [],
+    }));
+  }, [workflowSnapshot, existingArtifactIds]);
+  const tabs = useMemo(
+    () => [
+      ...navigationArtifacts.map((artifact) => ({
+        id: artifact.id,
+        label: artifactLabel(artifact.id),
+      })),
+      ...(showVerifyArchiveTab ? [{ id: 'verifyArchive', label: 'Verify & Archive' }] : []),
+    ],
+    [navigationArtifacts, showVerifyArchiveTab]
+  );
+  const artifactGroups = useMemo(() => ([
+    { label: t('detail.nav.completed'), statuses: ['done'] as const },
+    { label: t('detail.nav.available'), statuses: ['ready'] as const },
+    { label: t('detail.nav.blocked'), statuses: ['blocked'] as const },
+    { label: t('detail.nav.skipped'), statuses: ['skipped'] as const },
+  ].map((group) => ({
+    ...group,
+    artifacts: navigationArtifacts.filter((artifact) => group.statuses.includes(artifact.status as never)),
+  })).filter((group) => group.artifacts.length > 0)), [navigationArtifacts]);
 
   useEffect(() => {
-    if (initialTab) {
+    if (initialTab && tabs.some((tab) => tab.id === initialTab)) {
       setActiveTab(initialTab);
-    } else if (!showVerifyArchiveTab && activeTab === 'verifyArchive') {
-      setActiveTab('proposal');
+    } else if (!tabs.some((tab) => tab.id === activeTab)) {
+      setActiveTab(tabs[0]?.id ?? '');
     }
-  }, [initialTab, showVerifyArchiveTab, activeTab]);
+  }, [initialTab, tabs, activeTab]);
 
   useEffect(() => {
     if (interactiveAction) {
@@ -156,18 +212,20 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     }
   }, [interactiveAction]);
 
-  const requestArtifact = (artifactType: string) => {
+  const requestArtifact = (artifactType: string, outputPath?: string) => {
     setLoading(true);
     setError(null);
     setErrorCode(undefined);
+    setArtifactStateMessage(null);
     setContent(null);
-    postMessage(sendMessage.getArtifactContent(changeName, artifactType, scopeId));
+    postMessage(sendMessage.getArtifactContent(changeName, artifactType, scopeId, outputPath));
   };
 
   const requestSpecsList = () => {
     setLoading(true);
     setError(null);
     setContent(null);
+    setArtifactStateMessage(null);
     setDeltaSpecIds([]);
     setSelectedSpecId(null);
     postMessage(sendMessage.listDeltaSpecs(changeName, scopeId));
@@ -182,6 +240,26 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     }
 
     const artifactId = activeTab;
+    const selectedArtifact = navigationArtifacts.find((artifact) => artifact.id === artifactId);
+    if (workflowSnapshot && selectedArtifact
+      && (selectedArtifact.status === 'blocked'
+        || selectedArtifact.status === 'skipped'
+        || selectedArtifact.existingOutputPaths.length === 0)) {
+      setLoading(false);
+      setError(null);
+      setErrorCode(undefined);
+      setContent(null);
+      setArtifactStateMessage(
+        selectedArtifact.status === 'blocked'
+          ? t('artifact.stateBlocked', {
+            details: selectedArtifact.missingDeps.length ? `: ${selectedArtifact.missingDeps.join(', ')}` : '',
+          })
+          : selectedArtifact.status === 'skipped'
+            ? t('artifact.stateSkipped')
+            : t('artifact.stateNoOutput')
+      );
+      return;
+    }
     const knownMissing =
       !isArchived &&
       Array.isArray(existingArtifactIds) &&
@@ -192,6 +270,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
       setError(MISSING_ARTIFACT_MESSAGE);
       setErrorCode('ARTIFACT_MISSING');
       setContent(null);
+      setArtifactStateMessage(null);
       if (activeTab === 'specs') {
         setDeltaSpecIds([]);
         setSelectedSpecId(null);
@@ -204,26 +283,56 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
       return;
     }
 
-    const key = cacheKey(scopeId, activeTab, null);
+    const key = cacheKey(scopeId, activeTab, selectedOutputPaths[activeTab]);
     const cached = contentCacheRef.current.get(key);
     if (cached !== undefined) {
       setContent(cached);
       setLoading(false);
       setError(null);
       setErrorCode(undefined);
-      postMessage(sendMessage.getArtifactContent(changeName, activeTab, scopeId));
+      postMessage(sendMessage.getArtifactContent(
+        changeName,
+        activeTab,
+        scopeId,
+        selectedOutputPaths[activeTab]
+      ));
       return;
     }
     requestArtifact(activeTab);
-  }, [changeName, activeTab, existingArtifactIds, isArchived, postMessage, scopeId]);
+  }, [
+    changeName,
+    activeTab,
+    existingArtifactIds,
+    isArchived,
+    navigationArtifacts,
+    postMessage,
+    scopeId,
+    selectedOutputPaths,
+    workflowSnapshot,
+  ]);
 
   useEffect(() => {
     const cleanup = onMessage((event: MessageEvent) => {
       const msg = event.data;
       if (msg.type === 'artifactContent' && msg.changeName === changeName) {
-        const key = cacheKey(scopeId, msg.artifactType, null);
+        const key = cacheKey(scopeId, msg.artifactType, msg.artifactPath);
         contentCacheRef.current.set(key, msg.content ?? '');
         setContent(msg.content ?? '');
+        setArtifactStateMessage(null);
+        if (Array.isArray(msg.outputs)) {
+          setArtifactOutputs((previous) => ({ ...previous, [msg.artifactType]: msg.outputs }));
+          setSelectedOutputPaths((previous) => ({
+            ...previous,
+            [msg.artifactType]: reconcileSelectedOutputPath(
+              typeof msg.artifactPath === 'string'
+                ? msg.artifactPath
+                : previous[msg.artifactType],
+              msg.outputs,
+            ),
+          }));
+        } else if (typeof msg.artifactPath === 'string') {
+          setSelectedOutputPaths((previous) => ({ ...previous, [msg.artifactType]: msg.artifactPath }));
+        }
         setLoading(false);
         setError(null);
         if (msg.artifactType === 'tasks' && msg.content) {
@@ -233,11 +342,24 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
           setTotalTasks(taskLines.length);
           setCompletedTasks(doneLines.length);
         }
+      } else if (msg.type === 'workflowActionReceipt'
+        && msg.changeName === changeName
+        && workflowSnapshot
+        && msg.bindingKey === workflowSnapshot.bindingKey
+        && workflowReceipt?.requestId === msg.requestId) {
+        setWorkflowReceipt({
+          requestId: msg.requestId,
+          bindingKey: msg.bindingKey,
+          status: msg.status,
+          message: msg.message,
+        });
+        if (!['running'].includes(msg.status)) setPendingWorkflowAction(null);
       } else if (msg.type === 'artifactContentError' && msg.changeName === changeName) {
         setError(msg.message ?? 'Failed to load');
         setErrorCode(msg.code);
         setLoading(false);
         setContent(null);
+        setArtifactStateMessage(null);
       } else if (msg.type === 'deltaSpecList' && msg.changeName === changeName) {
         setDeltaSpecIds(msg.specIds ?? []);
         if (msg.specIds?.length) {
@@ -313,7 +435,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
       }
     });
     return cleanup;
-  }, [activeTab, changeName, onMessage, postMessage, scopeId]);
+   }, [activeTab, changeName, onMessage, postMessage, scopeId, workflowReceipt, workflowSnapshot]);
 
   useEffect(() => {
     postMessage(sendMessage.getWorkflowLaunchConfig());
@@ -359,7 +481,12 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
       postMessage(sendMessage.openDeltaSpec(changeName, selectedSpecId, scopeId));
       return;
     }
-    postMessage(sendMessage.openArtifact(changeName, activeTab, scopeId));
+    postMessage(sendMessage.openArtifact(
+      changeName,
+      activeTab,
+      scopeId,
+      selectedOutputPaths[activeTab]
+    ));
   };
 
   const handleRefresh = () => {
@@ -386,24 +513,32 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   const handleLaunchWorkflow = (
     action: 'explore' | 'continue' | 'ff' | 'apply' | 'verify' | 'archive' | 'sync'
   ) => {
-    postMessage(sendMessage.launchWorkflowAction(action, changeName, scopeId));
+    if (!workflowSnapshot?.bindingKey || pendingWorkflowAction === action) return;
+    const requestId = createWorkflowRequestId();
+    setPendingWorkflowAction(action);
+    setWorkflowReceipt({
+      requestId,
+      bindingKey: workflowSnapshot.bindingKey,
+      status: 'pending',
+    });
+    postMessage(sendMessage.launchWorkflowAction(
+      action,
+      changeName,
+      scopeId,
+      requestId,
+      workflowSnapshot.bindingKey,
+    ));
   };
 
-  const handleStepClick = (step: WorkflowStep) => {
-    const tabSteps: WorkflowStep[] = ['proposal', 'specs', 'design', 'tasks'];
-    if (tabSteps.includes(step)) {
-      setActiveTab(step as ChangeDetailTabId);
+  const handleResolvedAction = (
+    action: 'explore' | 'continue' | 'ff' | 'apply' | 'verify' | 'archive' | 'sync'
+  ) => {
+    if (action === 'verify' || action === 'archive') {
+      setActiveTab('verifyArchive');
+      setPendingInteractiveAction(action);
       return;
     }
-    if (step === 'verify' || step === 'archive') {
-      if (showVerifyArchiveTab || step === 'archive') {
-        setActiveTab('verifyArchive');
-      }
-      return;
-    }
-    if (step === 'apply' && !isArchived) {
-      handleLaunchWorkflow('apply');
-    }
+    handleLaunchWorkflow(action);
   };
 
   const handleConfirmTaskToggle = () => {
@@ -438,6 +573,13 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
           <div className="inline-flex items-center gap-2 mt-2 px-2.5 py-1 rounded text-xs" style={{ background: 'var(--vscode-editor-inactiveSelectionBackground)', color: 'var(--vscode-descriptionForeground)' }}>
             {getStatusSummary(existingArtifactIds, completedTasks, totalTasks, isArchived)}
           </div>
+          {workflowSnapshot && (
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px]" style={{ color: 'var(--vscode-descriptionForeground)' }}>
+              <span>{t('detail.schema', { schema: workflowSnapshot.schema })}</span>
+              {projectLabel && <span>{t('detail.project', { project: projectLabel })}</span>}
+              {planningRoot && <span>{t(scopeSource === 'store' ? 'detail.root.store' : 'detail.root.local', { root: planningRoot })}</span>}
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap gap-1">
           <IconButton icon="go-to-file" label={t('action.openInEditor')} onClick={handleOpenInEditor} />
@@ -445,18 +587,15 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         </div>
       </div>
 
-      <WorkflowStepIndicator
-        steps={workflowState.steps}
-        onStepClick={handleStepClick}
-        isArchived={isArchived}
-      />
-
       <ActionBar
         changeName={changeName}
         isArchived={isArchived}
-        workflowState={workflowState}
+        resolvedActions={resolvedWorkflowActions}
+        pendingAction={pendingWorkflowAction}
+        receiptStatus={workflowReceipt?.status}
+        receiptMessage={workflowReceipt?.message}
         workflowLaunchConfig={workflowLaunchConfig}
-        onAction={(action) => handleLaunchWorkflow(action)}
+        onAction={handleResolvedAction}
         onCopyFf={(name) =>
           postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({ action: 'ff', changeName: name, target: 'clipboard' })))
         }
@@ -465,21 +604,41 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         }
       />
 
-      <div className="flex border-b gap-1 px-3" style={{ borderColor: 'var(--vscode-panel-border)' }}>
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            className="px-3 py-2 text-xs font-medium cursor-pointer border-b-2 -mb-px"
-            style={{
-              borderColor: activeTab === tab.id ? 'var(--vscode-focusBorder)' : 'transparent',
-              color: activeTab === tab.id ? 'var(--vscode-foreground)' : 'var(--vscode-descriptionForeground)',
-            }}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            {tab.label}
-          </button>
+      <div className="flex flex-wrap border-b gap-x-4 gap-y-2 px-3 py-2" style={{ borderColor: 'var(--vscode-panel-border)' }}>
+        {artifactGroups.map((group) => (
+          <div key={group.label} className="flex flex-wrap items-center gap-1" role="group" aria-label={group.label}>
+            <span className="text-[10px] uppercase" style={{ color: 'var(--vscode-descriptionForeground)' }}>{group.label}</span>
+            {group.artifacts.map((artifact) => (
+              <button
+                key={artifact.id}
+                type="button"
+                className="px-2 py-1 text-xs font-medium cursor-pointer rounded border"
+                aria-current={activeTab === artifact.id ? 'page' : undefined}
+                style={{
+                  borderColor: activeTab === artifact.id ? 'var(--vscode-focusBorder)' : 'var(--vscode-panel-border)',
+                  color: activeTab === artifact.id ? 'var(--vscode-foreground)' : 'var(--vscode-descriptionForeground)',
+                }}
+                onClick={() => setActiveTab(artifact.id)}
+              >
+                {artifactLabel(artifact.id)}
+              </button>
+            ))}
+          </div>
         ))}
+        {tabs.some((tab) => tab.id === 'verifyArchive') && (
+          <button
+            type="button"
+            className="px-2 py-1 text-xs font-medium cursor-pointer rounded border"
+            aria-current={activeTab === 'verifyArchive' ? 'page' : undefined}
+            style={{
+              borderColor: activeTab === 'verifyArchive' ? 'var(--vscode-focusBorder)' : 'var(--vscode-panel-border)',
+              color: activeTab === 'verifyArchive' ? 'var(--vscode-foreground)' : 'var(--vscode-descriptionForeground)',
+            }}
+            onClick={() => setActiveTab('verifyArchive')}
+          >
+            {t('detail.verifyArchive')}
+          </button>
+        )}
       </div>
 
       {activeTab === 'specs' && deltaSpecIds.length > 1 && (
@@ -626,17 +785,32 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
               }}
             />
           </>
+        ) : artifactStateMessage ? (
+          <div
+            className="rounded border p-3 text-sm"
+            role="status"
+            style={{
+              borderColor: 'var(--vscode-panel-border)',
+              color: 'var(--vscode-descriptionForeground)',
+            }}
+          >
+            <div className="font-medium" style={{ color: 'var(--vscode-foreground)' }}>{artifactLabel(activeTab)}</div>
+            <div className="mt-1">{artifactStateMessage}</div>
+          </div>
         ) : (
           <ArtifactViewer
             content={content}
             loading={loading}
             error={error}
             errorCode={errorCode}
+            outputs={artifactOutputs[activeTab]}
+            selectedOutputPath={selectedOutputPaths[activeTab]}
+            onSelectOutput={(outputPath) => requestArtifact(activeTab, outputPath)}
             onOpenInEditor={() => handleOpenInEditor()}
-            onCreateWithAi={isArchived ? undefined : () => handleLaunchWorkflow('continue')}
-            onContinue={isArchived ? undefined : () => handleLaunchWorkflow('continue')}
+            onCreateWithAi={isArchived || !workflowSnapshot ? undefined : () => handleLaunchWorkflow('continue')}
+            onContinue={isArchived || !workflowSnapshot ? undefined : () => handleLaunchWorkflow('continue')}
             onExplore={
-              !isArchived && activeTab === 'proposal' && !(existingArtifactIds?.includes('proposal'))
+              !isArchived && workflowSnapshot && activeTab === 'proposal' && !(existingArtifactIds?.includes('proposal'))
                 ? () => handleLaunchWorkflow('explore')
                 : undefined
             }

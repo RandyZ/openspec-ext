@@ -409,6 +409,127 @@ describe('OpenSpecCliService', () => {
       expect(result[0].artifacts).toEqual([{ id: 'proposal', outputPath: '', status: 'done' }]);
     });
 
+    it('preserves a custom ordered artifact graph and status-owned outputs', async () => {
+      const service = new OpenSpecCliService('/workspace');
+      const exec = vi.spyOn(service as any, 'execOpenSpec');
+
+      exec
+        .mockResolvedValueOnce(JSON.stringify({
+          changes: [{
+            name: 'custom-schema-change',
+            completedTasks: 0,
+            totalTasks: 2,
+            lastModified: '2026-08-24T00:00:00.000Z',
+          }],
+        }))
+        .mockResolvedValueOnce(JSON.stringify({
+          change: 'custom-schema-change',
+          schema: 'custom-schema',
+          artifacts: [
+            { id: 'overview', status: 'complete', requires: [] },
+            { id: 'design-a', status: 'ready', requires: ['overview'], missingDeps: [] },
+            { id: 'design-b', status: 'ready', requires: ['overview'], missingDeps: [] },
+            { id: 'optional', status: 'skipped', requires: ['overview'], missingDeps: [] },
+          ],
+          artifactPaths: {
+            overview: {
+              outputPath: 'openspec/changes/custom-schema-change/overview.md',
+              existingOutputPaths: ['openspec/changes/custom-schema-change/overview.md'],
+            },
+            'design-a': {
+              outputPath: 'openspec/changes/custom-schema-change/design-a.md',
+              existingOutputPaths: ['openspec/changes/custom-schema-change/design-a.md'],
+            },
+            'design-b': {
+              outputPath: 'openspec/changes/custom-schema-change/design-b.md',
+              existingOutputPaths: [
+                'openspec/changes/custom-schema-change/design-b.md',
+                'openspec/changes/custom-schema-change/design-b.generated.md',
+              ],
+            },
+            optional: {
+              outputPath: 'openspec/changes/custom-schema-change/optional.md',
+              existingOutputPaths: [],
+            },
+          },
+        }));
+
+      const [change] = await service.listChanges();
+
+      expect(change.workflowSnapshot).toMatchObject({
+        changeName: 'custom-schema-change',
+        schema: 'custom-schema',
+        artifacts: [
+          {
+            id: 'overview',
+            status: 'done',
+            requires: [],
+            missingDeps: [],
+            outputPath: 'openspec/changes/custom-schema-change/overview.md',
+            existingOutputPaths: ['openspec/changes/custom-schema-change/overview.md'],
+          },
+          {
+            id: 'design-a',
+            status: 'ready',
+            requires: ['overview'],
+            missingDeps: [],
+            outputPath: 'openspec/changes/custom-schema-change/design-a.md',
+            existingOutputPaths: ['openspec/changes/custom-schema-change/design-a.md'],
+          },
+          {
+            id: 'design-b',
+            status: 'ready',
+            requires: ['overview'],
+            missingDeps: [],
+            outputPath: 'openspec/changes/custom-schema-change/design-b.md',
+            existingOutputPaths: [
+              'openspec/changes/custom-schema-change/design-b.md',
+              'openspec/changes/custom-schema-change/design-b.generated.md',
+            ],
+          },
+          {
+            id: 'optional',
+            status: 'skipped',
+            requires: ['overview'],
+            missingDeps: [],
+            outputPath: 'openspec/changes/custom-schema-change/optional.md',
+            existingOutputPaths: [],
+          },
+        ],
+      });
+      expect(change.workflowSnapshot?.artifacts.map((artifact) => artifact.id)).toEqual([
+        'overview',
+        'design-a',
+        'design-b',
+        'optional',
+      ]);
+      expect(change.artifacts?.find((artifact) => artifact.id === 'optional')).toMatchObject({
+        id: 'optional',
+        status: 'skipped',
+      });
+    });
+
+    it('fails closed for unknown artifact states without dropping the snapshot', async () => {
+      const service = new OpenSpecCliService('/workspace');
+      const exec = vi.spyOn(service as any, 'execOpenSpec');
+
+      exec
+        .mockResolvedValueOnce(JSON.stringify({
+          changes: [{ name: 'unknown-state', completedTasks: 0, totalTasks: 0, lastModified: '2026-08-24' }],
+        }))
+        .mockResolvedValueOnce(JSON.stringify({
+          schema: 'custom-schema',
+          artifacts: [{ id: 'future-node', status: 'future-state' }],
+        }));
+
+      const [change] = await service.listChanges();
+
+      expect(change.workflowSnapshot?.artifacts).toEqual([
+        expect.objectContaining({ id: 'future-node', status: 'blocked' }),
+      ]);
+      expect(change.attention?.required).toBe(true);
+    });
+
     it('preserves explicit created metadata from openspec list output', async () => {
       const service = new OpenSpecCliService('/workspace');
       const exec = vi.spyOn(service as any, 'execOpenSpec');

@@ -9,6 +9,11 @@ import {
   getWorkflowLaunchConfigMessage,
 } from './webviewMessageHandler';
 import type { ChangeDetailTabId, InteractiveWorkflowAction } from '../../shared/interactiveWorkflow';
+import {
+  isChangeWorkflowSnapshot,
+  isWorkflowSnapshotBoundTo,
+  type ChangeWorkflowSnapshot,
+} from '../../shared/changeWorkflow';
 import type { OpenSpecScope } from '../services/openspecScope';
 import type { OpenSpecRootBinding, ProjectContext } from '../services/types';
 
@@ -22,6 +27,7 @@ export interface ChangeDetailPanelOptions {
   scopeId?: string;
   project?: ProjectContext;
   binding?: OpenSpecRootBinding;
+  workflowSnapshot?: ChangeWorkflowSnapshot;
 }
 
 interface PendingSetContext {
@@ -107,18 +113,86 @@ export class ChangeDetailPanelManager {
 
   private async getExistingArtifactIds(
     changeName: string,
-    scope: OpenSpecScope | undefined
-  ): Promise<string[] | undefined> {
+    scope: OpenSpecScope | undefined,
+    binding: OpenSpecRootBinding | undefined,
+    providedSnapshot?: ChangeWorkflowSnapshot
+  ): Promise<{ ids: string[]; workflowSnapshot?: ChangeWorkflowSnapshot; invalidSnapshot: boolean }> {
+    let snapshotWasPresent = false;
     try {
-      const data = await this.dataManager.getDashboardData();
-      if (!scope || data.scope?.id === scope.id) {
-        const change = data.changes.find((c) => c.name === changeName);
-        if (change) {
-          return change.artifacts?.filter((a) => a.status === 'done').map((a) => a.id) ?? [];
+      if (binding && typeof this.dataManager.getChangeWorkflowSnapshot === 'function') {
+        const snapshot = await this.dataManager.getChangeWorkflowSnapshot(changeName, scope, binding);
+        if (snapshot) {
+          if (!isWorkflowSnapshotBoundTo(snapshot, binding, changeName)) {
+            return { ids: [], invalidSnapshot: true };
+          }
+          return {
+            invalidSnapshot: false,
+            workflowSnapshot: snapshot,
+            ids: snapshot.artifacts
+              .filter((artifact) => artifact.status === 'done')
+              .map((artifact) => artifact.id),
+          };
         }
       }
+      let data = await this.dataManager.getDashboardData();
+      const readSnapshot = (candidateData: Awaited<ReturnType<DataManager['getDashboardData']>>) => {
+        const change = candidateData.changes.find((c) => c.name === changeName);
+        const dataRootPath = candidateData.scope?.rootPath;
+        const scopeMatches = !scope
+          || candidateData.scope?.id === scope.id
+          || dataRootPath === scope.rootPath
+          || (binding && dataRootPath === binding.rootPath);
+        if (!change || !scopeMatches) return undefined;
+        if (change.workflowSnapshot !== undefined) snapshotWasPresent = true;
+
+        const snapshot = change.workflowSnapshot;
+        if (!snapshot && !binding) {
+          return {
+            invalidSnapshot: false,
+            ids: change.artifacts?.filter((artifact) => artifact.status === 'done').map((artifact) => artifact.id) ?? [],
+          } as const;
+        }
+        if (!snapshot) return undefined;
+        const valid = binding
+          ? isWorkflowSnapshotBoundTo(snapshot, binding, changeName)
+          : isChangeWorkflowSnapshot(snapshot, undefined, changeName);
+        if (!valid) return { invalidSnapshot: true } as const;
+        return {
+          invalidSnapshot: false,
+          workflowSnapshot: snapshot,
+          ids: snapshot.artifacts
+            .filter((artifact) => artifact.status === 'done')
+            .map((artifact) => artifact.id),
+        } as const;
+      };
+
+      let resolved = readSnapshot(data);
+      if ((!resolved || resolved.invalidSnapshot) && binding && typeof this.dataManager.refresh === 'function') {
+        try {
+          data = await this.dataManager.refresh();
+          resolved = readSnapshot(data);
+        } catch {
+          // A failed refresh remains non-actionable for a Project-bound panel.
+        }
+      }
+      if (resolved && !resolved.invalidSnapshot) return resolved;
+      const validProvidedSnapshot = binding
+        ? isWorkflowSnapshotBoundTo(providedSnapshot, binding, changeName)
+        : isChangeWorkflowSnapshot(providedSnapshot, undefined, changeName);
+      if (validProvidedSnapshot && providedSnapshot) {
+        return {
+          ids: providedSnapshot.artifacts
+            .filter((artifact) => artifact.status === 'done')
+            .map((artifact) => artifact.id),
+          workflowSnapshot: providedSnapshot,
+          invalidSnapshot: false,
+        };
+      }
+      if (resolved?.invalidSnapshot || snapshotWasPresent || binding) {
+        return { ids: [], invalidSnapshot: true };
+      }
     } catch {
-      // Fall back to direct artifact probes below.
+      if (binding) return { ids: [], invalidSnapshot: true };
     }
 
     const artifactTypes = ['proposal', 'design', 'specs', 'tasks'] as const;
@@ -133,7 +207,10 @@ export class ChangeDetailPanelManager {
         }
       })
     );
-    return ids.filter((id): id is typeof artifactTypes[number] => id !== null);
+    return {
+      ids: ids.filter((id): id is typeof artifactTypes[number] => id !== null),
+      invalidSnapshot: false,
+    };
   }
 
   private async buildSetContextPayload(changeName: string, options?: ChangeDetailPanelOptions): Promise<{
@@ -153,23 +230,30 @@ export class ChangeDetailPanelManager {
       rootPath: string;
       storeId?: string;
     };
+    workflowSnapshot?: ChangeWorkflowSnapshot;
   }> {
     const debug = vscode.workspace.getConfiguration('openspec').get<boolean>('debug') ?? false;
     const scope = this.resolveScopeForOptions(options);
     const scopeView = this.toScopeView(scope);
     try {
-      const existingArtifactIds = await this.getExistingArtifactIds(changeName, scope);
+      const workflow = await this.getExistingArtifactIds(
+        changeName,
+        scope,
+        options?.binding,
+        options?.workflowSnapshot
+      );
       return {
         type: 'setContext',
         view: 'changeDetail',
         changeName,
-        existingArtifactIds,
+        existingArtifactIds: workflow.ids,
         debug,
         ...(options?.initialTab !== undefined ? { initialTab: options.initialTab } : {}),
         ...(options?.interactiveAction !== undefined ? { interactiveAction: options.interactiveAction } : {}),
         ...(options?.project ? { project: options.project } : {}),
         ...(options?.binding ? { binding: options.binding } : {}),
         ...(scopeView ? { scope: scopeView } : {}),
+        ...(workflow.workflowSnapshot ? { workflowSnapshot: workflow.workflowSnapshot } : {}),
       };
     } catch {
       return {
@@ -182,6 +266,7 @@ export class ChangeDetailPanelManager {
         ...(options?.project ? { project: options.project } : {}),
         ...(options?.binding ? { binding: options.binding } : {}),
         ...(scopeView ? { scope: scopeView } : {}),
+        ...(options?.workflowSnapshot ? { workflowSnapshot: options.workflowSnapshot } : {}),
       };
     }
   }

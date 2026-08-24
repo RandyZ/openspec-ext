@@ -16,6 +16,7 @@ import type { CliActivationDiagnostic } from './cliActivationDiagnostic';
 import { OpenSpecScopeManager, loadScopeRelationships, type OpenSpecScope } from './openspecScope';
 import { detectOpenSpecFeatures, type OpenSpecCapabilities } from './openspecFeatures';
 import type { CacheStats, CacheStatsOptions, OpenSpecCacheService } from './openSpecCacheService';
+import type { ChangeWorkflowSnapshot, WorkflowBindingIdentity } from '../../shared/changeWorkflow';
 import {
   buildChangeStatusCounts,
   enrichChangeWithLifecycle,
@@ -300,6 +301,7 @@ export class DataManager {
   private getScopedServices(scope?: OpenSpecScope): {
     stateReader: StateReader;
     contentAccess: IOpenSpecContentAccess;
+    cli: OpenSpecCliService;
     rootPath: string;
     scope: OpenSpecScope | undefined;
   } {
@@ -307,6 +309,7 @@ export class DataManager {
       return {
         stateReader: this.stateReader,
         contentAccess: this.contentAccess,
+        cli: this.cliService,
         rootPath: this.workspaceRoot,
         scope,
       };
@@ -318,7 +321,7 @@ export class DataManager {
       stateReader = new StateReader(cli, contentAccess);
       this.scopedStateReaders.set(scope.id, stateReader);
     }
-    return { stateReader, contentAccess, rootPath: scope.rootPath, scope };
+    return { stateReader, contentAccess, cli, rootPath: scope.rootPath, scope };
   }
 
   private getTaskExecutorForScope(scope?: OpenSpecScope): TaskExecutorService {
@@ -1044,6 +1047,17 @@ export class DataManager {
    */
   async getChangeDetails(changeName: string): Promise<ChangeDetails> {
     return await this.stateReader.getChangeDetails(changeName);
+  }
+
+  async getChangeWorkflowSnapshot(
+    changeName: string,
+    scope?: OpenSpecScope,
+    workflowBinding?: WorkflowBindingIdentity
+  ): Promise<ChangeWorkflowSnapshot | undefined> {
+    const services = this.getScopedServices(scope);
+    return (await services.cli.listChanges(scope, workflowBinding))
+      .find((change) => change.name === changeName)
+      ?.workflowSnapshot;
   }
 
   /**

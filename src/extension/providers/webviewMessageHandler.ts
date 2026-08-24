@@ -1,11 +1,16 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { promises as fs } from 'fs';
 import { logger } from '../utils/logger';
 import { DataManager } from '../services/dataManager';
 import { getChangesBasePath } from '../utils/workspaceRoot';
 import { isPathUnderRoot } from '../utils/pathSafety';
 import { getAdapterById, getCurrentAdapter } from '../adapters';
-import type { CacheStatsView, WebviewMessage } from '../../webview/types/messages';
+import type {
+  ArtifactOutputDescriptor,
+  CacheStatsView,
+  WebviewMessage,
+} from '../../webview/types/messages';
 import { t } from '../../i18n';
 import { buildWorkflowLaunchPayload } from '../../shared/workflowCommand';
 import { getWorkflowLaunchConfig } from '../services/workflowLaunchConfig';
@@ -24,6 +29,15 @@ import type {
   InteractiveWorkflowState,
 } from '../../shared/interactiveWorkflow';
 import type { OpenSpecScope } from '../services/openspecScope';
+import {
+  createWorkflowRequestId,
+  type ChangeWorkflowSnapshot,
+  type WorkflowActionReceipt,
+} from '../../shared/changeWorkflow';
+
+function postWorkflowReceipt(webview: vscode.Webview, receipt: WorkflowActionReceipt): void {
+  webview.postMessage({ type: 'workflowActionReceipt', ...receipt });
+}
 
 /**
  * Resolve the effective root path for a message, honoring a panel-bound scopeId.
@@ -52,6 +66,46 @@ function isPathUnderWorkspace(resolvedPath: string, workspaceRoot: string): bool
   const normalized = path.normalize(resolvedPath);
   const rel = path.relative(workspaceRoot, normalized);
   return !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
+async function resolveActiveArtifactPath(
+  dataManager: DataManager,
+  changeName: string,
+  artifactType: string,
+  requestedPath: string | undefined,
+  rootPath: string,
+  scope: OpenSpecScope | undefined
+): Promise<{ path: string; outputs: ArtifactOutputDescriptor[] } | null | undefined> {
+  const snapshotReader = dataManager as DataManager & {
+    getChangeWorkflowSnapshot?: (
+      name: string,
+      scope?: OpenSpecScope
+    ) => Promise<ChangeWorkflowSnapshot | undefined>;
+  };
+  if (typeof snapshotReader.getChangeWorkflowSnapshot !== 'function') return null;
+
+  const snapshot = await snapshotReader.getChangeWorkflowSnapshot(changeName, scope);
+  const artifact = snapshot?.artifacts.find((candidate) => candidate.id === artifactType);
+  if (!artifact || artifact.existingOutputPaths.length === 0) return null;
+
+  const selectedSource = requestedPath ?? artifact.existingOutputPaths[0] ?? artifact.outputPath;
+  const selected = path.resolve(rootPath, selectedSource);
+  const members = artifact.existingOutputPaths.map((candidate) => path.resolve(rootPath, candidate));
+  if (!members.some((member) => path.normalize(member) === path.normalize(selected))) return null;
+
+  const canonicalRoot = await fs.realpath(rootPath);
+  const canonicalSelected = await fs.realpath(selected);
+  const canonicalChangeRoot = await fs.realpath(getChangesBasePath(rootPath, changeName));
+  if (!isPathUnderRoot(canonicalSelected, canonicalRoot)
+    || !isPathUnderRoot(canonicalSelected, canonicalChangeRoot)) return null;
+  return {
+    path: canonicalSelected,
+    outputs: artifact.existingOutputPaths.map((outputPath) => ({
+      path: outputPath,
+      label: path.basename(outputPath),
+      kind: artifact.id === 'specs' ? 'specs' : artifact.id === 'tasks' ? 'tasks' : 'markdown',
+    })),
+  };
 }
 
 function toCacheStatsView(
@@ -444,13 +498,41 @@ export async function handleWebviewMessage(
     }
 
     case 'openArtifact': {
-      const { rootPath } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
+      const artifactType = message.artifactId ?? message.artifactType;
+      if (!artifactType) break;
+      const { rootPath, scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
       const changesBase = path.normalize(getChangesBasePath(rootPath, message.changeName));
-      const artifactPath = path.normalize(path.join(changesBase, `${message.artifactType}.md`));
-      logger.info(`[archived] openArtifact: changeName=${message.changeName}, artifactType=${message.artifactType}, root=${rootPath}, artifactPath=${artifactPath}`);
+      let artifactPath = path.normalize(path.join(changesBase, `${artifactType}.md`));
+      let activePathResolved = false;
+      if (!message.changeName.startsWith('archive:')) {
+        try {
+          const resolved = await resolveActiveArtifactPath(
+            dataManager,
+            message.changeName,
+            artifactType,
+            message.outputPath ?? message.artifactPath,
+            rootPath,
+            scope,
+          );
+          if (resolved !== undefined) {
+            if (!resolved) {
+              vscode.window.showErrorMessage(t('file.outsideWorkspaceShort'));
+              break;
+            }
+            artifactPath = resolved.path;
+            activePathResolved = true;
+          }
+        } catch (err) {
+          logger.warn('Failed to resolve active artifact output', err as Error);
+          vscode.window.showErrorMessage(t('file.cannotOpen', { name: artifactType }));
+          break;
+        }
+      }
+      logger.info(`[archived] openArtifact: changeName=${message.changeName}, artifactType=${artifactType}, root=${rootPath}, artifactPath=${artifactPath}`);
       // Gate against the resolved scope root (which may be a store root outside the
       // workspace) rather than the workspace root, so store artifacts can be opened.
-      if (!isPathUnderRoot(changesBase, rootPath) || !isPathUnderRoot(artifactPath, rootPath)) {
+      if (!isPathUnderRoot(changesBase, rootPath)
+        || (!activePathResolved && !isPathUnderRoot(artifactPath, rootPath))) {
         vscode.window.showErrorMessage(t('file.outsideWorkspaceShort'));
         break;
       }
@@ -460,7 +542,7 @@ export async function handleWebviewMessage(
         logger.info(`[archived] openArtifact: opened OK`);
       } catch (err) {
         logger.error(`Failed to open artifact: ${artifactPath}`, err as Error);
-        vscode.window.showErrorMessage(t('file.cannotOpen', { name: message.artifactType }));
+        vscode.window.showErrorMessage(t('file.cannotOpen', { name: artifactType }));
       }
       break;
     }
@@ -497,9 +579,48 @@ export async function handleWebviewMessage(
     }
 
     case 'getArtifactContent': {
-      const { changeName, artifactType } = message;
+      const { changeName } = message;
+      const artifactType = message.artifactId ?? message.artifactType;
       if (!changeName || !artifactType) break;
-      const { scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
+      const { rootPath, scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
+      let activeArtifactPath: string | undefined;
+      let activeArtifactOutputs: ArtifactOutputDescriptor[] | undefined;
+      if (!changeName.startsWith('archive:')) {
+        try {
+          const resolved = await resolveActiveArtifactPath(
+            dataManager,
+            changeName,
+            artifactType,
+            message.outputPath ?? message.artifactPath,
+            rootPath,
+            scope,
+          );
+          if (resolved !== undefined) {
+            if (!resolved) {
+              webview.postMessage({
+                type: 'artifactContentError',
+                changeName,
+                artifactType,
+                message: t('artifact.readError'),
+                code: 'ARTIFACT_READ_ERROR',
+              });
+              break;
+            }
+            activeArtifactPath = resolved.path;
+            activeArtifactOutputs = resolved.outputs;
+          }
+        } catch (err) {
+          logger.warn('Failed to resolve active artifact output', err as Error);
+          webview.postMessage({
+            type: 'artifactContentError',
+            changeName,
+            artifactType,
+            message: t('artifact.readError'),
+            code: 'ARTIFACT_READ_ERROR',
+          });
+          break;
+        }
+      }
       logger.info(`[archived] getArtifactContent: changeName=${changeName}, artifactType=${artifactType}, scopeId=${message.scopeId ?? '<none>'}`);
       const cached = await dataManager.getCachedArtifactContent?.({
         changeName,
@@ -515,6 +636,32 @@ export async function handleWebviewMessage(
           cache: { source: cached.source, stale: true, generatedAt: cached.generatedAt },
         });
       }
+      if (activeArtifactPath) {
+        try {
+          const content = await fs.readFile(activeArtifactPath, 'utf-8');
+          webview.postMessage({
+            type: 'artifactContent',
+            changeName,
+            artifactType,
+            artifactId: artifactType,
+            artifactPath: activeArtifactPath,
+            outputs: activeArtifactOutputs,
+            content,
+            cache: { source: 'fresh', stale: false },
+          });
+        } catch (err) {
+          logger.info('getArtifactContent active output read failed', err as Error);
+          webview.postMessage({
+            type: 'artifactContentError',
+            changeName,
+            artifactType,
+            message: t('artifact.readError'),
+            code: 'ARTIFACT_READ_ERROR',
+          });
+        }
+        break;
+      }
+
       const exists = await dataManager.artifactExists(changeName, artifactType, scope);
       if (!exists) {
         logger.info(`[archived] getArtifactContent: artifactExists=false -> ARTIFACT_MISSING`);
@@ -815,7 +962,74 @@ export async function handleWebviewMessage(
 
       // Resolve the effective root (scope-aware) so store-scoped workflows run against
       // the store root, not the workspace root.
-      const { rootPath: scopeRootPath } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
+      const { rootPath: scopeRootPath, scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
+      const correlated = message.requestId !== undefined || message.bindingKey !== undefined;
+      const requestId = message.requestId ?? createWorkflowRequestId('legacy');
+      const snapshotReader = dataManager as DataManager & {
+        getChangeWorkflowSnapshot?: (
+          name: string,
+          scope?: OpenSpecScope
+        ) => Promise<ChangeWorkflowSnapshot | undefined>;
+      };
+      let expectedBindingKey: string | undefined;
+      if (typeof snapshotReader.getChangeWorkflowSnapshot === 'function') {
+        try {
+          expectedBindingKey = (await snapshotReader.getChangeWorkflowSnapshot(changeName, scope))?.bindingKey;
+        } catch (error) {
+          logger.warn('Failed to validate workflow action binding', error as Error);
+          if (correlated) {
+            postWorkflowReceipt(webview, {
+              requestId,
+              changeName,
+              bindingKey: message.bindingKey ?? 'unknown',
+              action,
+              target: 'unknown',
+              status: 'failed',
+              message: 'Unable to validate the current Change binding.',
+            });
+            break;
+          }
+        }
+      }
+      const receiptBindingKey = message.bindingKey ?? expectedBindingKey ?? 'legacy';
+      if (correlated && (!message.requestId || !message.bindingKey)) {
+        postWorkflowReceipt(webview, {
+          requestId,
+          changeName,
+          bindingKey: receiptBindingKey,
+          action,
+          target: 'unknown',
+          status: 'failed',
+          message: 'A request id and bound Change root are required.',
+        });
+        break;
+      }
+      if (message.bindingKey && expectedBindingKey && message.bindingKey !== expectedBindingKey) {
+        postWorkflowReceipt(webview, {
+          requestId,
+          changeName,
+          bindingKey: message.bindingKey,
+          action,
+          target: 'unknown',
+          status: 'failed',
+          message: 'The workflow request belongs to a different Change root.',
+        });
+        break;
+      }
+
+      const postReceipt = (
+        target: WorkflowActionReceipt['target'],
+        status: WorkflowActionReceipt['status'],
+        message?: string,
+      ) => postWorkflowReceipt(webview, {
+        requestId,
+        changeName,
+        bindingKey: receiptBindingKey,
+        action,
+        target,
+        status,
+        ...(message ? { message } : {}),
+      });
 
       const launchConfig = getWorkflowLaunchConfig();
       const effectiveAdapterId = getEffectiveWorkflowAdapterId(launchConfig);
@@ -836,8 +1050,13 @@ export async function handleWebviewMessage(
           workflowLaunchMode: 'clipboard',
         });
         logger.debug(`[workflow] copy-only route: command=${payload.command}`);
-        await vscode.env.clipboard.writeText(payload.command);
-        vscode.window.showInformationMessage(t('workflow.copiedCommand', { command: payload.command }));
+        try {
+          await vscode.env.clipboard.writeText(payload.command);
+          vscode.window.showInformationMessage(t('workflow.copiedCommand', { command: payload.command }));
+          postReceipt('clipboard', 'copied', 'Command copied. Paste or send it to continue.');
+        } catch (error) {
+          postReceipt('clipboard', 'failed', (error as Error).message);
+        }
         break;
       }
 
@@ -851,8 +1070,13 @@ export async function handleWebviewMessage(
           workflowLaunchMode: 'clipboard',
         });
         logger.warn(`[workflow] no available adapter for effectiveAdapterId=${effectiveAdapterId}; copied fallback command=${payload.command}`);
-        await vscode.env.clipboard.writeText(payload.command);
-        vscode.window.showInformationMessage(t('workflow.noAdapterCopied', { command: payload.command }));
+        try {
+          await vscode.env.clipboard.writeText(payload.command);
+          vscode.window.showInformationMessage(t('workflow.noAdapterCopied', { command: payload.command }));
+          postReceipt('clipboard', 'fallback', `Native target ${effectiveAdapterId} was unavailable; command copied to clipboard.`);
+        } catch (error) {
+          postReceipt('clipboard', 'failed', (error as Error).message);
+        }
         break;
       }
 
@@ -863,17 +1087,33 @@ export async function handleWebviewMessage(
         adapterId: adapter.id,
       });
       logger.info(`[workflow] launching via adapter: id=${adapter.id}, displayName=${adapter.displayName}, command=${payload.command}`);
-      const result = await adapter.fillChat({
-        changeName,
-        taskIndex: -1,
-        taskText: '',
-        contextFiles: [],
-        workspaceRoot: scopeRootPath,
-        promptOverride: payload.command,
-      });
-      logger.info(
-        `[workflow] adapter result: id=${result.adapterId}, success=${result.success}, message=${result.message ?? ''}`
-      );
+      try {
+        const result = await adapter.fillChat({
+          changeName,
+          taskIndex: -1,
+          taskText: '',
+          contextFiles: [],
+          workspaceRoot: scopeRootPath,
+          promptOverride: payload.command,
+        });
+        logger.info(
+          `[workflow] adapter result: id=${result.adapterId}, success=${result.success}, message=${result.message ?? ''}`
+        );
+        if (result.success) {
+          postReceipt(payload.target, 'delivered', result.message ?? 'Workflow command delivered to the selected target.');
+        } else {
+          await vscode.env.clipboard.writeText(payload.command);
+          postReceipt('clipboard', 'fallback', `${adapter.displayName} could not deliver the command; it was copied to clipboard.`);
+        }
+      } catch (error) {
+        logger.error('launchWorkflowAction adapter failed', error as Error);
+        try {
+          await vscode.env.clipboard.writeText(payload.command);
+          postReceipt('clipboard', 'fallback', `${adapter.displayName} failed; command copied to clipboard.`);
+        } catch (fallbackError) {
+          postReceipt(payload.target, 'failed', (fallbackError as Error).message || (error as Error).message);
+        }
+      }
       break;
     }
 

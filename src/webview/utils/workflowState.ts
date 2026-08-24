@@ -141,29 +141,11 @@ export function deriveWorkflowState(
 function buildPrimaryAction(changeName: string, currentStep: WorkflowStep): WorkflowAction | null {
   switch (currentStep) {
     case 'proposal':
-      return {
-        label: 'Continue → Proposal',
-        action: 'continue',
-        command: buildWorkflowCommand({ action: 'continue', changeName, target: 'clipboard' }),
-        variant: 'primary',
-      };
     case 'specs':
-      return {
-        label: 'Continue → Specs',
-        action: 'continue',
-        command: buildWorkflowCommand({ action: 'continue', changeName, target: 'clipboard' }),
-        variant: 'primary',
-      };
     case 'design':
-      return {
-        label: 'Continue → Design',
-        action: 'continue',
-        command: buildWorkflowCommand({ action: 'continue', changeName, target: 'clipboard' }),
-        variant: 'primary',
-      };
     case 'tasks':
       return {
-        label: 'Continue → Tasks',
+        label: 'Continue planning',
         action: 'continue',
         command: buildWorkflowCommand({ action: 'continue', changeName, target: 'clipboard' }),
         variant: 'primary',

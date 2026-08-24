@@ -1,5 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import * as vscode from 'vscode';
+import { promises as fs } from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { handleWebviewMessage } from '@extension/providers/webviewMessageHandler';
 import { setLocale, t } from '../../../src/i18n';
 
@@ -243,6 +246,68 @@ describe('handleWebviewMessage toggleTask', () => {
 
     expect(vscode.env.clipboard.writeText).toHaveBeenCalledWith('/opsx:archive demo-change');
     expect(adapterFillChat).not.toHaveBeenCalled();
+  });
+
+  it('rejects a workflow action whose request binding is stale', async () => {
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      getChangeWorkflowSnapshot: vi.fn().mockResolvedValue({ bindingKey: 'root-current' }),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      {
+        type: 'launchWorkflowAction',
+        action: 'apply',
+        changeName: 'demo-change',
+        requestId: 'request-1',
+        bindingKey: 'root-stale',
+      },
+      webview as any,
+      dataManager as any,
+    );
+
+    expect(vscode.env.clipboard.writeText).not.toHaveBeenCalled();
+    expect(adapterFillChat).not.toHaveBeenCalled();
+    expect(webview.postMessage).toHaveBeenCalledWith({
+      type: 'workflowActionReceipt',
+      requestId: 'request-1',
+      changeName: 'demo-change',
+      bindingKey: 'root-stale',
+      action: 'apply',
+      target: 'unknown',
+      status: 'failed',
+      message: 'The workflow request belongs to a different Change root.',
+    });
+  });
+
+  it('reports clipboard delivery as copied rather than completed', async () => {
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      getChangeWorkflowSnapshot: vi.fn().mockResolvedValue({ bindingKey: 'root-current' }),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      {
+        type: 'launchWorkflowAction',
+        action: 'apply',
+        changeName: 'demo-change',
+        requestId: 'request-2',
+        bindingKey: 'root-current',
+      },
+      webview as any,
+      dataManager as any,
+    );
+
+    expect(webview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'workflowActionReceipt',
+      requestId: 'request-2',
+      bindingKey: 'root-current',
+      target: 'clipboard',
+      status: 'copied',
+    }));
+    expect(webview.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'completed' }));
   });
 
   it('posts formatted cache stats for getCacheStats requests', async () => {
@@ -868,7 +933,7 @@ describe('handleWebviewMessage toggleTask', () => {
     expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
   });
 
-  it('openArtifact resolves the artifact path against the panel-bound store root', async () => {
+  it('openArtifact resolves archived artifact paths against the panel-bound store root', async () => {
     const storeScope = {
       id: 'store:team-plans',
       rootPath: '/stores/team-plans',
@@ -883,16 +948,196 @@ describe('handleWebviewMessage toggleTask', () => {
     const webview = { postMessage: vi.fn() };
 
     await handleWebviewMessage(
-      { type: 'openArtifact', changeName: 'demo-change', artifactType: 'proposal', scopeId: 'store:team-plans' },
+      { type: 'openArtifact', changeName: 'archive:demo-change', artifactType: 'proposal', scopeId: 'store:team-plans' },
       webview as any,
       dataManager as any
     );
 
     // Path must be derived from the store root, not the workspace root.
     expect(vscode.workspace.openTextDocument).toHaveBeenCalledWith(
-      expect.stringContaining('/stores/team-plans/openspec/changes/demo-change/proposal.md')
+      expect.stringContaining('/stores/team-plans/openspec/changes/archive/demo-change/proposal.md')
     );
     expect(dataManager.resolveScope).toHaveBeenCalledWith('store:team-plans');
+  });
+
+  it('fails closed for active artifacts when the snapshot gateway is unavailable', async () => {
+    const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), 'openspec-no-snapshot-'));
+    const guessedPath = path.join(rootPath, 'openspec/changes/demo-change/proposal.md');
+    await fs.mkdir(path.dirname(guessedPath), { recursive: true });
+    await fs.writeFile(guessedPath, '# guessed');
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue(rootPath),
+      resolveScope: vi.fn().mockReturnValue({ id: 'local:workspace', rootPath, source: 'local' }),
+      artifactExists: vi.fn().mockResolvedValue(true),
+      readArtifact: vi.fn().mockResolvedValue('# guessed'),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'getArtifactContent', changeName: 'demo-change', artifactType: 'proposal' },
+      webview as any,
+      dataManager as any,
+    );
+
+    expect(dataManager.readArtifact).not.toHaveBeenCalled();
+    expect(webview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'artifactContentError',
+      code: 'ARTIFACT_READ_ERROR',
+    }));
+  });
+
+  it('rejects an active output that is not a member of the bound snapshot', async () => {
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      resolveScope: vi.fn().mockReturnValue({
+        id: 'local:workspace',
+        rootPath: '/workspace',
+        source: 'local',
+      }),
+      getChangeWorkflowSnapshot: vi.fn().mockResolvedValue({
+        changeName: 'demo-change',
+        schema: 'custom-schema',
+        bindingKey: 'current',
+        artifacts: [{
+          id: 'custom',
+          status: 'done',
+          requires: [],
+          missingDeps: [],
+          outputPath: 'openspec/changes/demo-change/safe.md',
+          existingOutputPaths: ['openspec/changes/demo-change/safe.md'],
+        }],
+      }),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      {
+        type: 'openArtifact',
+        changeName: 'demo-change',
+        artifactType: 'custom',
+        artifactPath: 'openspec/changes/demo-change/secret.md',
+      } as any,
+      webview as any,
+      dataManager as any,
+    );
+
+    expect(vscode.workspace.openTextDocument).not.toHaveBeenCalled();
+    expect(vscode.window.showErrorMessage).toHaveBeenCalled();
+  });
+
+  it('opens only a current status-owned output inside the Change root', async () => {
+    const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), 'openspec-output-'));
+    const outputPath = path.join(rootPath, 'openspec/changes/demo-change/custom.md');
+    await fs.mkdir(path.dirname(outputPath), { recursive: true });
+    await fs.writeFile(outputPath, '# custom');
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue(rootPath),
+      resolveScope: vi.fn().mockReturnValue({ id: 'local:workspace', rootPath, source: 'local' }),
+      getChangeWorkflowSnapshot: vi.fn().mockResolvedValue({
+        changeName: 'demo-change',
+        schema: 'custom-schema',
+        bindingKey: 'current',
+        artifacts: [{
+          id: 'custom',
+          status: 'done',
+          requires: [],
+          missingDeps: [],
+          outputPath: 'openspec/changes/demo-change/custom.md',
+          existingOutputPaths: ['openspec/changes/demo-change/custom.md'],
+        }],
+      }),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'openArtifact', changeName: 'demo-change', artifactType: 'custom', artifactPath: 'openspec/changes/demo-change/custom.md' },
+      webview as any,
+      dataManager as any,
+    );
+
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+    expect(vscode.workspace.openTextDocument).toHaveBeenCalledWith(await fs.realpath(outputPath));
+  });
+
+  it('returns output descriptors with active artifact content', async () => {
+    const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), 'openspec-output-content-'));
+    const outputPath = path.join(rootPath, 'openspec/changes/demo-change/custom.md');
+    const secondPath = path.join(rootPath, 'openspec/changes/demo-change/other.md');
+    await fs.mkdir(path.dirname(outputPath), { recursive: true });
+    await fs.writeFile(outputPath, '# custom');
+    await fs.writeFile(secondPath, '# other');
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue(rootPath),
+      resolveScope: vi.fn().mockReturnValue({ id: 'local:workspace', rootPath, source: 'local' }),
+      getChangeWorkflowSnapshot: vi.fn().mockResolvedValue({
+        changeName: 'demo-change',
+        schema: 'custom-schema',
+        bindingKey: 'current',
+        artifacts: [{
+          id: 'custom',
+          status: 'done',
+          requires: [],
+          missingDeps: [],
+          outputPath: 'openspec/changes/demo-change/custom.md',
+          existingOutputPaths: [
+            'openspec/changes/demo-change/custom.md',
+            'openspec/changes/demo-change/other.md',
+          ],
+        }],
+      }),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'getArtifactContent', artifactId: 'custom', changeName: 'demo-change' },
+      webview as any,
+      dataManager as any,
+    );
+
+    expect(webview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'artifactContent',
+      content: '# custom',
+      outputs: [
+        expect.objectContaining({ label: 'custom.md' }),
+        expect.objectContaining({ label: 'other.md' }),
+      ],
+    }));
+  });
+
+  it('resolves CLI absolute outputs when the artifact output pattern is relative', async () => {
+    const rootPath = await fs.mkdtemp(path.join(os.tmpdir(), 'openspec-cli-output-'));
+    const outputPath = path.join(rootPath, 'openspec/changes/demo-change/proposal.md');
+    await fs.mkdir(path.dirname(outputPath), { recursive: true });
+    await fs.writeFile(outputPath, '# proposal');
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue(rootPath),
+      resolveScope: vi.fn().mockReturnValue({ id: 'local:workspace', rootPath, source: 'local' }),
+      getChangeWorkflowSnapshot: vi.fn().mockResolvedValue({
+        changeName: 'demo-change',
+        schema: 'aihelp-dev',
+        bindingKey: 'current',
+        artifacts: [{
+          id: 'proposal',
+          status: 'done',
+          requires: [],
+          missingDeps: [],
+          outputPath: 'proposal.md',
+          existingOutputPaths: [outputPath],
+        }],
+      }),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'getArtifactContent', artifactId: 'proposal', changeName: 'demo-change' },
+      webview as any,
+      dataManager as any,
+    );
+
+    expect(webview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'artifactContent',
+      content: '# proposal',
+    }));
   });
 
   it('getSpecRequirements reads requirements against the store scope', async () => {
@@ -969,7 +1214,7 @@ describe('handleWebviewMessage toggleTask', () => {
     };
 
     await handleWebviewMessage(
-      { type: 'getArtifactContent', changeName: 'same', artifactType: 'tasks', scopeId: 'store:aihelp' },
+      { type: 'getArtifactContent', changeName: 'archive:same', artifactType: 'tasks', scopeId: 'store:aihelp' },
       webview as any,
       dataManager as any
     );

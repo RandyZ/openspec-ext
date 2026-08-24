@@ -9,6 +9,7 @@ import {
   selectProjectFirstTab,
   sendProjectSidebarSpecDetail,
   getDashboardActionScopeId,
+  getDashboardPriorityChanges,
   requestInitialDashboardData,
 } from '../../../src/webview/components/Dashboard';
 import { sendMessage } from '../../../src/webview/types/messages';
@@ -117,6 +118,69 @@ const dashboardData: DashboardData = {
   changeStatusCounts: EMPTY_COUNTS,
   lastRefresh: 1,
 };
+
+describe('Dashboard action priorities', () => {
+  it('orders attention, verify, and recommended changes from shared snapshots', () => {
+    const snapshot = (status: 'ready' | 'done') => ({
+      changeName: 'change',
+      schema: 'custom',
+      bindingKey: 'root',
+      artifacts: [{
+        id: 'proposal',
+        status,
+        requires: [],
+        missingDeps: [],
+        outputPath: 'proposal.md',
+        existingOutputPaths: ['proposal.md'],
+      }],
+    });
+    const result = getDashboardPriorityChanges([
+      hostChange('attention', { attention: { required: true, reasons: ['invalid-artifact-status'] } }),
+      hostChange('verify', {
+        completedTasks: 1,
+        totalTasks: 1,
+        workflowSnapshot: snapshot('done'),
+      }),
+      hostChange('recommended', { workflowSnapshot: snapshot('ready') }),
+    ]);
+
+    expect(result.needsAttention.map((change) => change.name)).toEqual(['attention']);
+    expect(result.readyToVerify.map((change) => change.name)).toEqual(['verify']);
+    expect(result.recommended.map((change) => change.name)).toEqual(['recommended']);
+  });
+
+  it('promotes failed receipts only for the matching bound Change', () => {
+    const change = hostChange('change', {
+      workflowSnapshot: {
+        changeName: 'change',
+        schema: 'custom',
+        bindingKey: 'root-a',
+        artifacts: [],
+      },
+    });
+
+    const result = getDashboardPriorityChanges([change], [
+      {
+        requestId: 'request-a',
+        changeName: 'change',
+        bindingKey: 'root-a',
+        action: 'continue',
+        target: 'clipboard',
+        status: 'failed',
+      },
+      {
+        requestId: 'request-b',
+        changeName: 'change',
+        bindingKey: 'root-b',
+        action: 'continue',
+        target: 'clipboard',
+        status: 'failed',
+      },
+    ]);
+
+    expect(result.needsAttention.map((item) => item.name)).toEqual(['change']);
+  });
+});
 
 const projectContext: ProjectContext = {
   id: '/projects/project-a',

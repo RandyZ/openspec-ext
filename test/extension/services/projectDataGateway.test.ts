@@ -1657,4 +1657,86 @@ describe('ProjectDataGateway unified Project Sidebar data', () => {
       phase: 'sidebar',
     });
   });
+
+  it('rejects stale-root snapshots without prefetching instructions', async () => {
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'openspec-sidebar-snapshot-'));
+    temporaryDirectories.push(base);
+    const projectRoot = path.join(base, 'project-root');
+    await fs.mkdir(path.join(projectRoot, 'openspec'), { recursive: true });
+    const project = await createProjectContext('Project', projectRoot);
+    let instructionsCalls = 0;
+    const workflowSnapshot = {
+      changeName: 'project-change',
+      schema: 'custom-schema',
+      bindingKey: 'stale-cli-binding',
+      artifacts: [{
+        id: 'first',
+        status: 'ready',
+        requires: [],
+        missingDeps: [],
+        outputPath: 'openspec/changes/project-change/first.md',
+        existingOutputPaths: [],
+      }],
+    };
+    const gateway = new ProjectDataGateway({
+      createCli: () => ({
+        getContext: async () => context(projectRoot, 'nearest'),
+        listChanges: async () => [{
+          name: 'project-change',
+          completedTasks: 0,
+          totalTasks: 1,
+          lastModified: '2026-08-24T00:00:00.000Z',
+          workflowSnapshot,
+        }] as any,
+        listSpecs: async () => [],
+        listWorksets: async () => ({ worksets: [] }),
+        listStores: async () => ({ stores: [] }),
+        getInstructions: async () => {
+          instructionsCalls += 1;
+          return 'must not be called during list refresh';
+        },
+      } as any),
+    });
+
+    const data = await gateway.loadProjectSidebarData(project);
+
+    expect(data.changes[0].workflowSnapshot).toBeUndefined();
+    expect(data.changes[0].attention).toMatchObject({
+      required: true,
+      reasons: ['invalid-artifact-status'],
+    });
+    expect(instructionsCalls).toBe(0);
+  });
+
+  it('drops malformed workflow snapshots while keeping the Change non-actionable', async () => {
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'openspec-sidebar-malformed-snapshot-'));
+    temporaryDirectories.push(base);
+    const projectRoot = path.join(base, 'project-root');
+    await fs.mkdir(path.join(projectRoot, 'openspec'), { recursive: true });
+    const project = await createProjectContext('Project', projectRoot);
+    const gateway = new ProjectDataGateway({
+      createCli: () => ({
+        getContext: async () => context(projectRoot, 'nearest'),
+        listChanges: async () => [{
+          name: 'malformed-change',
+          completedTasks: 0,
+          totalTasks: 0,
+          lastModified: '2026-08-24',
+          workflowSnapshot: {
+            changeName: 'malformed-change',
+            schema: 'custom-schema',
+            bindingKey: 'missing-artifacts',
+            artifacts: [{ id: 'missing-status' }],
+          },
+        }] as any,
+        listSpecs: async () => [],
+        listWorksets: async () => ({ worksets: [] }),
+        listStores: async () => ({ stores: [] }),
+      }),
+    });
+
+    const data = await gateway.loadProjectSidebarData(project);
+
+    expect(data.changes[0].workflowSnapshot).toBeUndefined();
+  });
 });
