@@ -8,7 +8,8 @@ import { ChangesExplorer } from './components/ChangesExplorer';
 import { SpecsExplorer } from './components/SpecsExplorer';
 import { setLocale } from '../i18n';
 import type { ChangeDetailTabId, InteractiveWorkflowAction } from '../shared/interactiveWorkflow';
-import { isProjectPageContext } from './types/messages';
+import type { ChangeWorkflowSnapshot } from '../shared/changeWorkflow';
+import { isChangeDetailContext, isProjectPageContext } from './types/messages';
 
 export type AppMessageRoute =
   | 'sidebar'
@@ -25,8 +26,8 @@ export function resolveAppMessageRoute(message: unknown): AppMessageRoute {
   if (!message || typeof message !== 'object') {
     return 'unknown';
   }
-  const candidate = message as { type?: unknown; view?: unknown; changeName?: unknown; specId?: unknown };
-  if (candidate.type === 'setContext' && candidate.view === 'changeDetail' && typeof candidate.changeName === 'string' && candidate.changeName.length > 0) {
+  const candidate = message as { type?: unknown; view?: unknown; specId?: unknown };
+  if (isChangeDetailContext(message)) {
     return 'changeDetail';
   }
   if (candidate.type === 'specContent' && typeof candidate.specId === 'string' && candidate.specId.length > 0) {
@@ -57,6 +58,10 @@ function AppContent() {
   const [initialTab, setInitialTab] = useState<ChangeDetailTabId | undefined>(undefined);
   const [interactiveAction, setInteractiveAction] = useState<InteractiveWorkflowAction | undefined>(undefined);
   const [panelScopeId, setPanelScopeId] = useState<string | undefined>(undefined);
+  const [panelWorkflowSnapshot, setPanelWorkflowSnapshot] = useState<ChangeWorkflowSnapshot | undefined>(undefined);
+  const [panelProjectLabel, setPanelProjectLabel] = useState<string | undefined>(undefined);
+  const [panelPlanningRoot, setPanelPlanningRoot] = useState<string | undefined>(undefined);
+  const [panelScopeSource, setPanelScopeSource] = useState<string | undefined>(undefined);
   const [panelSpecId, setPanelSpecId] = useState<string | null>(null);
   const [panelSpecContent, setPanelSpecContent] = useState<string | null>(null);
 
@@ -77,6 +82,10 @@ function AppContent() {
         // Bind the panel to the scope it was opened under so store-scoped changes don't
         // cross-resolve with a same-named change in another root.
         setPanelScopeId(msg.scope?.id);
+        setPanelWorkflowSnapshot(msg.workflowSnapshot);
+        setPanelProjectLabel(msg.project?.label);
+        setPanelPlanningRoot(msg.scope?.rootPath);
+        setPanelScopeSource(msg.scope?.source);
         if (msg.interactiveAction) {
           setInteractiveAction(undefined);
           setTimeout(() => setInteractiveAction(msg.interactiveAction), 0);
@@ -102,11 +111,19 @@ function AppContent() {
         setInitialTab(undefined);
         setInteractiveAction(undefined);
         setPanelScopeId(undefined);
+        setPanelWorkflowSnapshot(undefined);
+        setPanelProjectLabel(undefined);
+        setPanelPlanningRoot(undefined);
+        setPanelScopeSource(undefined);
         dispatch({ type: 'SET_PAGE_CONTEXT', payload: msg });
       } else if (msg.type === 'setContext') {
         setPanelChangeName(null);
         setPanelSpecId(null);
         setPanelSpecContent(null);
+        setPanelWorkflowSnapshot(undefined);
+        setPanelProjectLabel(undefined);
+        setPanelPlanningRoot(undefined);
+        setPanelScopeSource(undefined);
         dispatch({ type: 'CLEAR_PAGE_CONTEXT' });
       } else if (route === 'specContent' && !panelChangeName) {
         setPanelSpecId(msg.specId);
@@ -124,6 +141,10 @@ function AppContent() {
           debug={state.debug}
           initialTab={initialTab}
           interactiveAction={interactiveAction}
+          workflowSnapshot={panelWorkflowSnapshot}
+          projectLabel={panelProjectLabel}
+          planningRoot={panelPlanningRoot}
+          scopeSource={panelScopeSource}
           scopeId={panelScopeId}
         />
       );

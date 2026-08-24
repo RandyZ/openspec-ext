@@ -5,6 +5,7 @@ import type { AppAction } from '../context/AppContext';
 import { sendMessage } from '../types/messages';
 import type {
   DashboardData,
+  ChangeInfo,
   OpenSpecRootBinding,
   ProjectContext,
   ProjectSidebarData,
@@ -26,6 +27,11 @@ import {
   type WorkflowAction,
 } from '../../shared/workflowCommand';
 import { buildChangeStatusCounts } from '../../shared/changeLifecycle';
+import {
+  createWorkflowRequestId,
+  resolveWorkflowActions,
+  type WorkflowActionReceipt,
+} from '../../shared/changeWorkflow';
 import type { WorkflowLaunchConfigView } from '../utils/workflowLaunchLabels';
 import type { CacheAction, CacheStatsView } from '../types/messages';
 import {
@@ -71,6 +77,39 @@ export function getDashboardActionScopeId(
   selectedScopeId?: string,
 ): string | undefined {
   return projectSidebar ? undefined : selectedScopeId;
+}
+
+export function getDashboardPriorityChanges(
+  changes: readonly ChangeInfo[],
+  receipts: readonly WorkflowActionReceipt[] = [],
+): {
+  needsAttention: ChangeInfo[];
+  readyToVerify: ChangeInfo[];
+  recommended: ChangeInfo[];
+} {
+  const receiptAttentionKeys = new Set(
+    receipts
+      .filter((receipt) => receipt.status === 'failed' || receipt.status === 'fallback')
+      .map((receipt) => `${receipt.changeName}\u0000${receipt.bindingKey}`),
+  );
+  const needsAttention = changes.filter((change) => (
+    change.attention?.required === true
+    || (change.workflowSnapshot !== undefined
+      && receiptAttentionKeys.has(`${change.name}\u0000${change.workflowSnapshot.bindingKey}`))
+  ));
+  const readyToVerify: ChangeInfo[] = [];
+  const recommended: ChangeInfo[] = [];
+  for (const change of changes) {
+    if (!change.workflowSnapshot) continue;
+    const resolved = resolveWorkflowActions(change.workflowSnapshot, {
+      completedTasks: change.completedTasks,
+      totalTasks: change.totalTasks,
+      isArchived: change.lifecycleStatus === 'archived',
+    });
+    if (resolved.recommended?.action === 'verify') readyToVerify.push(change);
+    else if (resolved.recommended && !change.attention?.required) recommended.push(change);
+  }
+  return { needsAttention, readyToVerify, recommended };
 }
 
 export function returnToCurrentProject(
@@ -146,6 +185,9 @@ export const Dashboard: React.FC = () => {
   const [cacheStats, setCacheStats] = useState<CacheStatsView | null>(null);
   const [cacheActionMessage, setCacheActionMessage] = useState<string | null>(null);
   const [pendingCacheAction, setPendingCacheAction] = useState<CacheAction | null>(null);
+  const [workflowReceipts, setWorkflowReceipts] = useState<WorkflowActionReceipt[]>([]);
+  const pendingWorkflowRequestsRef = useRef(new Map<string, { changeName: string; bindingKey: string }>());
+  const latestWorkflowRequestRef = useRef(new Map<string, string>());
   // Tracks the scope the current requirements cache was loaded under; reset on change.
   const lastScopeIdRef = useRef<string | undefined>(undefined);
   // Ref mirror of the current scope id, so the onMessage callback (created once per
@@ -255,6 +297,26 @@ export const Dashboard: React.FC = () => {
         }));
       } else if (message.type === 'workflowLaunchConfig') {
         setWorkflowLaunchConfig(message.config ?? null);
+      } else if (message.type === 'workflowActionReceipt') {
+        const pending = pendingWorkflowRequestsRef.current.get(message.requestId);
+        const key = `${message.changeName}\u0000${message.bindingKey}`;
+        if (
+          pending
+          && pending.changeName === message.changeName
+          && pending.bindingKey === message.bindingKey
+          && latestWorkflowRequestRef.current.get(key) === message.requestId
+        ) {
+          setWorkflowReceipts((previous) => [
+            ...previous.filter((receipt) => (
+              receipt.changeName !== message.changeName
+              || receipt.bindingKey !== message.bindingKey
+            )),
+            message as WorkflowActionReceipt,
+          ]);
+          if (message.status !== 'running') {
+            pendingWorkflowRequestsRef.current.delete(message.requestId);
+          }
+        }
       } else if (message.type === 'cacheStats') {
         setCacheStats(message.stats ?? null);
       } else if (message.type === 'cacheActionResult') {
@@ -354,7 +416,7 @@ export const Dashboard: React.FC = () => {
     postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({ action: 'apply', changeName, target: 'clipboard' })));
   };
 
-  const handleLaunchWorkflow = (action: WorkflowAction, changeName: string) => {
+  const handleLaunchWorkflow = (action: WorkflowAction, changeName: string, bindingKey?: string) => {
     if (action === 'verify' || action === 'archive') {
       postMessage(
         projectSidebar
@@ -370,10 +432,18 @@ export const Dashboard: React.FC = () => {
       );
       return;
     }
+    const requestId = createWorkflowRequestId('dashboard');
+    if (bindingKey) {
+      const key = `${changeName}\u0000${bindingKey}`;
+      pendingWorkflowRequestsRef.current.set(requestId, { changeName, bindingKey });
+      latestWorkflowRequestRef.current.set(key, requestId);
+    }
     postMessage(sendMessage.launchWorkflowAction(
       action,
       changeName,
       getDashboardActionScopeId(projectSidebar, state.data?.scope?.id),
+      requestId,
+      bindingKey,
     ));
   };
 
@@ -415,6 +485,13 @@ export const Dashboard: React.FC = () => {
   // Root-scoped empty states name the selected root (e.g. "Store: team-plans") so it is
   // clear that local root content does not leak into a store root, and vice versa.
   const selectedRootLabel = data?.scope ? formatOpenSpecRootLabel(data.scope) : undefined;
+  const prioritySourceChanges = projectSidebar ? projectChanges : data?.changes ?? [];
+  const priorities = getDashboardPriorityChanges(prioritySourceChanges, workflowReceipts);
+  const priorityGroups = [
+    { key: 'needs-attention', label: t('dashboard.priorityNeedsAttention'), changes: priorities.needsAttention },
+    { key: 'ready-to-verify', label: t('dashboard.priorityReadyToVerify'), changes: priorities.readyToVerify },
+    { key: 'recommended', label: t('dashboard.priorityRecommended'), changes: priorities.recommended },
+  ];
 
   return (
     <div className="min-h-screen" style={{ 
@@ -466,6 +543,33 @@ export const Dashboard: React.FC = () => {
             mode={projectDiagnostic.mode}
             onAction={handleCliDiagnosticAction}
           />
+        )}
+
+        {priorityGroups.some((group) => group.changes.length > 0) && (
+          <div className="mb-4 flex flex-col gap-3" aria-label="Workflow priorities">
+            {priorityGroups.map((group) => group.changes.length > 0 && (
+              <section key={group.key} data-priority={group.key}>
+                <h2 className="text-xs font-semibold uppercase tracking-wide mb-1">{group.label}</h2>
+                <div className="flex flex-wrap gap-1">
+                  {group.changes.map((change) => (
+                    <button
+                      key={`${group.key}:${change.name}`}
+                      type="button"
+                      data-action
+                      className="px-2 py-1 rounded text-xs cursor-pointer"
+                      style={{
+                        background: 'var(--vscode-button-secondaryBackground)',
+                        color: 'var(--vscode-button-secondaryForeground)',
+                      }}
+                      onClick={() => handleOpenChange(change.name)}
+                    >
+                      {change.name}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
         )}
 
         {projectSidebar ? (

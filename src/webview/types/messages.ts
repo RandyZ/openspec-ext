@@ -1,4 +1,5 @@
-import type { WorkflowAction } from '../../shared/workflowCommand';
+import type { WorkflowAction, WorkflowCommandTarget } from '../../shared/workflowCommand';
+import { createWorkflowRequestId } from '../../shared/changeWorkflow';
 import type { WorkflowLaunchConfigView } from '../../shared/workflowLaunchConfig';
 import type {
   ChangeDetailTabId,
@@ -10,12 +11,18 @@ import type {
   ChangeAttention,
   ChangeStatusCounts,
 } from '../../shared/changeLifecycle';
+import type { ChangeWorkflowSnapshot } from '../../shared/changeWorkflow';
+import {
+  isWorkflowSnapshotBoundTo,
+} from '../../shared/changeWorkflow';
 import type {
   OpenSpecRootBinding,
   ProjectContext,
   ProjectSidebarWorkspaceData,
   ProjectWorksetNavigationData,
 } from '../../extension/services/types';
+
+export type { ChangeWorkflowSnapshot } from '../../shared/changeWorkflow';
 
 export type {
   OpenSpecRootBinding,
@@ -45,14 +52,30 @@ export type WebviewMessage =
   | { type: 'refresh' }
   | { type: 'toggleTask'; changeName: string; taskIndex: number; scopeId?: string }
   | { type: 'openChange'; changeName: string }
-  | { type: 'openArtifact'; changeName: string; artifactType: string; scopeId?: string }
+  | {
+    type: 'openArtifact';
+    changeName: string;
+    artifactType?: string;
+    artifactId?: string;
+    artifactPath?: string;
+    outputPath?: string;
+    scopeId?: string;
+  }
   | { type: 'createChange'; name: string; scopeId?: string }
   | { type: 'requestNewChange'; scopeId?: string }
   | { type: 'copyToClipboard'; text: string }
   | { type: 'openSpec'; path: string }
   | { type: 'openDeltaSpec'; changeName: string; specId: string; scopeId?: string }
   | { type: 'archiveChange'; name: string; scopeId?: string }
-  | { type: 'getArtifactContent'; changeName: string; artifactType: string; scopeId?: string }
+  | {
+    type: 'getArtifactContent';
+    changeName: string;
+    artifactType?: string;
+    artifactId?: string;
+    artifactPath?: string;
+    outputPath?: string;
+    scopeId?: string;
+  }
   | { type: 'listDeltaSpecs'; changeName: string; scopeId?: string }
   | { type: 'getDeltaSpecContent'; changeName: string; specId: string; scopeId?: string }
   | {
@@ -73,7 +96,14 @@ export type WebviewMessage =
   | { type: 'requestCreateArtifact'; changeName: string; artifactType: string; scopeId?: string }
   | { type: 'runCommand'; commandId: string; argsJson?: string; changeName?: string }
   | { type: 'fillChat'; prompt: string }
-  | { type: 'launchWorkflowAction'; action: WorkflowAction; changeName: string; scopeId?: string }
+  | {
+    type: 'launchWorkflowAction';
+    action: WorkflowAction;
+    changeName: string;
+    requestId?: string;
+    bindingKey?: string;
+    scopeId?: string;
+  }
   | { type: 'getSpecContent'; specId: string; scopeId?: string }
   | { type: 'getSpecRequirements'; specId: string; scopeId?: string }
   | {
@@ -119,12 +149,37 @@ export interface CacheStatsView {
   error?: string;
 }
 
+export interface ArtifactOutputDescriptor {
+  path: string;
+  label: string;
+  kind: 'markdown' | 'specs' | 'tasks';
+}
+
 export type ExtensionMessage =
   | { type: 'dashboardData'; data: DashboardData; debug?: boolean; cache?: WebviewCacheMeta }
   | { type: 'cacheStats'; stats: CacheStatsView }
   | { type: 'cacheActionResult'; action: CacheAction; success: boolean; message?: string }
   | { type: 'error'; message: string }
-  | { type: 'artifactContent'; changeName: string; artifactType: string; content: string; cache?: WebviewCacheMeta }
+  | {
+    type: 'workflowActionReceipt';
+    requestId: string;
+    changeName: string;
+    bindingKey: string;
+    action: WorkflowAction;
+    target: WorkflowCommandTarget;
+    status: 'delivered' | 'copied' | 'fallback' | 'running' | 'completed' | 'failed';
+    message?: string;
+  }
+  | {
+    type: 'artifactContent';
+    changeName: string;
+    artifactType: string;
+    artifactId?: string;
+    artifactPath?: string;
+    outputs?: ArtifactOutputDescriptor[];
+    content: string;
+    cache?: WebviewCacheMeta;
+  }
   | { type: 'artifactContentError'; changeName: string; artifactType: string; message: string; code?: string }
   | { type: 'deltaSpecList'; changeName: string; specIds: string[] }
   | { type: 'deltaSpecContent'; changeName: string; specId: string; content: string; cache?: WebviewCacheMeta }
@@ -140,6 +195,7 @@ export type ExtensionMessage =
     scope?: OpenSpecScopeView;
     project?: ProjectContext;
     binding?: OpenSpecRootBinding;
+    workflowSnapshot?: ChangeWorkflowSnapshot;
   }
   | { type: 'setContext'; view: 'sidebar'; data: ProjectSidebarData }
   | { type: 'setContext'; view: 'changesExplorer'; data: ProjectChangesExplorerData }
@@ -266,6 +322,7 @@ export interface ChangeInfo {
   lifecycleStatus: ActiveChangeLifecycleStatus;
   attention?: ChangeAttention;
   artifacts?: ArtifactStatus[];
+  workflowSnapshot?: ChangeWorkflowSnapshot;
   proposalWhySummary?: string;
   proposalWhyFullText?: string;
   searchText?: string;
@@ -343,6 +400,25 @@ export function isProjectPageContext(message: unknown): message is ProjectPageCo
   }
 }
 
+export function isChangeDetailContext(
+  message: unknown
+): message is Extract<ExtensionMessage, { type: 'setContext'; view: 'changeDetail' }> {
+  if (!isRecord(message)
+    || message.type !== 'setContext'
+    || message.view !== 'changeDetail'
+    || typeof message.changeName !== 'string'
+    || message.changeName.trim().length === 0) {
+    return false;
+  }
+  if (message.workflowSnapshot === undefined) return true;
+  if (!isRecord(message.binding)) return false;
+  return isWorkflowSnapshotBoundTo(
+    message.workflowSnapshot,
+    message.binding as OpenSpecRootBinding,
+    message.changeName
+  );
+}
+
 // Helper functions for sending messages
 export const sendMessage = {
   getDashboardData: (): WebviewMessage => ({
@@ -400,10 +476,12 @@ export const sendMessage = {
     changeName,
   }),
 
-  openArtifact: (changeName: string, artifactType: string, scopeId?: string): WebviewMessage => ({
+  openArtifact: (changeName: string, artifactType: string, scopeId?: string, artifactPath?: string): WebviewMessage => ({
     type: 'openArtifact',
     changeName,
+    artifactId: artifactType,
     artifactType,
+    ...(artifactPath ? { artifactPath } : {}),
     ...(scopeId ? { scopeId } : {}),
   }),
 
@@ -441,10 +519,12 @@ export const sendMessage = {
     ...(scopeId ? { scopeId } : {}),
   }),
 
-  getArtifactContent: (changeName: string, artifactType: string, scopeId?: string): WebviewMessage => ({
+  getArtifactContent: (changeName: string, artifactType: string, scopeId?: string, artifactPath?: string): WebviewMessage => ({
     type: 'getArtifactContent',
     changeName,
+    artifactId: artifactType,
     artifactType,
+    ...(artifactPath ? { artifactPath } : {}),
     ...(scopeId ? { scopeId } : {}),
   }),
 
@@ -527,10 +607,18 @@ export const sendMessage = {
     prompt,
   }),
 
-  launchWorkflowAction: (action: WorkflowAction, changeName: string, scopeId?: string): WebviewMessage => ({
+  launchWorkflowAction: (
+    action: WorkflowAction,
+    changeName: string,
+    scopeId?: string,
+    requestId = createWorkflowRequestId(),
+    bindingKey?: string,
+  ): WebviewMessage => ({
     type: 'launchWorkflowAction',
     action,
     changeName,
+    requestId,
+    ...(bindingKey ? { bindingKey } : {}),
     ...(scopeId ? { scopeId } : {}),
   }),
 

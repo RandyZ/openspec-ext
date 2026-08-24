@@ -19,6 +19,7 @@ const change: ChangeInfo = {
   createdAt: '2026-06-01T09:00:00.000Z',
   status: 'in-progress',
   lifecycleStatus: 'applying',
+  workflowSnapshot: workflowSnapshotFor('applying'),
   artifacts: [
     { id: 'proposal', outputPath: 'proposal.md', status: 'done' },
     { id: 'design', outputPath: 'design.md', status: 'done' },
@@ -43,13 +44,49 @@ const ACTION_LABELS: Record<string, string> = {
   archive: 'Archive',
 };
 
+function workflowSnapshotFor(
+  lifecycleStatus: ChangeInfo['lifecycleStatus'] | 'archived'
+): ChangeInfo['workflowSnapshot'] {
+  const planning = lifecycleStatus === 'planning';
+  return {
+    changeName: 'polish-dashboard-change-detail-ui',
+    schema: 'custom-schema',
+    bindingKey: 'bound-root',
+    artifacts: planning
+      ? [{
+        id: 'next-step',
+        status: 'ready' as const,
+        requires: [],
+        missingDeps: [],
+        outputPath: 'openspec/changes/demo/next-step.md',
+        existingOutputPaths: [],
+      }]
+      : ['proposal', 'specs', 'design', 'tasks'].map((id) => ({
+        id,
+        status: 'done' as const,
+        requires: [],
+        missingDeps: [],
+        outputPath: `openspec/changes/demo/${id}.md`,
+        existingOutputPaths: [],
+      })),
+  };
+}
+
 function makeChange(
   lifecycleStatus: ChangeInfo['lifecycleStatus'] | 'archived',
   overrides: Partial<ChangeInfo> = {}
 ): ChangeInfo {
+  const completedTasks = lifecycleStatus === 'ready-to-verify' || lifecycleStatus === 'archived'
+    ? 5
+    : lifecycleStatus === 'planning' || lifecycleStatus === 'ready-to-apply'
+      ? 0
+      : 3;
   return {
     ...change,
+    completedTasks,
+    totalTasks: 5,
     lifecycleStatus: lifecycleStatus as ChangeInfo['lifecycleStatus'],
+    workflowSnapshot: workflowSnapshotFor(lifecycleStatus),
     ...overrides,
   };
 }
@@ -75,15 +112,15 @@ describe('ChangeCard', () => {
     expect(html).toContain('display:none');
   });
 
-  it('renders identity, summary, artifacts, time metadata, and progress', () => {
+  it('renders identity, shared action summary, time metadata, and progress', () => {
     const html = renderToStaticMarkup(
       <ChangeCard change={change} onClick={vi.fn()} onLaunchWorkflow={vi.fn()} />
     );
 
     expect(html).toContain('polish-dashboard-change-detail-ui');
     expect(html).toContain('Improve dashboard readability.');
-    expect(html).toContain('proposal');
-    expect(html).toContain('design');
+    expect(html).toContain('Apply');
+    expect(html).toContain('data-workflow-summary');
     expect(html).toContain('Created');
     expect(html).toContain('Updated');
     expect(html).toContain('3 / 5 tasks');
@@ -163,9 +200,7 @@ describe('ChangeCard lifecycle-driven workflow actions', () => {
     setLocale('en');
   });
 
-  it('prefers Host lifecycleStatus over conflicting artifact/task math for actions', () => {
-    // Artifacts incomplete + tasks incomplete would have made getSmartActions return Continue/FF,
-    // but Host says ready-to-verify → Verify only.
+  it('prefers the snapshot task state over conflicting lifecycle math for actions', () => {
     const conflicting = makeChange('ready-to-verify', {
       status: 'draft',
       completedTasks: 0,
@@ -177,11 +212,36 @@ describe('ChangeCard lifecycle-driven workflow actions', () => {
       <ChangeCard change={conflicting} onClick={vi.fn()} onLaunchWorkflow={vi.fn()} />
     );
 
-    expect(html).toContain('data-workflow-action="verify"');
-    expect(html).not.toContain('data-workflow-action="continue"');
+    expect(html).toContain('data-workflow-action="apply"');
+    expect(html).not.toContain('data-workflow-action="verify"');
     expect(html).not.toContain('data-workflow-action="ff"');
-    expect(html).not.toContain('data-workflow-action="apply"');
     expect(html).not.toContain('data-workflow-action="archive"');
+  });
+
+  it('uses the bound workflow snapshot instead of lifecycle math for actions', () => {
+    const conflicting = makeChange('ready-to-verify', {
+      workflowSnapshot: {
+        changeName: 'polish-dashboard-change-detail-ui',
+        schema: 'custom-schema',
+        bindingKey: 'bound-root',
+        artifacts: [{
+          id: 'custom-ready',
+          status: 'ready',
+          requires: [],
+          missingDeps: [],
+          outputPath: 'openspec/changes/demo/custom-ready.md',
+          existingOutputPaths: [],
+        }],
+      },
+    });
+
+    const html = renderToStaticMarkup(
+      <ChangeCard change={conflicting} onClick={vi.fn()} onLaunchWorkflow={vi.fn()} />
+    );
+
+    expect(html).toContain('data-workflow-action="continue"');
+    expect(html).toContain('Continue planning');
+    expect(html).not.toContain('data-workflow-action="verify"');
   });
 
   it('does not contain getSmartActions in ChangeCard source', () => {
@@ -190,7 +250,7 @@ describe('ChangeCard lifecycle-driven workflow actions', () => {
       'utf8'
     );
     expect(source).not.toContain('function getSmartActions');
-    expect(source).toContain('getWorkflowActionsForLifecycle');
+    expect(source).toContain('resolveWorkflowActions');
   });
 
   it.each([
@@ -233,12 +293,13 @@ describe('ChangeCard lifecycle-driven workflow actions', () => {
       path.resolve(__dirname, '../../../src/webview/components/ChangeCard.tsx'),
       'utf8'
     );
-    expect(source).toContain('onLaunchWorkflow(descriptor.action, change.name)');
+    expect(source).toContain('onLaunchWorkflow(descriptor.action, change.name, change.workflowSnapshot?.bindingKey)');
   });
 
   it('renders no workflow write actions when lifecycleStatus is missing', () => {
     const withoutLifecycle = { ...change } as ChangeInfo;
     delete (withoutLifecycle as { lifecycleStatus?: string }).lifecycleStatus;
+    delete withoutLifecycle.workflowSnapshot;
 
     const html = renderToStaticMarkup(
       <ChangeCard change={withoutLifecycle} onClick={vi.fn()} onLaunchWorkflow={vi.fn()} />

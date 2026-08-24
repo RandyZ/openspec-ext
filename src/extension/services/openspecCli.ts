@@ -23,6 +23,13 @@ import {
   type CliActivationDiagnosticCategory,
 } from './cliActivationDiagnostic';
 import { enrichChangeWithLifecycle } from '../../shared/changeLifecycle';
+import {
+  getWorkflowBindingKey,
+  type ChangeWorkflowSnapshot,
+  type WorkflowArtifactNode,
+  type WorkflowArtifactStatus,
+  type WorkflowBindingIdentity,
+} from '../../shared/changeWorkflow';
 
 const MINIMUM_OPENSPEC_VERSION = '1.0.0';
 
@@ -282,7 +289,10 @@ export class OpenSpecCliService {
    * List all changes with artifact status.
    * Handles non-JSON output (e.g. human-readable "Active changes:") by returning [].
    */
-  async listChanges(scope?: ScopeOption | OpenSpecScope): Promise<ChangeInfo[]> {
+  async listChanges(
+    scope?: ScopeOption | OpenSpecScope,
+    workflowBinding?: WorkflowBindingIdentity
+  ): Promise<ChangeInfo[]> {
     try {
       const output = await this.execOpenSpec(this.withStoreFlag(['list', '--json'], scope));
       const data = this.tryParseJson<{ changes?: unknown[] }>(output, 'openspec list --json');
@@ -297,7 +307,9 @@ export class OpenSpecCliService {
         data.changes.map(async (c: any) => {
           try {
             const status = await this.getChangeStatus(c.name, scope);
-            const artifacts = this.normalizeArtifactStatuses(status.artifacts ?? []);
+            const rawArtifacts = Array.isArray(status.artifacts) ? status.artifacts : [];
+            const workflow = this.normalizeWorkflowSnapshot(c.name, status, scope, workflowBinding);
+            const artifacts = this.normalizeArtifactStatuses(rawArtifacts);
             return enrichChangeWithLifecycle({
               name: c.name,
               completedTasks: c.completedTasks || 0,
@@ -306,6 +318,10 @@ export class OpenSpecCliService {
               createdAt: this.normalizeCreatedAt(c),
               status: this.determineStatus(c),
               artifacts,
+              ...(workflow.snapshot ? { workflowSnapshot: workflow.snapshot } : {}),
+              ...(workflow.invalid ? {
+                attention: { required: true, reasons: ['invalid-artifact-status'] as const },
+              } : {}),
             });
           } catch {
             // Distinguish status-read failure from a legitimate empty artifact list.
@@ -654,8 +670,133 @@ export class OpenSpecCliService {
     return this.normalizeArtifactInfos(raw) as ArtifactStatus[];
   }
 
+  private normalizeWorkflowSnapshot(
+    changeName: string,
+    status: { artifacts?: unknown[]; [k: string]: unknown },
+    scope?: ScopeOption | OpenSpecScope,
+    workflowBinding?: WorkflowBindingIdentity
+  ): { snapshot?: ChangeWorkflowSnapshot; invalid: boolean } {
+    if (!Array.isArray(status.artifacts)) return { invalid: true };
+
+    const artifactPaths = this.normalizeArtifactPaths(status.artifactPaths);
+    const artifacts: WorkflowArtifactNode[] = [];
+    const ids = new Set<string>();
+    let malformed = false;
+    let unknownState = false;
+
+    for (const rawArtifact of status.artifacts) {
+      if (!rawArtifact || typeof rawArtifact !== 'object') {
+        malformed = true;
+        continue;
+      }
+      const artifact = rawArtifact as Record<string, unknown>;
+      const id = typeof artifact.id === 'string' ? artifact.id : '';
+      if (!id || ids.has(id)) {
+        malformed = true;
+        continue;
+      }
+      ids.add(id);
+
+      const rawStatus = typeof artifact.status === 'string' ? artifact.status : '';
+      const normalizedStatus = this.normalizeWorkflowArtifactStatus(rawStatus);
+      if (!normalizedStatus) unknownState = true;
+
+      const requires = this.normalizeStringArray(artifact.requires);
+      const missingDeps = this.normalizeStringArray(artifact.missingDeps);
+      if (requires === undefined || missingDeps === undefined) malformed = true;
+
+      const pathInfo = artifactPaths.get(id);
+      const outputPath = typeof artifact.outputPath === 'string'
+        ? artifact.outputPath
+        : pathInfo?.outputPath ?? (typeof artifact.path === 'string' ? artifact.path : '');
+      const existingOutputPaths = Array.isArray(artifact.existingOutputPaths)
+        ? artifact.existingOutputPaths.filter((value): value is string => typeof value === 'string')
+        : pathInfo?.existingOutputPaths ?? [];
+      if (artifact.existingOutputPaths !== undefined && !Array.isArray(artifact.existingOutputPaths)) {
+        malformed = true;
+      }
+
+      artifacts.push({
+        id,
+        status: normalizedStatus ?? 'blocked',
+        requires: requires ?? [],
+        missingDeps: missingDeps ?? [],
+        outputPath,
+        existingOutputPaths,
+        ...(normalizedStatus ? {} : { rawStatus }),
+      });
+    }
+
+    if (malformed) return { invalid: true };
+
+    const binding = workflowBinding ?? this.defaultWorkflowBinding(scope);
+    return {
+      invalid: unknownState,
+      snapshot: {
+        changeName,
+        schema: typeof status.schema === 'string'
+          ? status.schema
+          : typeof status.schemaName === 'string' ? status.schemaName : 'unknown',
+        bindingKey: getWorkflowBindingKey(binding),
+        artifacts,
+        ...(unknownState ? { diagnostics: ['invalid-artifact-status'] } : {}),
+      },
+    };
+  }
+
+  private normalizeWorkflowArtifactStatus(status: string): WorkflowArtifactStatus | undefined {
+    if (status === 'complete') return 'done';
+    return ['done', 'ready', 'blocked', 'skipped'].includes(status)
+      ? status as WorkflowArtifactStatus
+      : undefined;
+  }
+
+  private normalizeStringArray(value: unknown): string[] | undefined {
+    if (value === undefined) return [];
+    return Array.isArray(value) && value.every((item) => typeof item === 'string')
+      ? value
+      : undefined;
+  }
+
+  private normalizeArtifactPaths(value: unknown): Map<string, {
+    outputPath: string;
+    existingOutputPaths: string[];
+  }> {
+    const paths = new Map<string, { outputPath: string; existingOutputPaths: string[] }>();
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return paths;
+
+    for (const [id, rawPath] of Object.entries(value)) {
+      if (typeof rawPath === 'string') {
+        paths.set(id, { outputPath: rawPath, existingOutputPaths: [] });
+        continue;
+      }
+      if (!rawPath || typeof rawPath !== 'object' || Array.isArray(rawPath)) continue;
+      const pathInfo = rawPath as Record<string, unknown>;
+      paths.set(id, {
+        outputPath: typeof pathInfo.outputPath === 'string'
+          ? pathInfo.outputPath
+          : typeof pathInfo.path === 'string' ? pathInfo.path : '',
+        existingOutputPaths: Array.isArray(pathInfo.existingOutputPaths)
+          ? pathInfo.existingOutputPaths.filter((path): path is string => typeof path === 'string')
+          : [],
+      });
+    }
+    return paths;
+  }
+
+  private defaultWorkflowBinding(scope?: ScopeOption | OpenSpecScope): WorkflowBindingIdentity {
+    const scoped = scope as Partial<OpenSpecScope> | undefined;
+    return {
+      projectId: this.workspaceRoot,
+      commandCwd: this.workspaceRoot,
+      rootPath: typeof scoped?.rootPath === 'string' ? scoped.rootPath : this.workspaceRoot,
+      rootSource: typeof scoped?.source === 'string' ? scoped.source : 'nearest',
+      ...(typeof scoped?.storeId === 'string' ? { storeId: scoped.storeId } : {}),
+    };
+  }
+
   private normalizeArtifactInfos(raw: unknown[]): ArtifactInfo[] {
-    const allowed: Array<'done' | 'ready' | 'blocked'> = ['done', 'ready', 'blocked'];
+    const allowed: WorkflowArtifactStatus[] = ['done', 'ready', 'blocked', 'skipped'];
     return raw
       .filter((a): a is Record<string, unknown> => a != null && typeof a === 'object')
       .map((a) => {
@@ -663,7 +804,9 @@ export class OpenSpecCliService {
         return {
           id: typeof a.id === 'string' ? a.id : '',
           outputPath: typeof a.outputPath === 'string' ? a.outputPath : (a.path as string) ?? '',
-          status: (typeof status === 'string' && allowed.includes(status as 'done' | 'ready' | 'blocked') ? status : 'blocked') as 'done' | 'ready' | 'blocked',
+          status: (typeof status === 'string' && allowed.includes(status as WorkflowArtifactStatus)
+            ? status
+            : 'blocked') as WorkflowArtifactStatus,
         };
       });
   }

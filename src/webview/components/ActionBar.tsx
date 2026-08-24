@@ -1,5 +1,6 @@
 import React from 'react';
 import { type WorkflowState } from '../utils/workflowState';
+import type { ResolvedWorkflowActions } from '../../shared/changeWorkflow';
 import { t } from '../../i18n';
 import type { WorkflowAction as WorkflowCommandAction } from '../../shared/workflowCommand';
 import {
@@ -29,13 +30,28 @@ const secondaryStyle: React.CSSProperties = {
   color: 'var(--vscode-button-secondaryForeground)',
 };
 
+function getReceiptLabel(status: string): string {
+  const labels: Record<string, Parameters<typeof t>[0]> = {
+    pending: 'workflow.receiptPending',
+    delivered: 'workflow.receiptDelivered',
+    copied: 'workflow.receiptCopied',
+    fallback: 'workflow.receiptFallback',
+    failed: 'workflow.receiptFailed',
+  };
+  return labels[status] ? t(labels[status]) : status;
+}
+
 export interface ActionBarProps {
   changeName: string;
   isArchived: boolean;
   workflowState?: WorkflowState;
+  resolvedActions?: ResolvedWorkflowActions;
   workflowLaunchConfig?: WorkflowLaunchConfigView | null;
   hasDeltaSpecs?: boolean;
   onAction?: (action: WorkflowCommandAction, changeName: string) => void;
+  pendingAction?: WorkflowCommandAction | null;
+  receiptStatus?: string;
+  receiptMessage?: string;
   onCopyFf: (changeName: string) => void;
   onCopyApply: (changeName: string) => void;
 }
@@ -44,12 +60,17 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   changeName,
   isArchived,
   workflowState,
+  resolvedActions,
   workflowLaunchConfig,
   onAction,
+  pendingAction,
+  receiptStatus,
+  receiptMessage,
   onCopyFf,
   onCopyApply,
 }) => {
-  if (!workflowState || !onAction) {
+  if (!workflowState && !resolvedActions) return null;
+  if (!onAction) {
     return (
       <LegacyActionBar
         changeName={changeName}
@@ -69,20 +90,33 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         background: 'var(--vscode-editor-background)',
       }}
     >
-      {!isArchived && workflowState.nextAction && (
+      {!isArchived && (resolvedActions?.recommended ?? workflowState?.nextAction) && (
         <button
           type="button"
           style={primaryStyle}
-          title={getWorkflowActionTitle(workflowState.nextAction.label, workflowLaunchConfig)}
-          aria-label={getWorkflowActionTitle(workflowState.nextAction.label, workflowLaunchConfig)}
-          onClick={() => onAction(workflowState.nextAction!.action as WorkflowCommandAction, changeName)}
+          title={getWorkflowActionTitle(
+            (resolvedActions?.recommended ?? workflowState?.nextAction)!.label,
+            workflowLaunchConfig
+          )}
+          aria-label={getWorkflowActionTitle(
+            (resolvedActions?.recommended ?? workflowState?.nextAction)!.label,
+            workflowLaunchConfig
+          )}
+          onClick={() => onAction(
+            (resolvedActions?.recommended ?? workflowState?.nextAction)!.action as WorkflowCommandAction,
+            changeName
+          )}
+          disabled={pendingAction === (resolvedActions?.recommended ?? workflowState?.nextAction)!.action}
         >
-          {getWorkflowActionButtonLabel(workflowState.nextAction.label, workflowLaunchConfig)}
+          {getWorkflowActionButtonLabel(
+            (resolvedActions?.recommended ?? workflowState?.nextAction)!.label,
+            workflowLaunchConfig
+          )}
         </button>
       )}
 
       {!isArchived &&
-        workflowState.secondaryActions.map((action) =>
+        (resolvedActions?.available ?? workflowState?.secondaryActions ?? []).map((action) =>
           <button
             key={action.label}
             type="button"
@@ -90,10 +124,35 @@ export const ActionBar: React.FC<ActionBarProps> = ({
             title={getWorkflowActionTitle(action.label, workflowLaunchConfig)}
             aria-label={getWorkflowActionTitle(action.label, workflowLaunchConfig)}
             onClick={() => onAction(action.action as WorkflowCommandAction, changeName)}
+            disabled={pendingAction === action.action}
           >
             {getWorkflowActionButtonLabel(action.label, workflowLaunchConfig)}
           </button>
         )}
+
+      {!isArchived && resolvedActions?.highImpact.length ? (
+        <div className="flex flex-wrap items-center gap-2 ml-2" role="group" aria-label={t('workflow.highImpact')}>
+          {resolvedActions.highImpact.map((action) => (
+            <button
+              key={`high-impact:${action.action}:${action.artifactId ?? ''}`}
+              type="button"
+              data-high-impact="true"
+              style={secondaryStyle}
+              title={getWorkflowActionTitle(action.label, workflowLaunchConfig)}
+              aria-label={getWorkflowActionTitle(action.label, workflowLaunchConfig)}
+              onClick={() => onAction(action.action as WorkflowCommandAction, changeName)}
+              disabled={pendingAction === action.action}
+            >
+              {getWorkflowActionButtonLabel(action.label, workflowLaunchConfig)}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {receiptStatus && (
+        <div className="basis-full text-xs" role="status" aria-live="polite">
+          {getReceiptLabel(receiptStatus)}{receiptMessage ? `: ${receiptMessage}` : ''}
+        </div>
+      )}
     </div>
   );
 };

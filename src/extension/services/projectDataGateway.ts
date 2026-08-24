@@ -6,6 +6,9 @@ import { OpenSpecCliService, type ScopeOption } from './openspecCli';
 import { FileManagerService } from './fileManager';
 import { extractProposalWhy } from './proposalWhy';
 import {
+  bindWorkflowSnapshot,
+} from '../../shared/changeWorkflow';
+import {
   ProjectDataAccessError,
   type OpenSpecContextResult,
   type OpenSpecRootBinding,
@@ -280,11 +283,14 @@ export class ProjectDataGateway {
       if (!readers.cli.listChanges) {
         throw new Error('Bound CLI does not support listChanges');
       }
-      const changes = await readers.cli.listChanges(readers.scope);
+      const changes = await readers.cli.listChanges(readers.scope, binding);
       return {
         project,
         binding,
-        changes: await this.enrichChangesWithProposalWhy(changes, readers.contentAccess),
+        changes: await this.enrichChangesWithProposalWhy(
+          this.bindWorkflowSnapshots(changes, binding),
+          readers.contentAccess
+        ),
       };
     } catch (cause) {
       throw new ProjectDataAccessError(
@@ -367,7 +373,7 @@ export class ProjectDataGateway {
       }
 
       const [rawChanges, archivedChanges, projectSpecs, referencedStoreSpecs, worksetNavigation] = await Promise.all([
-        readers.cli.listChanges(readers.scope),
+        readers.cli.listChanges(readers.scope, binding),
         readers.contentAccess.listArchivedChanges(),
         readers.cli.listSpecs(readers.scope),
         this.loadReferencedStoreSpecsFromReaders(project, readers).catch(() => []),
@@ -377,7 +383,10 @@ export class ProjectDataGateway {
       return {
         project,
         binding,
-        changes: await this.enrichChangesWithProposalWhy(rawChanges, readers.contentAccess),
+        changes: await this.enrichChangesWithProposalWhy(
+          this.bindWorkflowSnapshots(rawChanges, binding),
+          readers.contentAccess
+        ),
         archivedChanges,
         projectSpecs,
         referencedStoreSpecs,
@@ -596,6 +605,29 @@ export class ProjectDataGateway {
         return { ...change, searchText: baseSearchText };
       }
     }));
+  }
+
+  private bindWorkflowSnapshots(
+    changes: readonly ProjectChangesData['changes'][number][],
+    binding: OpenSpecRootBinding
+  ): readonly ProjectChangesData['changes'][number][] {
+    return changes.map((change) => {
+      if (change.workflowSnapshot === undefined) return change;
+      const workflowSnapshot = bindWorkflowSnapshot(
+        change.workflowSnapshot,
+        binding,
+        change.name
+      );
+      if (workflowSnapshot) return { ...change, workflowSnapshot };
+
+      const { workflowSnapshot: _ignored, ...withoutSnapshot } = change;
+      const reasons = new Set(change.attention?.reasons ?? []);
+      reasons.add('invalid-artifact-status');
+      return {
+        ...withoutSnapshot,
+        attention: { required: true, reasons: [...reasons] },
+      };
+    });
   }
 
   private resolveError(

@@ -3,32 +3,16 @@ import { ChangeInfo } from '../types/messages';
 import { t } from '../../i18n';
 import type { WorkflowAction } from '../../shared/workflowCommand';
 import {
-  getWorkflowActionsForLifecycle,
-  type ChangeLifecycleStatus,
-} from '../../shared/changeLifecycle';
+  resolveWorkflowActions,
+  type ResolvedWorkflowAction,
+} from '../../shared/changeWorkflow';
+import type { ChangeLifecycleStatus } from '../../shared/changeLifecycle';
 import {
   getWorkflowActionButtonLabel,
   getWorkflowActionTitle,
   type WorkflowLaunchConfigView,
 } from '../utils/workflowLaunchLabels';
 import { formatDateLabel, formatRelativeDateLabel } from '../utils/dateLabels';
-
-const ArtifactBadge: React.FC<{ id: string; status: 'done' | 'ready' | 'blocked' }> = ({ id, status }) => {
-  const colors = {
-    done: { bg: 'rgba(76, 175, 80, 0.2)', text: '#4caf50' },
-    ready: { bg: 'rgba(255, 193, 7, 0.2)', text: '#ffc107' },
-    blocked: { bg: 'rgba(158, 158, 158, 0.2)', text: '#9e9e9e' },
-  };
-  const { bg, text } = colors[status];
-  return (
-    <span
-      className="px-2 py-0.5 rounded text-xs font-medium"
-      style={{ background: bg, color: text }}
-    >
-      {id}
-    </span>
-  );
-};
 
 const LIFECYCLE_BADGE_KEYS: Record<ChangeLifecycleStatus, string> = {
   planning: 'dashboard.lifecyclePlanning',
@@ -63,16 +47,6 @@ const LIFECYCLE_BADGE_STYLES: Record<ChangeLifecycleStatus, React.CSSProperties>
   },
 };
 
-const WORKFLOW_ACTION_LABELS: Record<WorkflowAction, string> = {
-  explore: 'Explore',
-  continue: 'Continue',
-  ff: 'FF',
-  apply: 'Apply',
-  verify: 'Verify',
-  archive: 'Archive',
-  sync: 'Sync',
-};
-
 function resolveLifecycleStatus(
   change: ChangeInfo
 ): ChangeLifecycleStatus | null {
@@ -89,17 +63,13 @@ function resolveLifecycleStatus(
   return null;
 }
 
-function getActionLabel(action: WorkflowAction): string {
-  return WORKFLOW_ACTION_LABELS[action] ?? action;
-}
-
 export interface ChangeCardProps {
   change: ChangeInfo;
   onClick?: (changeName: string) => void;
   onCopyFf?: (changeName: string) => void;
   onCopyApply?: (changeName: string) => void;
   onArchive?: (changeName: string) => void;
-  onLaunchWorkflow?: (action: WorkflowAction, changeName: string) => void;
+  onLaunchWorkflow?: (action: WorkflowAction, changeName: string, bindingKey?: string) => void;
   workflowLaunchConfig?: WorkflowLaunchConfigView | null;
 }
 
@@ -116,9 +86,23 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
   const showActions = hover || focusWithin;
 
   const lifecycleStatus = resolveLifecycleStatus(change);
-  const workflowActions =
-    lifecycleStatus != null ? getWorkflowActionsForLifecycle(lifecycleStatus) : [];
+  const resolvedActions = change.workflowSnapshot
+    ? resolveWorkflowActions(change.workflowSnapshot, {
+      completedTasks: change.completedTasks,
+      totalTasks: change.totalTasks,
+      isArchived: lifecycleStatus === 'archived',
+    })
+    : undefined;
+  const workflowActions: readonly ResolvedWorkflowAction[] = resolvedActions
+    ? [
+      ...(resolvedActions.recommended ? [resolvedActions.recommended] : []),
+      ...resolvedActions.available,
+    ]
+    : [];
   const needsAttention = change.attention?.required === true;
+  const additionalActionCount = resolvedActions
+    ? resolvedActions.available.length + resolvedActions.highImpact.length
+    : 0;
 
   const handleCardClick = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('[data-action]')) return;
@@ -200,12 +184,17 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
         </div>
       )}
 
-      {/* 4. Artifact badges */}
-      {change.artifacts && change.artifacts.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-2">
-          {change.artifacts.map((a) => (
-            <ArtifactBadge key={a.id} id={a.id} status={a.status} />
-          ))}
+      {/* 4. Shared action summary; artifact states stay in bound Detail. */}
+      {resolvedActions && (
+        <div
+          className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs mb-2"
+          data-workflow-summary
+          style={{ color: 'var(--vscode-descriptionForeground)' }}
+        >
+          <span>{resolvedActions.recommended?.label ?? t('dashboard.noRecommendedAction')}</span>
+          {additionalActionCount > 0 && <span>{t('dashboard.moreActions', { count: additionalActionCount })}</span>}
+          {resolvedActions.blocked.length > 0 && <span>{t('dashboard.blockedCount', { count: resolvedActions.blocked.length })}</span>}
+          {resolvedActions.skipped.length > 0 && <span>{t('dashboard.skippedCount', { count: resolvedActions.skipped.length })}</span>}
         </div>
       )}
 
@@ -249,7 +238,7 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
         >
           {onLaunchWorkflow &&
             workflowActions.map((descriptor) => {
-              const label = getActionLabel(descriptor.action);
+              const label = descriptor.label;
               const isInteractiveVerifyOrArchive =
                 descriptor.action === 'verify' || descriptor.action === 'archive';
               const buttonLabel = isInteractiveVerifyOrArchive
@@ -261,7 +250,7 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
 
               return (
                 <button
-                  key={descriptor.action}
+                  key={`${descriptor.action}:${descriptor.artifactId ?? ''}`}
                   type="button"
                   data-action
                   data-workflow-action={descriptor.action}
@@ -281,7 +270,7 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
                   }}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onLaunchWorkflow(descriptor.action, change.name);
+                    onLaunchWorkflow(descriptor.action, change.name, change.workflowSnapshot?.bindingKey);
                   }}
                 >
                   {buttonLabel}

@@ -47,25 +47,25 @@ describe('deriveWorkflowState', () => {
     expect(state.steps.every((s) => s.status === 'done')).toBe(true);
   });
 
-  it('empty draft: current=proposal, primary=Continue → Proposal', () => {
+  it('empty draft: current=proposal, primary is generic Continue planning', () => {
     const state = deriveWorkflowState(name, [], 0, 0, false, false);
     expect(state.currentStep).toBe('proposal');
-    expect(state.nextAction?.label).toBe('Continue → Proposal');
+    expect(state.nextAction?.label).toBe('Continue planning');
     expect(state.nextAction?.command).toBe('/opsx:continue test-change');
     expect(state.secondaryActions.some((a) => a.label === 'FF')).toBe(true);
   });
 
-  it('has proposal only: current=specs, primary=Continue → Specs', () => {
+  it('has proposal only: current=specs, primary remains generic Continue planning', () => {
     const state = deriveWorkflowState(name, ['proposal'], 0, 0, false, false);
     expect(state.currentStep).toBe('specs');
-    expect(state.nextAction?.label).toBe('Continue → Specs');
+    expect(state.nextAction?.label).toBe('Continue planning');
     expect(state.steps.find((s) => s.step === 'proposal')?.status).toBe('done');
   });
 
   it('has proposal+specs: current=design', () => {
     const state = deriveWorkflowState(name, ['proposal', 'specs'], 0, 0, false, false);
     expect(state.currentStep).toBe('design');
-    expect(state.nextAction?.label).toBe('Continue → Design');
+    expect(state.nextAction?.label).toBe('Continue planning');
   });
 
   it('has proposal+design but no specs: current=specs', () => {

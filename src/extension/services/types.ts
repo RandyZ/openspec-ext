@@ -2,6 +2,10 @@ import type {
   ActiveChangeLifecycleStatus,
   ChangeAttention,
 } from '../../shared/changeLifecycle';
+import type {
+  ChangeWorkflowSnapshot,
+  WorkflowArtifactStatus,
+} from '../../shared/changeWorkflow';
 
 export interface ChangeInfo {
   name: string;
@@ -14,6 +18,7 @@ export interface ChangeInfo {
   lifecycleStatus: ActiveChangeLifecycleStatus;
   attention?: ChangeAttention;
   artifacts?: ArtifactStatus[];
+  workflowSnapshot?: ChangeWorkflowSnapshot;
   proposalWhySummary?: string;
   proposalWhyFullText?: string;
   searchText?: string;
@@ -176,7 +181,7 @@ export interface ProjectSidebarWorkspaceData {
 export interface ArtifactStatus {
   id: string;
   outputPath: string;
-  status: 'done' | 'ready' | 'blocked';
+  status: WorkflowArtifactStatus;
 }
 
 export interface SpecInfo {
@@ -203,7 +208,7 @@ export interface ChangeDetails {
 export interface ArtifactInfo {
   id: string;
   outputPath: string;
-  status: 'done' | 'ready' | 'blocked';
+  status: WorkflowArtifactStatus;
 }
 
 export interface TaskInfo {
