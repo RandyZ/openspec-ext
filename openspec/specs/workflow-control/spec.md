@@ -6,136 +6,6 @@
 
 ## Requirements
 
-### Requirement: Workflow Step Indicator
-
-系统 SHALL 在 ChangeDetail 面板中展示当前 change 的工作流进度，但 MUST NOT 把高影响 workflow 操作堆叠在 tab 上方。
-
-#### Scenario: 步骤状态以紧凑摘要展示当前进度
-- **GIVEN** 用户打开一个 change 的 detail 面板
-- **WHEN** 面板加载完成
-- **THEN** 面板顶部应显示紧凑的工作流状态摘要，包含 Proposal、Specs、Design、Tasks、Apply、Verify、Archive 的完成或推荐状态
-- **AND** 已完成的步骤应显示完成标记或等价视觉状态
-- **AND** 当前推荐步骤应以主色或等价强调状态显示
-- **AND** 未来步骤应以弱化状态显示
-- **AND** 面板顶部 MUST NOT 显示占据整行的 Verify/Archive 操作按钮堆叠
-
-#### Scenario: 步骤状态可导航但高影响动作进入专用 tab
-- **GIVEN** 步骤状态中有已完成和待完成的步骤
-- **WHEN** 用户点击一个已完成 artifact 步骤（如 Proposal）
-- **THEN** 应切换到对应的 tab 查看内容
-
-#### Scenario: 当前推荐的非高影响步骤仍可推进
-- **GIVEN** 步骤状态中存在当前推荐步骤
-- **AND** 当前推荐步骤不是 Verify 或 Archive
-- **WHEN** 用户点击当前推荐步骤
-- **THEN** 系统应通过 workflow command routing 发起对应 OpenSpec workflow command
-- **AND** 该行为应复用现有 clipboard、adapter、deeplink、chatCommand 或 headless agentCli 路由设置
-
-#### Scenario: Verify 和 Archive 步骤进入专用交互 tab
-- **GIVEN** 步骤状态中包含 Verify 或 Archive 步骤
-- **WHEN** 用户点击 Verify 或 Archive 相关步骤
-- **THEN** 应切换到 `Verify & Archive` tab
-- **AND** 不应直接从步骤状态触发 headless Agent CLI 或 direct archive
-
-#### Scenario: 归档 change 的步骤状态只读
-- **GIVEN** 一个已归档的 change
-- **WHEN** 步骤状态显示
-- **THEN** 所有步骤应显示为已完成状态
-- **AND** 步骤不可点击触发创建、Verify、Archive 或其他写操作
-- **AND** 仅允许切换 tab 查看只读内容
-
-### Requirement: 动态 ActionBar
-
-ActionBar SHALL 仅承载 workflow 推进动作；对象级辅助操作 SHALL 由 change detail header 承载，并保持高影响 workflow 动作与普通工具动作隔离。Verify/Archive 这类高影响 workflow MUST 移入 `Verify & Archive` tab。
-
-#### Scenario: Header separates identity tools from workflow controls
-- **GIVEN** 用户打开某个 change 的 detail 面板
-- **WHEN** 顶部区域渲染完成
-- **THEN** 系统 MUST 在 header 中展示 change 名称与状态摘要
-- **AND** 系统 MUST 将对象级辅助操作放在与 workflow 推进动作不同的分组中
-- **AND** workflow 推进动作 MUST 在独立的 ActionBar 中展示
-
-#### Scenario: Header keeps read-only utilities available
-- **GIVEN** 任意状态的 change
-- **WHEN** header 渲染
-- **THEN** 复制 change 名称、Open in Editor、Refresh 等只读或视图辅助操作 MUST 在 header 中保持可用
-- **AND** 这些操作 MUST 不改变 OpenSpec workflow 状态
-- **AND** 这些操作 MUST NOT 出现在 workflow ActionBar 中
-
-#### Scenario: High-impact workflow actions remain isolated
-- **GIVEN** 某个 change 已满足 Verify 或 Archive 的展示条件
-- **WHEN** ActionBar 渲染
-- **THEN** 高影响 workflow 动作 MUST 与普通继续类动作分开表达
-- **AND** 系统 MUST 避免将 Verify 或 Archive 与普通视图工具混排为同一组操作
-
-#### Scenario: Show in sidebar is removed from the primary header actions
-- **GIVEN** 用户查看 change detail 顶部操作区
-- **WHEN** header 与 ActionBar 完成渲染
-- **THEN** 系统 MUST NOT 将 `Show in sidebar` 作为顶部主要操作入口展示
-
-#### Scenario: 刚创建的 change（无 artifact）
-- **GIVEN** 一个无任何 artifact 的 draft change
-- **WHEN** ActionBar 渲染
-- **THEN** 应显示主要按钮 **Continue**（高亮样式）
-- **AND** 应显示次要按钮 **FF**（一键创建全部 artifact）
-- **AND** Continue 按钮点击后应通过 workflow command routing 发起 `/opsx:continue <changeName>` 或目标 adapter 对应命令
-- **AND** FF 按钮点击后应通过 workflow command routing 发起 `/opsx:ff <changeName>` 或目标 adapter 对应命令
-
-#### Scenario: 部分 artifact 已创建
-- **GIVEN** 一个 change 有 proposal 但缺少 specs/design/tasks
-- **WHEN** ActionBar 渲染
-- **THEN** 主要按钮应为 **Continue**
-- **AND** 次要按钮应包含 FF
-- **AND** Continue 文案应标注下一个待创建的 artifact（如 "Continue → Specs"）
-
-#### Scenario: 全部 planning artifact 就绪但 tasks 未完成
-- **GIVEN** proposal、specs、design、tasks 均已创建，但 tasks 未全部完成
-- **WHEN** ActionBar 渲染
-- **THEN** Apply 仍可作为实现入口通过 workflow command routing 发起
-- **AND** Verify 和 Archive 不应作为 tab 上方 ActionBar 的主按钮或次要按钮展示
-- **AND** Verify 和 Archive 入口必须在 `Verify & Archive` tab 中展示
-
-#### Scenario: 全部 tasks 完成
-- **GIVEN** 全部 tasks 已勾选完成
-- **WHEN** ActionBar 渲染
-- **THEN** tab 上方 ActionBar 不应显示 **Verify** 或 **Archive** 运行按钮
-- **AND** `Verify & Archive` tab 必须显示 **Run Verify** 和 **Run Archive**
-- **AND** Run Verify 与 Run Archive 必须通过交互式 terminal runner 发起，而不是通过 headless `agentCli` 或 direct `archiveChange`
-
-#### Scenario: Archived change remains read-only
-- **GIVEN** 某个 change 已归档
-- **WHEN** ActionBar 渲染
-- **THEN** 系统 MUST 不展示会触发写入的 workflow 动作
-- **AND** 复制、打开与刷新等只读辅助操作 MUST 只保留在 header 工具区
-
-### Requirement: `/opsx:continue` 交互入口
-
-系统应在多个位置提供 `/opsx:continue` 的触发入口。
-
-#### Scenario: ActionBar 的 Continue 按钮
-
-- **GIVEN** change 不是归档状态且有待创建的 artifact
-- **WHEN** 用户点击 Continue 按钮
-- **THEN** 系统应通过当前 adapter 的 fillChat 方法发送 `/opsx:continue <changeName>`
-- **AND** 应复用现有 adapter 机制（Cursor Chat / Clipboard 回退）
-
-#### Scenario: ArtifactViewer 的"用 AI 创建"改为 Continue
-
-- **GIVEN** 一个空 artifact tab 显示 "用 AI 创建" 按钮
-- **WHEN** 按钮文案和行为
-- **THEN** 按钮应通过 adapter fillChat 发送 `/opsx:continue <changeName>`（而非当前的 `requestCreateArtifact`）
-- **AND** 依赖链检查保持不变（如 Design 需要先有 Proposal）
-
-### Requirement: `/opsx:explore` 入口
-
-系统应在 draft change 的空状态中提供探索入口。
-
-#### Scenario: 无 artifact 的 change 提供 Explore 入口
-
-- **GIVEN** 一个无任何 artifact 的 draft change
-- **WHEN** 用户查看 Proposal tab（空状态）
-- **THEN** 除了 "用 AI 创建" 外，应额外显示 **Explore** 按钮
-- **AND** Explore 按钮点击后应通过 adapter fillChat 发送 `/opsx:explore`
 
 ### Requirement: `/opsx:verify` 常驻入口
 
@@ -176,7 +46,7 @@ ActionBar SHALL 仅承载 workflow 推进动作；对象级辅助操作 SHALL �
 
 ### Requirement: `/opsx:sync` 入口
 
-系统应提供 delta spec 同步操作入口。
+系统 MUST 提供 delta spec 同步操作入口。
 
 #### Scenario: Sync Specs 按钮
 
@@ -185,22 +55,6 @@ ActionBar SHALL 仅承载 workflow 推进动作；对象级辅助操作 SHALL �
 - **WHEN** ActionBar 渲染
 - **THEN** 应显示 **Sync Specs** 按钮
 - **AND** 点击后通过 adapter fillChat 发送 `/opsx:sync <changeName>`
-
-### Requirement: Dashboard ChangeCard 智能操作
-
-ChangeCard 的 workflow 快捷操作 SHALL 继续根据 change 状态智能推荐，并与 detail 顶部的 workflow 分组语义保持一致。
-
-#### Scenario: Draft change hover actions emphasize planning progression
-- **GIVEN** 某个 change 仍处于 draft 或 planning 未完成状态
-- **WHEN** 用户在 dashboard 中进入该卡片的 hover 或 focus 状态
-- **THEN** 推荐的 workflow 操作 MUST 优先指向 Continue、FF 或其他当前阶段的推进动作
-- **AND** 系统 MUST 不将不相关的高影响动作作为默认主推荐
-
-#### Scenario: Completed change hover actions emphasize verification path
-- **GIVEN** 某个 change 的 planning artifact 与 tasks 已达到可验证状态
-- **WHEN** 用户在 dashboard 中进入该卡片的 hover 或 focus 状态
-- **THEN** 推荐操作 MUST 突出 Verify、Archive 或与当前阶段匹配的后续动作
-- **AND** 这些动作的语义 MUST 与 change detail 顶部 ActionBar 保持一致
 
 ### Requirement: Change Detail Header Utilities
 
@@ -309,6 +163,98 @@ The interactive Verify and Archive workflows SHALL make the selected scope expli
 - **WHEN** the selected scope is not the local root
 - **THEN** the confirmation dialog MUST include the active scope label
 - **AND** the archive command MUST target the selected scope
+
+### Requirement: Shared workflow action resolution
+The extension SHALL derive workflow actions through one shared resolver that consumes the root-bound Change workflow snapshot and supplies consistent results to Sidebar, Change Detail, and Dashboard.
+
+#### Scenario: First ready artifact is recommended
+- **GIVEN** the ordered artifact graph contains one or more artifacts with status `ready`
+- **WHEN** workflow actions are resolved
+- **THEN** the first ready artifact in CLI declaration order MUST determine the recommended planning action
+- **AND** every other ready artifact MUST remain visible as available now
+
+#### Scenario: Blocked and skipped artifacts retain distinct meaning
+- **GIVEN** the artifact graph contains blocked and skipped artifacts
+- **WHEN** workflow state is displayed
+- **THEN** blocked artifacts MUST be non-actionable and MUST expose their missing dependencies
+- **AND** skipped artifacts MUST be identified as skipped rather than completed or blocked
+
+#### Scenario: Planning completion recommends Apply
+- **GIVEN** OpenSpec reports planning complete
+- **AND** tasks remain incomplete
+- **WHEN** workflow actions are resolved
+- **THEN** Apply MUST be the recommended implementation action
+- **AND** planning creation actions MUST NOT remain the primary action
+
+#### Scenario: Completed tasks recommend Verify without auto-archive
+- **GIVEN** planning is complete and all tasks are complete
+- **WHEN** workflow actions are resolved
+- **THEN** Verify MUST be recommended
+- **AND** Archive MUST remain a separate high-impact action
+- **AND** the Change MUST NOT be represented as archived until OpenSpec reports it as archived
+
+#### Scenario: Sync Specs is conditional
+- **GIVEN** a Change has no delta specs eligible for synchronization
+- **WHEN** workflow actions are resolved
+- **THEN** Sync Specs MUST NOT be shown as a fixed workflow stage
+- **AND** it MUST appear only when current Change data indicates applicable spec deltas
+
+#### Scenario: All surfaces consume the same resolved action semantics
+- **GIVEN** Sidebar, Change Detail, and Dashboard display the same bound Change snapshot
+- **WHEN** each surface renders its workflow summary
+- **THEN** they MUST agree on the recommended action, other available actions, and blocked reasons
+- **AND** a surface MAY reduce detail but MUST NOT independently recalculate a contradictory lifecycle
+
+#### Scenario: Archived Change remains read-only history
+- **GIVEN** a Change is archived
+- **WHEN** workflow actions are resolved
+- **THEN** no write-producing workflow action MUST be returned
+- **AND** the UI MUST NOT fabricate completed states for artifacts absent from the archived data
+
+### Requirement: Continue planning describes its real capability
+The extension SHALL present `/opsx:continue <changeName>` as a generic planning continuation action unless the execution contract explicitly supports selecting a target artifact.
+
+#### Scenario: Generic Continue shows next artifact context
+- **GIVEN** planning is incomplete and the first ready artifact is `specs`
+- **WHEN** the Continue action is displayed
+- **THEN** the executable label MUST describe a generic planning continuation
+- **AND** supporting text MUST identify `specs` as the next artifact
+- **AND** the generated command MUST remain `/opsx:continue <changeName>`
+
+#### Scenario: Parallel ready artifacts remain visible
+- **GIVEN** both `specs` and `design` are ready
+- **WHEN** Continue planning is displayed
+- **THEN** one artifact MUST be identified as next according to CLI order
+- **AND** the other artifact MUST be identified as also available
+- **AND** the UI MUST NOT imply that only the recommended artifact is permitted
+
+#### Scenario: No misleading targeted create action
+- **GIVEN** the current adapter only supports generic `/opsx:continue`
+- **WHEN** an artifact has not been created
+- **THEN** the UI MUST NOT offer an executable action labeled as creating that specific artifact
+- **AND** the user MAY navigate to the artifact's blocked or ready explanation without triggering a guessed command
+
+### Requirement: Workflow action hierarchy remains safe
+Change Detail SHALL emphasize at most one recommended workflow action, keep alternative actions accessible, and isolate high-impact actions from ordinary navigation utilities.
+
+#### Scenario: One primary action with accessible alternatives
+- **GIVEN** a Change has a recommended action and one or more other available actions
+- **WHEN** Change Detail renders its action area
+- **THEN** exactly one action MUST receive primary visual emphasis
+- **AND** the other available actions MUST remain keyboard-accessible through a secondary group or disclosure
+- **AND** action meaning MUST be conveyed by text and not color alone
+
+#### Scenario: Header utilities do not become workflow actions
+- **GIVEN** Change Detail exposes copy, open, or refresh utilities
+- **WHEN** the header and action area render
+- **THEN** those utilities MUST remain visually separate from workflow progression actions
+- **AND** they MUST NOT affect resolver state
+
+#### Scenario: Verify and Archive retain dedicated handling
+- **GIVEN** Verify or Archive is available
+- **WHEN** the user chooses the action
+- **THEN** the extension MUST use the existing dedicated interactive or confirmation path
+- **AND** it MUST NOT silently route the high-impact action as a normal artifact navigation click
 
 ## Design Constraints
 

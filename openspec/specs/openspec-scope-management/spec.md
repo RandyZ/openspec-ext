@@ -6,6 +6,8 @@ The extension SHALL manage OpenSpec runtime source selection, store-aware featur
 
 ## Requirements
 
+
+
 ### Requirement: OpenSpec runtime source selection
 The extension SHALL support an explicit OpenSpec runtime source model that distinguishes installed CLI, custom executable path, and local OpenSpec source checkout.
 
@@ -94,32 +96,34 @@ The extension SHALL detect whether the resolved OpenSpec runtime supports store-
 - **AND** the UI MUST show a non-blocking feature diagnostic instead of a blank dashboard
 
 ### Requirement: Selected OpenSpec scope
-The extension SHALL maintain a selected OpenSpec scope that defines the writable root for dashboard data, artifact access, and workflow actions.
+The extension SHALL distinguish the immutable Project/root binding used by Project-first read surfaces from the legacy selected OpenSpec scope retained for compatible workflow operations.
+
+Sidebar and Explorer data MUST use the current `ProjectContext` and its CLI-resolved `OpenSpecRootBinding`. Changing a legacy selected scope MUST NOT replace the Project identity or silently redirect Project-first data to another root. Referenced Stores remain explicit read-only bindings unless a separate workflow explicitly selects a Store scope.
 
 #### Scenario: Local root scope
-- **GIVEN** a workspace folder contains a local `openspec/` planning root
-- **WHEN** no explicit store scope is selected
-- **THEN** the selected scope MUST be the local root
-- **AND** dashboard data and actions MUST use that root
+- **GIVEN** a workspace folder resolves an OpenSpec root through official CLI context
+- **WHEN** the Project-first Sidebar or an Editor Explorer loads data
+- **THEN** the payload MUST use the current ProjectContext and CLI-resolved OpenSpecRootBinding
+- **AND** it MUST NOT infer the root from a registered Store, Workset membership, or a previous selected scope
 
 #### Scenario: Explicit store scope
 - **GIVEN** store-aware features are available
-- **AND** the user selects a registered store
-- **WHEN** dashboard data is refreshed
-- **THEN** the selected scope MUST include the store id, store root path, and source `store`
-- **AND** root-resolving commands MUST run against that store
+- **AND** the user explicitly selects a registered Store for a legacy scope-aware workflow
+- **WHEN** that legacy operation runs
+- **THEN** its selected scope MUST include the Store id, root path, and source
+- **AND** the selection MUST NOT replace the current Project identity or redirect an already-open Project-first Sidebar or Explorer
 
 #### Scenario: Declared store scope is reported
-- **GIVEN** OpenSpec resolves the current workspace to a declared store through `openspec/config.yaml`
-- **WHEN** the extension loads the current scope
-- **THEN** the selected scope MUST report source `declared`
-- **AND** the UI MUST show the declared store id so the user understands where commands act
+- **GIVEN** OpenSpec resolves the current project through a declared Store in project configuration
+- **WHEN** the Project-first surface creates its binding
+- **THEN** the binding MUST retain the CLI-reported root source and Store identity when available
+- **AND** the UI MUST continue to present the code project as the primary context
 
 #### Scenario: Scope selection clears stale dashboard data
-- **GIVEN** dashboard data has been loaded for one scope
-- **WHEN** the selected scope changes
-- **THEN** the extension MUST clear or replace scope-bound dashboard caches
-- **AND** it MUST not show changes from the previous scope as if they belonged to the new scope
+- **GIVEN** Project-first data has been loaded for one Project/root binding
+- **WHEN** the current Project or its CLI-resolved root binding changes
+- **THEN** the extension MUST clear or replace data and caches associated with the previous binding
+- **AND** it MUST NOT show Changes or Specs from the previous binding as if they belonged to the new Project
 
 ### Requirement: Reference and workset semantics
 The extension SHALL preserve OpenSpec's distinction between writable scopes, read-only references, and personal worksets.
@@ -147,3 +151,31 @@ The extension SHALL preserve OpenSpec's distinction between writable scopes, rea
 - **WHEN** the dashboard displays workset information
 - **THEN** it MUST describe worksets as local personal views for opening folders together
 - **AND** it MUST NOT imply that worksets are committed, shared, or authoritative project relationships
+
+### Requirement: Workset Project and Planning Store boundaries
+
+OpenSpec scope management SHALL treat Workset Project members as navigable Project candidates and registered Store members as read-only Planning Store context, while preserving immutable binding and single-selected-Project semantics.
+
+#### Scenario: Current Project membership is derived from CLI
+
+- **WHEN** official `workset list --json` reports the current canonical Project path as a member
+- **THEN** the extension MUST expose that Workset as navigation context
+- **AND** the extension MUST NOT create a persisted membership record or Project registry entry
+
+#### Scenario: Registered Store member is encountered
+
+- **WHEN** a Workset member path canonicalizes to a root returned by official `store list --json`
+- **THEN** the member MUST be classified as Planning Store
+- **AND** it MUST NOT become a selectable Project or change the selected writable Project scope
+
+#### Scenario: Project binding is refreshed after navigation
+
+- **WHEN** a Project member is selected or the user returns to the original Project
+- **THEN** the extension MUST resolve the CLI root from that Project's command cwd
+- **AND** every Project-bound operation MUST use the resulting binding identity until another validated selection occurs
+
+#### Scenario: Workset metadata is unavailable
+
+- **WHEN** workset or Store list probing fails
+- **THEN** the extension MUST preserve the current Project binding and local Project content
+- **AND** it MUST not fall back to a guessed path, selected Store scope, or stale membership as a navigation target
