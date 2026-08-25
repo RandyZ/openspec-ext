@@ -79,5 +79,5 @@ Header 仅保留 New Change，不实现 Add Operation。筛选标签使用 All �
 - [x] Task 8.4 运行 `pnpm test`
 - [x] Task 8.5 运行 `pnpm run build`
 - [x] Task 8.6 运行 `openspec validate add-change-lifecycle-filtering-and-pagination --strict`
-- [ ] Task 8.7 验收 Project-first 可达的 Sidebar 与 Project Dashboard，并在存在可信 Store fixture 时补充 Store 正向 smoke
+- [x] Task 8.7 验收 Project-first 可达的 Sidebar 与 Project Dashboard，并在存在可信 Store fixture 时补充 Store 正向 smoke
 - [x] Task 8.8 更新 README/CHANGELOG，记录新状态模型、筛选语义和分页顺序
