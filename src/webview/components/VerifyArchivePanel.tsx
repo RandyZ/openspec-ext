@@ -7,11 +7,14 @@ import { t } from '../../i18n';
 
 export interface VerifyArchivePanelProps {
   isArchived: boolean;
+  canArchiveNow?: boolean;
+  archiveNowDisabledReason?: string;
   sessions: Partial<Record<InteractiveWorkflowAction, InteractiveWorkflowSessionState>>;
   onRun: (action: InteractiveWorkflowAction) => void;
   onReveal: (action: InteractiveWorkflowAction) => void;
   onStop: (action: InteractiveWorkflowAction) => void;
   onClear: (action: InteractiveWorkflowAction) => void;
+  onArchiveNow?: () => void;
 }
 
 const cardStyle: React.CSSProperties = {
@@ -62,12 +65,18 @@ function formatStartTime(startedAt: number): string {
 
 export const VerifyArchivePanel: React.FC<VerifyArchivePanelProps> = ({
   isArchived,
+  canArchiveNow = false,
+  archiveNowDisabledReason,
   sessions,
   onRun,
   onReveal,
   onStop,
   onClear,
+  onArchiveNow,
 }) => {
+  const directArchiveDisabledReason = archiveNowDisabledReason
+    ?? (isArchived ? t('verifyArchive.archiveDisabledArchived') : t('verifyArchive.archiveDisabledIncomplete'));
+
   return (
     <div className="flex flex-col gap-4">
       <div style={cardStyle}>
@@ -96,6 +105,41 @@ export const VerifyArchivePanel: React.FC<VerifyArchivePanelProps> = ({
         onStop={onStop}
         onClear={onClear}
       />
+
+      <section style={cardStyle} aria-label={t('verifyArchive.archiveNow')}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold">{t('verifyArchive.archiveNow')}</div>
+            {!canArchiveNow && (
+              <div
+                id="archive-now-disabled-reason"
+                role="note"
+                style={mutedTextStyle}
+              >
+                {directArchiveDisabledReason}
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            disabled={!canArchiveNow}
+            aria-describedby={!canArchiveNow ? 'archive-now-disabled-reason' : undefined}
+            aria-label={canArchiveNow
+              ? t('verifyArchive.archiveNow')
+              : `${t('verifyArchive.archiveNow')}: ${directArchiveDisabledReason}`}
+            onClick={() => {
+              if (canArchiveNow) onArchiveNow?.();
+            }}
+            style={{
+              ...secondaryButtonStyle,
+              opacity: canArchiveNow ? 1 : 0.45,
+              cursor: canArchiveNow ? 'pointer' : 'not-allowed',
+            }}
+          >
+            {t('verifyArchive.archiveNow')}
+          </button>
+        </div>
+      </section>
     </div>
   );
 };
@@ -120,8 +164,8 @@ export const WorkflowActionCard: React.FC<{
   onClear,
 }) => {
   const isVerify = action === 'verify';
-  const title = isVerify ? t('verifyArchive.verifyTitle') : t('verifyArchive.archiveTitle');
-  const runLabel = isVerify ? t('verifyArchive.runVerify') : t('verifyArchive.runArchive');
+  const title = isVerify ? t('verifyArchive.verifyTitle') : t('verifyArchive.reviewArchiveTitle');
+  const runLabel = isVerify ? t('verifyArchive.runVerify') : t('verifyArchive.reviewArchive');
 
   const startedAtLabel =
     session?.status === 'running' && typeof session.startedAt === 'number'

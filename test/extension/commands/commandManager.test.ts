@@ -102,4 +102,25 @@ describe('CommandManager cache commands', () => {
       'Copied /opsx:continue. Paste into AI chat to generate artifact'
     );
   });
+
+  it('keeps Command Palette archive as an explicit confirmed direct path', async () => {
+    vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce('Archive' as any);
+    const archiveChange = vi.fn().mockResolvedValue(undefined);
+    const manager = new CommandManager(
+      { archiveChange } as any,
+      { subscriptions: [] } as any,
+      {} as any
+    );
+
+    manager.register();
+    await registeredCommands.get('openspec.archiveChange')?.('demo-change');
+
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      'Archive change "demo-change"?',
+      { modal: true, detail: expect.any(String) },
+      'Verify first',
+      'Archive'
+    );
+    expect(archiveChange).toHaveBeenCalledWith('demo-change');
+  });
 });

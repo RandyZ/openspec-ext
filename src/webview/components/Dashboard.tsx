@@ -445,6 +445,14 @@ export const Dashboard: React.FC = () => {
     ));
   };
 
+  const handleOpenPriorityChange = (change: ChangeInfo, groupKey: string) => {
+    if (groupKey === 'ready-to-verify') {
+      handleLaunchWorkflow('verify', change.name, change.workflowSnapshot?.bindingKey);
+      return;
+    }
+    handleOpenChange(change.name);
+  };
+
   const handleOpenSpec = (spec: SpecInfo) => {
     const scopeId = state.data?.scope?.id;
     postMessage(sendMessage.openSpecInEditor(spec.id, undefined, scopeId));
@@ -563,7 +571,7 @@ export const Dashboard: React.FC = () => {
                         background: 'var(--vscode-button-secondaryBackground)',
                         color: 'var(--vscode-button-secondaryForeground)',
                       }}
-                      onClick={() => handleOpenChange(change.name)}
+                       onClick={() => handleOpenPriorityChange(change, group.key)}
                     >
                       {change.name}
                     </button>

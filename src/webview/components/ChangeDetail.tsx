@@ -140,6 +140,8 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   const [copiedName, setCopiedName] = useState(false);
   const [artifactStateMessage, setArtifactStateMessage] = useState<string | null>(null);
   const [pendingWorkflowAction, setPendingWorkflowAction] = useState<WorkflowAction | null>(null);
+  const [archivedLocally, setArchivedLocally] = useState(false);
+  const [directArchivePending, setDirectArchivePending] = useState(false);
   const [workflowReceipt, setWorkflowReceipt] = useState<{
     requestId: string;
     bindingKey: string;
@@ -153,7 +155,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     window.setTimeout(() => setCopiedName(false), 1200);
   };
 
-  const isArchived = changeName.startsWith('archive:');
+  const isArchived = archivedLocally || changeName.startsWith('archive:');
   const resolvedWorkflowActions = useMemo(
     () => workflowSnapshot
       ? resolveWorkflowActions(workflowSnapshot, {
@@ -165,7 +167,15 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
       : undefined,
     [workflowSnapshot, completedTasks, totalTasks, isArchived, deltaSpecIds.length]
   );
-  const showVerifyArchiveTab = debug || (completedTasks > 0 && totalTasks > 0);
+  const canArchiveNow = Boolean(
+    resolvedWorkflowActions?.highImpact.some(
+      (action) => action.action === 'archive' && action.highImpact === true
+    )
+  );
+  const archiveNowDisabledReason = isArchived
+    ? t('verifyArchive.archiveDisabledArchived')
+    : t('verifyArchive.archiveDisabledIncomplete');
+  const showVerifyArchiveTab = debug || !isArchived || archivedLocally;
   const navigationArtifacts = useMemo(() => {
     if (workflowSnapshot) return workflowSnapshot.artifacts;
     return (existingArtifactIds ?? []).map((id) => ({
@@ -236,6 +246,9 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
       setLoading(false);
       setError(null);
       setContent(null);
+      if (!isArchived) {
+        postMessage(sendMessage.getArtifactContent(changeName, 'tasks', scopeId));
+      }
       return;
     }
 
@@ -314,7 +327,13 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   useEffect(() => {
     const cleanup = onMessage((event: MessageEvent) => {
       const msg = event.data;
-      if (msg.type === 'artifactContent' && msg.changeName === changeName) {
+      if (msg.type === 'dashboardData'
+        && directArchivePending
+        && Array.isArray(msg.data?.archivedChanges)
+        && msg.data.archivedChanges.some((archived: { name?: string }) => archived.name === changeName)) {
+        setArchivedLocally(true);
+        setDirectArchivePending(false);
+      } else if (msg.type === 'artifactContent' && msg.changeName === changeName) {
         const key = cacheKey(scopeId, msg.artifactType, msg.artifactPath);
         contentCacheRef.current.set(key, msg.content ?? '');
         setContent(msg.content ?? '');
@@ -360,6 +379,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         setLoading(false);
         setContent(null);
         setArtifactStateMessage(null);
+        setDirectArchivePending(false);
       } else if (msg.type === 'deltaSpecList' && msg.changeName === changeName) {
         setDeltaSpecIds(msg.specIds ?? []);
         if (msg.specIds?.length) {
@@ -396,6 +416,8 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         }
       } else if (msg.type === 'runCommandResult') {
         setRunCommandResult({ success: msg.success, message: msg.message });
+      } else if (msg.type === 'error') {
+        setDirectArchivePending(false);
       } else if (msg.type === 'workflowLaunchConfig') {
         setWorkflowLaunchConfig(msg.config ?? null);
       } else if (msg.type === 'interactiveWorkflowState' && msg.changeName === changeName) {
@@ -435,7 +457,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
       }
     });
     return cleanup;
-   }, [activeTab, changeName, onMessage, postMessage, scopeId, workflowReceipt, workflowSnapshot]);
+   }, [activeTab, changeName, directArchivePending, onMessage, postMessage, scopeId, workflowReceipt, workflowSnapshot]);
 
   useEffect(() => {
     postMessage(sendMessage.getWorkflowLaunchConfig());
@@ -501,6 +523,11 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     } else {
       requestArtifact(activeTab);
     }
+  };
+
+  const handleArchiveNow = () => {
+    setDirectArchivePending(true);
+    postMessage(sendMessage.archiveChange(changeName, scopeId));
   };
 
   const handleRunCommand = () => {
@@ -666,11 +693,14 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
           <div className="flex flex-col gap-4 max-w-4xl">
             <VerifyArchivePanel
               isArchived={isArchived}
+              canArchiveNow={canArchiveNow}
+              archiveNowDisabledReason={archiveNowDisabledReason}
               sessions={interactiveState.sessions}
               onRun={(action) => postMessage(sendMessage.runInteractiveWorkflow(changeName, action, scopeId))}
               onReveal={(action) => postMessage(sendMessage.revealInteractiveWorkflow(changeName, action, scopeId))}
               onStop={(action) => postMessage(sendMessage.stopInteractiveWorkflow(changeName, action, scopeId))}
               onClear={(action) => postMessage(sendMessage.clearInteractiveWorkflow(changeName, action, scopeId))}
+              onArchiveNow={handleArchiveNow}
             />
 
             {debug && (

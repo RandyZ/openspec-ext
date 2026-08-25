@@ -22,12 +22,16 @@ function artifact(
   };
 }
 
-function snapshot(artifacts: readonly WorkflowArtifactNode[]): ChangeWorkflowSnapshot {
+function snapshot(
+  artifacts: readonly WorkflowArtifactNode[],
+  diagnostics?: readonly string[]
+): ChangeWorkflowSnapshot {
   return {
     changeName: 'demo',
     schema: 'custom-schema',
     bindingKey: 'bound-root',
     artifacts,
+    ...(diagnostics ? { diagnostics } : {}),
   };
 }
 
@@ -81,6 +85,20 @@ describe('resolveWorkflowActions', () => {
     expect(result.available).toMatchObject([
       { action: 'sync', label: 'Sync Specs' },
     ]);
+  });
+
+  it('only exposes direct Archive as a high-impact action for a healthy completed snapshot', () => {
+    const incomplete = resolveWorkflowActions(
+      snapshot([artifact('proposal', 'done'), artifact('tasks', 'done')]),
+      { completedTasks: 2, totalTasks: 3 }
+    );
+    const invalid = resolveWorkflowActions(
+      snapshot([artifact('proposal', 'done'), artifact('tasks', 'done')], ['stale-binding']),
+      { completedTasks: 3, totalTasks: 3 }
+    );
+
+    expect(incomplete.highImpact).toEqual([]);
+    expect(invalid.highImpact).toEqual([]);
   });
 
   it('returns no write actions for archived Changes', () => {

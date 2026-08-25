@@ -49,6 +49,8 @@ describe('i18n', () => {
       expect(t('verify.coherence')).toContain('Coherence');
       expect(t('verifyArchive.runVerify')).toBe('Run Verify');
       expect(t('verifyArchive.clearSession')).toBe('Clear Session');
+      expect(t('verifyArchive.reviewArchive')).toBe('Review & Archive');
+      expect(t('verifyArchive.archiveNow')).toBe('Archive Now');
     });
 
     it('supports parameter substitution', () => {
@@ -80,6 +82,8 @@ describe('i18n', () => {
       expect(t('verify.coherence')).toContain('一致性');
       expect(t('verifyArchive.runVerify')).toBe('Run Verify');
       expect(t('verifyArchive.clearSession')).toBe('Clear Session');
+      expect(t('verifyArchive.reviewArchive')).toBe('审查并归档');
+      expect(t('verifyArchive.archiveNow')).toBe('立即归档');
     });
 
     it('supports parameter substitution in Chinese', () => {
@@ -142,6 +146,9 @@ describe('i18n', () => {
         'verifyArchive.managerUnavailable',
         'verifyArchive.archivedArchiveRejected',
         'verifyArchive.startedAt',
+        'verifyArchive.reviewArchive',
+        'verifyArchive.archiveNow',
+        'verifyArchive.archiveDisabledIncomplete',
         'command.archiveVerifyFirst',
         'command.archiveVerifySuggest',
       ];

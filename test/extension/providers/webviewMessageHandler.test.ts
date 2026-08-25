@@ -861,6 +861,11 @@ describe('handleWebviewMessage toggleTask', () => {
     );
 
     expect(archiveChange).toHaveBeenCalledWith('demo-change', undefined);
+    expect(webview.postMessage).toHaveBeenCalledWith({
+      type: 'dashboardData',
+      data: expect.objectContaining({ changes: [] }),
+      debug: false,
+    });
   });
 
   it('archiveChange binds the visible Root via scopeId', async () => {
@@ -931,6 +936,35 @@ describe('handleWebviewMessage toggleTask', () => {
 
     expect(archiveChange).not.toHaveBeenCalled();
     expect(vscode.commands.executeCommand).not.toHaveBeenCalled();
+  });
+
+  it('archiveChange surfaces CLI failure without optimistic refresh', async () => {
+    vi.mocked(vscode.window.showWarningMessage).mockResolvedValueOnce(
+      t('command.archive') as any
+    );
+    const archiveChange = vi.fn().mockRejectedValue(new Error('archive failed'));
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      archiveChange,
+      getDashboardData: vi.fn(),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'archiveChange', name: 'demo-change' },
+      webview as any,
+      dataManager as any,
+      undefined
+    );
+
+    expect(webview.postMessage).toHaveBeenCalledWith({
+      type: 'error',
+      message: 'archive failed',
+    });
+    expect(dataManager.getDashboardData).not.toHaveBeenCalled();
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalledWith(
+      'Change "demo-change" archived'
+    );
   });
 
   it('openArtifact resolves archived artifact paths against the panel-bound store root', async () => {

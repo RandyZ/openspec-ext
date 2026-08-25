@@ -49,6 +49,8 @@ If Cursor or VS Code cannot see the CLI that works in your terminal, set `opensp
 5. Use the action bar or change-card actions to copy/fill `/opsx:continue`, `/opsx:ff`, and `/opsx:apply` commands.
 6. Use the `Verify & Archive` tab to open an interactive VS Code terminal for `/opsx-verify` or `/opsx-archive`, so Agent follow-up questions remain interactive.
 
+`Review & Archive` is the primary Detail action and starts the interactive `/opsx-archive <change>` session. `Archive Now` is a secondary, confirmation-protected direct CLI action enabled only when the bound resolver reports all required artifacts and tasks complete. Dashboard Verify/Archive actions open this Detail surface; they never archive directly.
+
 ### Commands
 
 Open Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`):
@@ -88,6 +90,7 @@ Open Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`):
 - **OpenCode** (`opencode`): Uses `/opsx-<action>` command format when routed through the adapter.
 - Workflow actions default to `workflowLaunchMode=clipboard`. Set `openspec.workflowLaunchMode=adapter` and choose `openspec.preferredAgentAdapter` when you want buttons to open the selected adapter. In Cursor, explicitly setting `openspec.cursorLaunchMode` to `deeplink`, `chatCommand`, or `agentCli` also routes non-interactive workflow buttons through Cursor.
 - Verify and Archive are intentionally different: they open the dedicated `Verify & Archive` tab and run inside a real VS Code terminal editor instead of the headless `agentCli` path.
+- Within that tab, `Review & Archive` keeps Agent review interactive, while `Archive Now` is the explicit direct-archive escape path and is disabled until the bound workflow is complete.
 
 ### Dashboard
 

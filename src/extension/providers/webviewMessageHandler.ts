@@ -570,10 +570,15 @@ export async function handleWebviewMessage(
         break;
       }
       if (confirm === 'archive') {
-        await dataManager.archiveChange(name, scope);
-        vscode.window.showInformationMessage(t('command.archived', { name }));
-        const afterArchive = await dataManager.getDashboardData();
-        webview.postMessage({ type: 'dashboardData', data: afterArchive, debug: getDebug() });
+        try {
+          await dataManager.archiveChange(name, scope);
+          vscode.window.showInformationMessage(t('command.archived', { name }));
+          const afterArchive = await dataManager.getDashboardData();
+          webview.postMessage({ type: 'dashboardData', data: afterArchive, debug: getDebug() });
+        } catch (error) {
+          logger.error(`Failed to archive change: ${name}`, error as Error);
+          postError(error, t('command.archiveFailed'));
+        }
       }
       break;
     }

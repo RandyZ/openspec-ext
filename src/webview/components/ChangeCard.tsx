@@ -97,6 +97,7 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
     ? [
       ...(resolvedActions.recommended ? [resolvedActions.recommended] : []),
       ...resolvedActions.available,
+      ...resolvedActions.highImpact,
     ]
     : [];
   const needsAttention = change.attention?.required === true;

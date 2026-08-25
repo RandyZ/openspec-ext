@@ -49,6 +49,8 @@ Change 详情页提供工作流操作、artifact tabs、任务执行入口，以
 5. 使用 action bar 或 change card 的快捷操作复制/填充 `/opsx:continue`、`/opsx:ff`、`/opsx:apply` 命令。
 6. 在 `Verify & Archive` 标签页中打开交互式 VS Code 终端执行 `/opsx-verify` 或 `/opsx-archive`，这样 Agent 中途反问时可以继续输入。
 
+`Review & Archive` 是详情页的主动作，会启动交互式 `/opsx-archive <change>` 会话。`Archive Now` 是次要的、执行前需要确认的 direct CLI 动作，只有当前 binding 的 resolver 判定必需 artifact 和任务全部完成时才可用。Dashboard 的 Verify/Archive 入口只打开这个详情页，不会直接归档。
+
 ### 命令
 
 在命令面板中输入 OpenSpec：
@@ -88,6 +90,7 @@ Change 详情页提供工作流操作、artifact tabs、任务执行入口，以
 - **OpenCode** (`opencode`)：通过 adapter 路由时使用 `/opsx-<action>` 命令格式。
 - workflow 动作默认使用 `workflowLaunchMode=clipboard`。当你希望按钮打开所选 adapter 时，设置 `openspec.workflowLaunchMode=adapter` 并选择 `openspec.preferredAgentAdapter`。在 Cursor 中，显式设置 `openspec.cursorLaunchMode` 为 `deeplink`、`chatCommand` 或 `agentCli` 也会让非交互 workflow 按钮走 Cursor 路由。
 - Verify 和 Archive 是刻意分开的：它们会进入专用 `Verify & Archive` 标签页，并在 VS Code 官方终端编辑器中运行，而不是走 headless `agentCli`。
+- 在该标签页中，`Review & Archive` 保留 Agent 交互式审查；`Archive Now` 是显式 direct archive 逃生路径，workflow 未完成时会保持禁用并说明原因。
 
 ### Dashboard
 

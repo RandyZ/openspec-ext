@@ -20,7 +20,49 @@ describe('VerifyArchivePanel', () => {
     );
 
     expect(html).toContain('Run Verify');
-    expect(html).toContain('Run Archive');
+    expect(html).toContain('Review &amp; Archive');
+    expect(html).toContain('Archive Now');
+  });
+
+  it('renders an accessible disabled reason when direct archive is not resolver-eligible', () => {
+    setLocale('en');
+    const html = renderToStaticMarkup(
+      React.createElement(VerifyArchivePanel, {
+        isArchived: false,
+        canArchiveNow: false,
+        archiveNowDisabledReason: 'Complete all required tasks before archiving directly.',
+        sessions: {},
+        onRun: () => undefined,
+        onReveal: () => undefined,
+        onStop: () => undefined,
+        onClear: () => undefined,
+        onArchiveNow: () => undefined,
+      })
+    );
+
+    expect(html).toContain('Archive Now');
+    expect(html).toContain('disabled');
+    expect(html).toContain('Complete all required tasks before archiving directly.');
+    expect(html).toContain('aria-describedby="archive-now-disabled-reason"');
+  });
+
+  it('keeps both archive actions non-executable for archived changes', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(VerifyArchivePanel, {
+        isArchived: true,
+        canArchiveNow: false,
+        archiveNowDisabledReason: 'Archived changes are read-only.',
+        sessions: {},
+        onRun: () => undefined,
+        onReveal: () => undefined,
+        onStop: () => undefined,
+        onClear: () => undefined,
+        onArchiveNow: () => undefined,
+      })
+    );
+
+    expect((html.match(/disabled/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect(html).toContain('Archived changes are read-only.');
   });
 
   it('renders reveal, stop, and clear controls for an existing session', () => {
@@ -60,7 +102,7 @@ describe('VerifyArchivePanel', () => {
     );
 
     expect(html).toContain('disabled');
-    expect(html).toContain('Run Archive');
+    expect(html).toContain('Review &amp; Archive');
   });
 
   it('renders the session start time for a running session (spec: start time MUST be visible)', () => {

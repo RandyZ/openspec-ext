@@ -65,8 +65,41 @@ describe('ChangeDetail workflow routing', () => {
     expect(source).toContain("activeTab === 'verifyArchive'");
   });
 
-  it('does not use direct archiveChange from the detail action bar', () => {
-    expect(source).not.toContain('sendMessage.archiveChange');
+  it('loads bound task progress before resolving Archive Now on the Verify & Archive tab', () => {
+    expect(source).toContain("sendMessage.getArtifactContent(changeName, 'tasks', scopeId)");
+  });
+
+  it('keeps interactive review separate from resolver-gated direct archive', () => {
+    expect(source).toContain('canArchiveNow');
+    expect(source).toContain('onArchiveNow');
+    expect(source).toContain('sendMessage.archiveChange(changeName, scopeId)');
+    expect(source).toContain('runInteractiveWorkflow(changeName, action, scopeId)');
+
+    const interactiveHandler = source.slice(
+      source.indexOf('const handleResolvedAction'),
+      source.indexOf('const handleConfirmTaskToggle')
+    );
+    expect(interactiveHandler).toContain('setPendingInteractiveAction(action)');
+    expect(interactiveHandler).not.toContain('archiveChange');
+
+    const panel = source.slice(
+      source.indexOf('<VerifyArchivePanel'),
+      source.indexOf('{debug &&')
+    );
+    expect(panel).toContain('onArchiveNow');
+    expect(panel).toMatch(/onArchiveNow=\{handleArchiveNow\}/);
+    expect(panel).not.toMatch(/onArchiveNow=\{[^}]*runInteractiveWorkflow/);
+  });
+
+  it('switches the detail view to archived read-only state after direct archive succeeds', () => {
+    expect(source).toContain("const [archivedLocally, setArchivedLocally] = useState(false)");
+    expect(source).toContain("msg.type === 'dashboardData'");
+    expect(source).toContain('directArchivePending');
+    expect(source).toMatch(/\[activeTab, changeName, directArchivePending, onMessage/);
+    expect(source).toContain('setArchivedLocally(true)');
+    expect(source).toContain('const isArchived = archivedLocally || changeName.startsWith(\'archive:\')');
+    expect(source).not.toContain("msg.type === 'archiveCompleted'");
+    expect(source).not.toContain("msg.type === 'archiveFailed'");
   });
 
   it('renders copy change name and removes show in sidebar from the detail header', () => {

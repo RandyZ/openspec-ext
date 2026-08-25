@@ -257,15 +257,15 @@ describe('ChangeCard lifecycle-driven workflow actions', () => {
     { status: 'planning' as const, actions: ['continue', 'ff'] },
     { status: 'ready-to-apply' as const, actions: ['apply'] },
     { status: 'applying' as const, actions: ['apply'] },
-    { status: 'ready-to-verify' as const, actions: ['verify'] },
+    { status: 'ready-to-verify' as const, actions: ['verify', 'archive'] },
     { status: 'archived' as const, actions: [] as string[] },
   ])('exposes mapped actions for $status', ({ status, actions }) => {
     const html = renderToStaticMarkup(
       <ChangeCard change={makeChange(status)} onClick={vi.fn()} onLaunchWorkflow={vi.fn()} />
     );
 
-    const expected = getWorkflowActionsForLifecycle(status).map((d) => d.action);
-    expect(expected).toEqual(actions);
+    const lifecycleActions = getWorkflowActionsForLifecycle(status).map((d) => d.action);
+    expect(lifecycleActions).toEqual(actions.filter((action) => action !== 'archive'));
 
     for (const action of actions) {
       expect(html).toContain(`data-workflow-action="${action}"`);
@@ -287,7 +287,7 @@ describe('ChangeCard lifecycle-driven workflow actions', () => {
     );
     expect(html).toContain('data-workflow-action="verify"');
     expect(html).not.toContain('data-workflow-action="apply"');
-    expect(html).not.toContain('data-workflow-action="archive"');
+    expect(html).toContain('data-workflow-action="archive"');
 
     const source = readFileSync(
       path.resolve(__dirname, '../../../src/webview/components/ChangeCard.tsx'),
@@ -398,6 +398,30 @@ describe('Dashboard ready-to-verify Verify & Archive path', () => {
     expect(source).toContain("action === 'verify' || action === 'archive'");
     expect(source).toContain("openChangeDetailInEditor(changeName, 'verifyArchive', action, state.data?.scope?.id)");
     expect(source).toContain('getDashboardActionScopeId(projectSidebar, state.data?.scope?.id)');
+  });
+
+  it('routes the Ready to Verify priority entry through the bound Verify & Archive detail', () => {
+    const source = readFileSync(
+      path.resolve(__dirname, '../../../src/webview/components/Dashboard.tsx'),
+      'utf8'
+    );
+    expect(source).toContain("groupKey === 'ready-to-verify'");
+    expect(source).toContain("handleLaunchWorkflow('verify', change.name, change.workflowSnapshot?.bindingKey)");
+  });
+
+  it('keeps direct Archive Now and archiveChange out of Dashboard/card surfaces', () => {
+    const dashboardSource = readFileSync(
+      path.resolve(__dirname, '../../../src/webview/components/Dashboard.tsx'),
+      'utf8'
+    );
+    const cardSource = readFileSync(
+      path.resolve(__dirname, '../../../src/webview/components/ChangeCard.tsx'),
+      'utf8'
+    );
+    expect(dashboardSource).not.toContain('archiveChange');
+    expect(dashboardSource).not.toContain('Archive Now');
+    expect(cardSource).not.toContain('archiveChange');
+    expect(cardSource).not.toContain('Archive Now');
   });
 });
 

@@ -300,6 +300,38 @@ describe('DataManager dashboard data loading', () => {
     );
   });
 
+  it('archives through the current scope, invalidates cache, and refreshes after CLI success', async () => {
+    const cacheService = makeCacheServiceFake();
+    const manager = makeDataManagerWithSuccessfulRefresh({ cacheService });
+    const archiveChange = vi.fn().mockResolvedValue(undefined);
+    (manager as any).cliService.archiveChange = archiveChange;
+    const refreshSpy = vi.spyOn(manager, 'refresh').mockResolvedValue({
+      changes: [],
+      specs: [],
+      archivedChanges: [],
+      lastRefresh: 2,
+    } as any);
+    const scope = manager.getSelectedScope();
+
+    await manager.archiveChange('demo-change', scope);
+
+    expect(archiveChange).toHaveBeenCalledWith('demo-change', scope);
+    expect(cacheService.invalidateScope).toHaveBeenCalledWith(scope);
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not invalidate or refresh when the archive CLI fails', async () => {
+    const cacheService = makeCacheServiceFake();
+    const manager = makeDataManagerWithSuccessfulRefresh({ cacheService });
+    (manager as any).cliService.archiveChange = vi.fn().mockRejectedValue(new Error('archive failed'));
+    const refreshSpy = vi.spyOn(manager, 'refresh');
+
+    await expect(manager.archiveChange('demo-change')).rejects.toThrow('archive failed');
+
+    expect(cacheService.invalidateScope).not.toHaveBeenCalled();
+    expect(refreshSpy).not.toHaveBeenCalled();
+  });
+
   it('invalidates the selected scope cache after task mutation', async () => {
     const cacheService = makeCacheServiceFake();
     const manager = makeDataManagerWithTaskFixture({ cacheService });
