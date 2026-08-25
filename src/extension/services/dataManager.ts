@@ -779,8 +779,7 @@ export class DataManager {
     return refresh;
   }
 
-  private async runRefresh(): Promise<DashboardData> {
-    const scope = this.getSelectedScope();
+  private async runRefresh(scope = this.getSelectedScope()): Promise<DashboardData> {
     try {
       logger.info('Refreshing dashboard data...');
 
@@ -1157,10 +1156,11 @@ export class DataManager {
   /**
    * Archive a change (via CLI). Scope-aware: store scopes append --store.
    */
-  async archiveChange(name: string, scope?: OpenSpecScope): Promise<void> {
+  async archiveChange(name: string, scope?: OpenSpecScope): Promise<DashboardData> {
     await this.cliService.archiveChange(name, scope);
-    await this.invalidateDashboardCache(scope ?? this.resolveScope());
-    await this.refresh();
+    const resolvedScope = scope ?? this.resolveScope();
+    await this.invalidateDashboardCache(resolvedScope);
+    return this.runRefresh(resolvedScope);
   }
 
   /**

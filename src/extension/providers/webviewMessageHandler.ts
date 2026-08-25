@@ -571,9 +571,8 @@ export async function handleWebviewMessage(
       }
       if (confirm === 'archive') {
         try {
-          await dataManager.archiveChange(name, scope);
+          const afterArchive = await dataManager.archiveChange(name, scope);
           vscode.window.showInformationMessage(t('command.archived', { name }));
-          const afterArchive = await dataManager.getDashboardData();
           webview.postMessage({ type: 'dashboardData', data: afterArchive, debug: getDebug() });
         } catch (error) {
           logger.error(`Failed to archive change: ${name}`, error as Error);

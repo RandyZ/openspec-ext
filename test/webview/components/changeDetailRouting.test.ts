@@ -94,9 +94,6 @@ describe('ChangeDetail workflow routing', () => {
   it('switches the detail view to archived read-only state after direct archive succeeds', () => {
     expect(source).toContain("const [archivedLocally, setArchivedLocally] = useState(false)");
     expect(source).toContain("msg.type === 'dashboardData'");
-    expect(source).toContain('directArchivePending');
-    expect(source).not.toMatch(/msg\.type === 'dashboardData'[\s\S]{0,180}&& directArchivePending/);
-    expect(source).toMatch(/\[activeTab, changeName, directArchivePending, onMessage/);
     expect(source).toContain('setArchivedLocally(true)');
     expect(source).toContain('const isArchived = archivedLocally || changeName.startsWith(\'archive:\')');
     expect(source).not.toContain("msg.type === 'archiveCompleted'");

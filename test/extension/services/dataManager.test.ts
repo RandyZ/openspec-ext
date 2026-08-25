@@ -194,6 +194,48 @@ describe('DataManager dashboard data loading', () => {
     vi.clearAllMocks();
   });
 
+  it('archives in an explicit scope and returns that scope refresh without changing the selected scope', async () => {
+    const cacheService = makeCacheServiceFake();
+    const manager = new DataManager('/workspace', { cacheService } as any);
+    const projectScope = {
+      id: 'project:/workspace',
+      label: 'Project',
+      rootPath: '/workspace',
+      source: 'project',
+    } as any;
+    const storeScope = {
+      id: 'store:/store',
+      label: 'Store',
+      rootPath: '/store',
+      source: 'store',
+    } as any;
+    const storeData = {
+      changes: [],
+      specs: [],
+      archivedChanges: [{ name: 'same-name' }],
+      changeStatusCounts: {},
+      lastRefresh: 2,
+      scope: storeScope,
+    } as any;
+    const archiveChange = vi.fn().mockResolvedValue(undefined);
+
+    (manager as any).scopeManager = {
+      getSelectedScope: vi.fn(() => projectScope),
+      getScopeOptions: vi.fn(() => [projectScope, storeScope]),
+    };
+    (manager as any).cliService = { archiveChange };
+    const runRefreshSpy = vi.spyOn(manager as any, 'runRefresh').mockResolvedValue(storeData);
+    const refreshSpy = vi.spyOn(manager, 'refresh').mockResolvedValue({} as any);
+
+    const result = await manager.archiveChange('same-name', storeScope);
+
+    expect(result).toBe(storeData);
+    expect(archiveChange).toHaveBeenCalledWith('same-name', storeScope);
+    expect(runRefreshSpy).toHaveBeenCalledWith(storeScope);
+    expect(refreshSpy).not.toHaveBeenCalled();
+    expect(manager.getSelectedScope()).toBe(projectScope);
+  });
+
   it('uses a Project-bound root for task execution and execution-state IO', async () => {
     const activationRoot = '/tmp/openspec-p1-selected-store-root';
     const projectRoot = '/tmp/openspec-p1-project-root';
@@ -305,19 +347,21 @@ describe('DataManager dashboard data loading', () => {
     const manager = makeDataManagerWithSuccessfulRefresh({ cacheService });
     const archiveChange = vi.fn().mockResolvedValue(undefined);
     (manager as any).cliService.archiveChange = archiveChange;
-    const refreshSpy = vi.spyOn(manager, 'refresh').mockResolvedValue({
+    const refreshedData = {
       changes: [],
       specs: [],
       archivedChanges: [],
       lastRefresh: 2,
-    } as any);
+    } as any;
+    const refreshSpy = vi.spyOn(manager as any, 'runRefresh').mockResolvedValue(refreshedData);
     const scope = manager.getSelectedScope();
 
-    await manager.archiveChange('demo-change', scope);
+    const result = await manager.archiveChange('demo-change', scope);
 
+    expect(result).toBe(refreshedData);
     expect(archiveChange).toHaveBeenCalledWith('demo-change', scope);
     expect(cacheService.invalidateScope).toHaveBeenCalledWith(scope);
-    expect(refreshSpy).toHaveBeenCalledTimes(1);
+    expect(refreshSpy).toHaveBeenCalledWith(scope);
   });
 
   it('does not invalidate or refresh when the archive CLI fails', async () => {

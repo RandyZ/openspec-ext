@@ -141,7 +141,6 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   const [artifactStateMessage, setArtifactStateMessage] = useState<string | null>(null);
   const [pendingWorkflowAction, setPendingWorkflowAction] = useState<WorkflowAction | null>(null);
   const [archivedLocally, setArchivedLocally] = useState(false);
-  const [directArchivePending, setDirectArchivePending] = useState(false);
   const [workflowReceipt, setWorkflowReceipt] = useState<{
     requestId: string;
     bindingKey: string;
@@ -331,7 +330,6 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         && Array.isArray(msg.data?.archivedChanges)
         && msg.data.archivedChanges.some((archived: { name?: string }) => archived.name === changeName)) {
         setArchivedLocally(true);
-        setDirectArchivePending(false);
       } else if (msg.type === 'artifactContent' && msg.changeName === changeName) {
         const key = cacheKey(scopeId, msg.artifactType, msg.artifactPath);
         contentCacheRef.current.set(key, msg.content ?? '');
@@ -378,7 +376,6 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         setLoading(false);
         setContent(null);
         setArtifactStateMessage(null);
-        setDirectArchivePending(false);
       } else if (msg.type === 'deltaSpecList' && msg.changeName === changeName) {
         setDeltaSpecIds(msg.specIds ?? []);
         if (msg.specIds?.length) {
@@ -415,8 +412,6 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         }
       } else if (msg.type === 'runCommandResult') {
         setRunCommandResult({ success: msg.success, message: msg.message });
-      } else if (msg.type === 'error') {
-        setDirectArchivePending(false);
       } else if (msg.type === 'workflowLaunchConfig') {
         setWorkflowLaunchConfig(msg.config ?? null);
       } else if (msg.type === 'interactiveWorkflowState' && msg.changeName === changeName) {
@@ -456,7 +451,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
       }
     });
     return cleanup;
-   }, [activeTab, changeName, directArchivePending, onMessage, postMessage, scopeId, workflowReceipt, workflowSnapshot]);
+   }, [activeTab, changeName, onMessage, postMessage, scopeId, workflowReceipt, workflowSnapshot]);
 
   useEffect(() => {
     postMessage(sendMessage.getWorkflowLaunchConfig());
@@ -525,7 +520,6 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   };
 
   const handleArchiveNow = () => {
-    setDirectArchivePending(true);
     postMessage(sendMessage.archiveChange(changeName, scopeId));
   };
 
