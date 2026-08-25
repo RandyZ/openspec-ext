@@ -328,7 +328,6 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     const cleanup = onMessage((event: MessageEvent) => {
       const msg = event.data;
       if (msg.type === 'dashboardData'
-        && directArchivePending
         && Array.isArray(msg.data?.archivedChanges)
         && msg.data.archivedChanges.some((archived: { name?: string }) => archived.name === changeName)) {
         setArchivedLocally(true);
