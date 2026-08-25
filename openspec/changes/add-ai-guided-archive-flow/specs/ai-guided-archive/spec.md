@@ -1,87 +1,80 @@
-> 参考 Superpowers 设计文档：[Cursor 原生交互与 AI 归档流程设计](../../../../../docs/superpowers/specs/2026-05-23-cursor-native-interaction-and-ai-archive-design.md)
+## Purpose
+
+为高影响归档提供审查优先、绑定安全且可明确选择 direct CLI 逃生路径的统一用户交互。
 
 ## ADDED Requirements
 
-### Requirement: Review and Archive primary action
-The extension SHALL provide an AI-guided archive primary action that routes the user to the OpenSpec archive Agent workflow instead of directly archiving the change.
+### Requirement: AI-guided archive is the primary Detail action
 
-#### Scenario: Completed change opens AI archive workflow
-- **WHEN** the user clicks the primary archive action for a completed change
-- **THEN** the action MUST generate the archive workflow command for the current route target
-- **AND** the default Cursor command MUST be `/opsx-archive <change>`
-- **AND** the webview MUST send a Chat routing message rather than an `archiveChange` message
+扩展 SHALL 将 Change Detail 中的 AI 审查归档作为主要归档动作，并复用现有交互式 workflow session。
 
-#### Scenario: Primary action does not move files directly
-- **WHEN** the user clicks `Review & Archive`
-- **THEN** the extension MUST NOT call `dataManager.archiveChange`
-- **AND** the change directory MUST remain in the active changes location until the Agent workflow or explicit direct archive path archives it
+#### Scenario: Review and Archive starts the interactive workflow
 
-### Requirement: Archive split button
-The extension SHALL present archive as a split button with AI-guided review as the primary action and direct archive as an explicit dropdown action.
+- **GIVEN** 用户打开未归档 Change 的 `Verify & Archive` tab
+- **WHEN** 用户点击 `Review & Archive`
+- **THEN** 扩展 MUST 通过交互式 terminal runner 发起 `/opsx-archive <change>`
+- **AND** UI MUST 展示该 session 的 running、error、reveal、stop 与 clear 状态
+- **AND** 此动作 MUST NOT 发送 direct `archiveChange` message
 
-#### Scenario: Split button primary action
-- **WHEN** a change is eligible to show archive actions
-- **THEN** the primary button label MUST communicate AI-guided review, such as `Review & Archive`
-- **AND** clicking the primary button MUST open or copy the archive workflow command through the selected adapter
+#### Scenario: Incomplete Change can request review
 
-#### Scenario: Archive Now dropdown action
-- **WHEN** a change is eligible for direct archive
-- **THEN** the split button dropdown MUST include `Archive Now`
-- **AND** selecting `Archive Now` MUST use the existing direct archive CLI path after confirmation
+- **GIVEN** Change 的 tasks 或 required artifacts 尚未完成
+- **WHEN** 用户进入 `Verify & Archive` tab
+- **THEN** `Review & Archive` MAY 保持可用以获取 Agent review/advice
+- **AND** UI MUST NOT 暗示该 Change 已满足 direct archive 条件
 
-#### Scenario: Change Detail completed change archive actions
-- **WHEN** a completed change is shown in Change Detail
-- **THEN** the action bar MUST show `Review & Archive` as the primary archive action
-- **AND** the archive dropdown MUST include `Archive Now`
-- **AND** Dashboard and Change Detail MUST use the same archive eligibility rules
+#### Scenario: Archived Change is read-only
 
-#### Scenario: Change Detail primary action routes to Agent
-- **WHEN** the user clicks `Review & Archive` in Change Detail
-- **THEN** the webview MUST send a Chat routing message for `/opsx-archive <change>` or the target-specific equivalent
-- **AND** it MUST NOT send an `archiveChange` message
+- **GIVEN** Change 已归档
+- **WHEN** Change Detail 渲染
+- **THEN** `Review & Archive` 与 `Archive Now` MUST NOT 可执行
+- **AND** Detail MUST 保持只读
 
-#### Scenario: Change Detail direct archive disabled when incomplete
-- **WHEN** Change Detail shows a change with incomplete tasks or required artifacts
-- **THEN** `Archive Now` MUST be disabled or unavailable
-- **AND** the UI MUST explain why direct archive is unavailable
-- **AND** `Review & Archive` MAY remain available as an Agent review/advice entry
+### Requirement: Direct archive is an explicit secondary Detail action
 
-#### Scenario: Archived change is read-only
-- **WHEN** a change is already archived
-- **THEN** archive actions MUST NOT be shown
-- **AND** the change detail view MUST remain read-only
+扩展 SHALL 仅在 Change Detail 中以明确的次要动作 `Archive Now` 暴露 direct archive，并在执行前要求确认。
 
-### Requirement: Direct archive gating
-The extension SHALL gate direct archive behind completion state and explicit confirmation.
+#### Scenario: Archive Now is enabled by shared resolution
 
-#### Scenario: Direct archive enabled for complete change
-- **WHEN** all required artifacts exist
-- **AND** all tasks are complete
-- **AND** the user opens the archive dropdown
-- **THEN** `Archive Now` MUST be enabled
-- **AND** selecting it MUST show a confirmation before calling the CLI archive path
+- **GIVEN** 当前 binding 的 required artifacts 已完成
+- **AND** 所有 tasks 已完成
+- **AND** 共享 workflow resolver 返回可用的高影响 Archive action
+- **WHEN** `Verify & Archive` tab 渲染
+- **THEN** `Archive Now` MUST 可用
+- **AND** UI MUST NOT 使用独立阶段推导覆盖 resolver 结果
 
-#### Scenario: Direct archive disabled for incomplete tasks
-- **WHEN** any task is incomplete
-- **AND** the user opens the archive dropdown
-- **THEN** `Archive Now` MUST be disabled or unavailable
-- **AND** the UI MUST explain that incomplete tasks should be reviewed through `Review & Archive`
+#### Scenario: Archive Now is disabled when incomplete
 
-#### Scenario: Direct archive disabled for incomplete artifacts
-- **WHEN** any required artifact is incomplete
-- **AND** the user opens the archive dropdown
-- **THEN** `Archive Now` MUST be disabled or unavailable
-- **AND** the UI MUST explain that artifacts should be completed or reviewed before direct archive
+- **GIVEN** 共享 workflow resolver 未返回可用的高影响 Archive action
+- **WHEN** `Verify & Archive` tab 渲染
+- **THEN** `Archive Now` MUST 被禁用或隐藏
+- **AND** UI MUST 展示可访问的不可用原因
+- **AND** `Review & Archive` MAY 保持可用
 
-### Requirement: Verify-to-archive recommendation
-The extension SHALL recommend AI-guided archive after verification-ready or completed states.
+#### Scenario: Archive Now confirms before direct execution
 
-#### Scenario: Verify complete recommendation
-- **WHEN** a change is ready for archive after task completion or verification
-- **THEN** the recommended next action MUST be `Review & Archive`
-- **AND** the UI MUST NOT present direct CLI archive as the default primary action
+- **GIVEN** `Archive Now` 可用
+- **WHEN** 用户选择该动作
+- **THEN** 扩展 MUST 显示现有 direct archive 确认对话框
+- **AND** 取消 MUST 产生零文件变更
+- **AND** 明确确认后才可通过当前 binding 的 direct archive CLI 路径执行
 
-#### Scenario: Incomplete change review entry
-- **WHEN** a change has partial task progress but is not complete
-- **THEN** the UI MAY expose `Review & Archive` as an Agent review entry
-- **AND** the entry MUST communicate review/advice semantics rather than promising that the change can be archived
+### Requirement: Archive entry points preserve the safety boundary
+
+Dashboard、Change Detail 与 Command Palette SHALL 保持明确且一致的归档职责边界。
+
+#### Scenario: Dashboard high-impact action opens Change Detail
+
+- **GIVEN** Dashboard 展示 Ready to Verify 或可归档的 Change
+- **WHEN** 用户选择 Verify/Archive 高影响入口
+- **THEN** 扩展 MUST 打开或 reveal 绑定正确的 Change Detail
+- **AND** Detail MUST 切换到 `Verify & Archive`
+- **AND** Dashboard MUST NOT 直接发送 `archiveChange`
+
+#### Scenario: Ready to Verify remains the recommended lifecycle action
+
+- **GIVEN** Change 的全部 tasks 已完成且尚未归档
+- **WHEN** 共享 workflow resolver 计算动作
+- **THEN** Verify MUST 保持 recommended action
+- **AND** Archive MUST 保持 high-impact secondary action
+- **AND** UI MUST NOT 将 direct CLI archive 提升为默认动作

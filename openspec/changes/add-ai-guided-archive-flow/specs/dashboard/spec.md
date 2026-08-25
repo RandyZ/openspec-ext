@@ -1,45 +1,73 @@
-> 参考 Superpowers 设计文档：[Cursor 原生交互与 AI 归档流程设计](../../../../../docs/superpowers/specs/2026-05-23-cursor-native-interaction-and-ai-archive-design.md)
-
 ## MODIFIED Requirements
 
 ### Requirement: Dashboard Actions
-The system SHALL provide quick actions for common operations, and archive-related quick actions SHALL default to AI-guided review while preserving an explicit direct archive option.
+The system SHALL provide quick actions for common operations, workflow-oriented quick actions SHALL route through shared OpenSpec workflow command routing, and Verify/Archive quick actions SHALL open the interactive `Verify & Archive` workflow without exposing direct archive controls on Dashboard cards.
 
 #### Scenario: Create new change
-- GIVEN the dashboard is open
-- WHEN the user clicks "New Change" button
-- THEN a dialog MUST prompt for the change name
-- AND on submission, `openspec new change <name>` MUST be executed
-- AND the new change MUST appear in the dashboard
+- **GIVEN** the Project-first Sidebar is open
+- **WHEN** the user invokes the native New Change view-title action
+- **THEN** a dialog MUST prompt for the change name
+- **AND** on submission, `openspec new change <name>` MUST be executed
+- **AND** the new change MUST appear in the current Project surfaces
 
 #### Scenario: Refresh data
-- GIVEN the dashboard is open
-- WHEN the user clicks the refresh button
-- THEN all data MUST be reloaded from the file system
-- AND the UI MUST update to reflect current state
-- AND the refresh result MUST be shared with the open sidebar webview
+- **GIVEN** at least one Project surface is open
+- **WHEN** the user invokes the native Refresh action
+- **THEN** current data MUST be reloaded from the official Project sources
+- **AND** one binding-validated refresh result MUST be shared with the open Sidebar and Project Dashboard
+
+#### Scenario: Open Project Dashboard
+- **GIVEN** the Project-first action grid is visible
+- **WHEN** the user activates Dashboard
+- **THEN** the extension MUST open or reveal the singleton Project Dashboard Editor
+- **AND** the action MUST NOT replace the active local Sidebar view
 
 #### Scenario: Copy opsx command
-- GIVEN a change in the dashboard
-- WHEN the user clicks "Copy /opsx:ff"
-- THEN the command `/opsx:ff <change-name>` MUST be copied to clipboard
-- AND a notification SHOULD confirm the copy action
+- **GIVEN** a change in the dashboard
+- **WHEN** the user clicks a copy-command quick action
+- **THEN** the command builder MUST generate the command using the Clipboard target
+- **AND** the generated command MUST use colon format such as `/opsx:apply <change>`
+- **AND** the generated command MUST be copied to clipboard
+- **AND** a notification SHOULD confirm the copy action
 
-#### Scenario: Completed change shows Review and Archive primary action
-- GIVEN a completed change is displayed in the dashboard
-- WHEN quick actions are shown for that change
-- THEN the archive primary action MUST be `Review & Archive`
-- AND clicking it MUST route the archive workflow command through the selected adapter
-- AND it MUST NOT directly execute the CLI archive path
+#### Scenario: Open workflow command from quick action through launch settings
+- **GIVEN** a change in the dashboard
+- **WHEN** the user clicks a workflow quick action such as Continue, FF, Apply, or Sync
+- **THEN** the action MUST route through the shared workflow launch settings
+- **AND** `openspec.workflowLaunchMode=clipboard` MUST copy the generated command and show a non-modal notification
+- **AND** `openspec.workflowLaunchMode=adapter` MUST route through the selected adapter's configured launch behavior
+- **AND** the dashboard quick action MUST NOT directly modify OpenSpec change files
 
-#### Scenario: Dashboard Archive Now dropdown action
-- GIVEN a completed change is displayed in the dashboard
-- WHEN the user opens the archive action dropdown
-- THEN `Archive Now` MUST be available
-- AND selecting `Archive Now` MUST trigger the direct archive confirmation flow
+#### Scenario: Cursor quick action uses hyphen command when adapter launch is selected
+- **GIVEN** `openspec.workflowLaunchMode` is `adapter`
+- **AND** the selected adapter target is Cursor
+- **WHEN** the user clicks a workflow quick action in the dashboard
+- **THEN** the command opened, copied, or executed through Cursor MUST use `/opsx-<action> <change>` format
 
-#### Scenario: Dashboard direct archive disabled when incomplete
-- GIVEN a change has incomplete tasks or required artifacts
-- WHEN archive actions are shown in the dashboard
-- THEN `Review & Archive` MAY be shown as a review/advice entry
-- AND `Archive Now` MUST be disabled or unavailable with a reason
+#### Scenario: Default dashboard quick action is clipboard safe
+- **GIVEN** the extension uses default settings
+- **WHEN** the user clicks a workflow quick action other than interactive Verify or Archive in the dashboard
+- **THEN** the generated command MUST be copied to the clipboard
+- **AND** no Agent window, deeplink, or CLI process MUST start automatically
+
+#### Scenario: Dashboard Verify quick action opens interactive workflow
+- **GIVEN** a change card displays a Verify quick action
+- **WHEN** the user clicks that action
+- **THEN** the extension MUST open the bound change detail view
+- **AND** the change detail view MUST switch to `Verify & Archive`
+- **AND** the Verify terminal workflow MAY start immediately
+- **AND** the quick action MUST NOT use headless `agentCli`
+
+#### Scenario: Dashboard Archive quick action opens interactive workflow
+- **GIVEN** a Dashboard priority or card exposes an Archive high-impact action
+- **WHEN** the user clicks that action
+- **THEN** the extension MUST open the bound change detail view
+- **AND** the change detail view MUST switch to `Verify & Archive`
+- **AND** the Archive terminal workflow MAY start immediately
+- **AND** the quick action MUST NOT call direct `archiveChange`
+
+#### Scenario: Dashboard does not expose direct Archive Now
+- **GIVEN** a Change is eligible for direct archive
+- **WHEN** Dashboard priorities or cards render
+- **THEN** Dashboard MUST NOT render a card-local Archive split button or `Archive Now` menu
+- **AND** direct archive MUST remain inside Change Detail or Command Palette

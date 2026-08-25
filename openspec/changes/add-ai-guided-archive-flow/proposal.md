@@ -1,33 +1,29 @@
 ## Why
 
-Archive 当前默认由扩展直接调用 OpenSpec CLI 移动 change，这对确定性归档很快，但绕过了 OpenSpec/Superpowers 推荐的 Agent 审查、验证和 sync 判断流程。归档是高影响动作，默认入口应优先引导用户进入 AI 审查归档，同时保留明确的 `Archive Now` 快捷路径给用户主动选择。
-
-参考 Superpowers 设计文档：[Cursor 原生交互与 AI 归档流程设计](../../../docs/superpowers/specs/2026-05-23-cursor-native-interaction-and-ai-archive-design.md)。
+扩展已经具备共享 Action Model、交互式 `Verify & Archive` tab 和 direct archive 确认链路，但归档入口仍缺少清晰分工：高影响的默认入口应先进入绑定正确的 Change Detail 完成审查，直接 CLI 归档只能由用户显式选择。现有 Change 的旧规划早于这些基础能力，会重复新增 split button 和 workflow state，需要先按当前架构收敛。
 
 ## What Changes
 
-- 将 Dashboard 和 Change Detail 中的 Archive 主动作改为 `Review & Archive`。
-- 主动作通过 Agent command `/opsx-archive <change>` 进入 AI 审查归档流程。
-- 将 Archive 操作呈现为主按钮 + 下拉菜单组合，下拉中提供 `Archive Now`。
-- `Archive Now` 继续调用现有 CLI archive 能力，并保留二次确认和风险提示。
-- 当 tasks 或 artifacts 未完成时，仍可进入 `Review & Archive` 获取 Agent 建议，但 `Archive Now` 默认禁用并展示原因。
-- Verify 完成后的推荐动作指向 `Review & Archive`，不再默认鼓励直接 CLI 归档。
-- 不修改 `/opsx-archive` skill 的具体流程，不引入 MCP。
+- Dashboard 的 Verify/Archive 高影响入口只打开或 reveal 绑定正确的 Change Detail，并切换到 `Verify & Archive`，不在卡片上直接归档或新增 split button。
+- Change Detail 将 `Review & Archive` 作为主要归档动作，复用现有交互式 terminal runner 发起 `/opsx-archive <change>`。
+- Change Detail 提供明确的次要动作 `Archive Now`，仅在共享 resolver 判定可直接归档时启用，并复用现有确认对话框、scope 绑定和 CLI archive 链路。
+- 不完整 Change 仍可进入审查流程，但 `Archive Now` 必须禁用并解释原因；已归档 Change 保持只读。
+- 保留 Command Palette 的 direct archive 能力，不新增并行 Action Model、通用 split-button 组件、消息协议或依赖。
 
 ## Capabilities
 
 ### New Capabilities
 
-- `ai-guided-archive`: 扩展提供默认 AI 审查归档入口和直接归档下拉入口的能力，包括状态规则、风险提示和 Dashboard/Detail 一致性。
+- `ai-guided-archive`: 定义 Dashboard 到 Change Detail 的安全归档入口、Detail 中的审查优先动作与显式 direct archive 逃生路径。
 
 ### Modified Capabilities
 
-- `dashboard`: Dashboard quick actions 需要将归档主动作改为 AI 审查路径，并提供 `Archive Now` 下拉入口。
-- `cli-integration`: 直接 archive CLI 能力保留，但作为用户显式选择的 `Archive Now` 路径，而不是归档主动作。
+- `dashboard`: Verify/Archive 高影响入口必须进入绑定正确的 Change Detail 安全流程，Dashboard 不提供 direct archive 菜单。
+- `cli-integration`: direct archive 仅由显式 `Archive Now` 或 Command Palette 路径触发，并继续按官方普通 CLI 输出处理。
 
 ## Impact
 
-- Webview: ActionBar、ChangeCard、workflow state、归档按钮文案、下拉菜单组件和状态提示。
-- Extension host: `archiveChange` message 继续保留为 direct archive；AI archive 主路径复用 Chat/command routing。
-- Specs: 新增 `ai-guided-archive`，并更新 `dashboard`、`cli-integration` 的归档行为要求。
-- Dependency: 最终验收依赖 `improve-cursor-native-interaction` 提供稳定 command builder 和 Chat 路由。
+- Webview：`VerifyArchivePanel`、`ChangeDetail`、Dashboard 高影响动作导航和相关 i18n 文案。
+- Extension Host：复用现有 `archiveChange` message、`confirmDirectArchive()`、scope-aware `DataManager.archiveChange()` 和刷新链路。
+- Tests：共享 resolver gating、Detail 双动作、Dashboard 导航、direct archive 取消/确认/错误回归。
+- Dependencies：无新增依赖；复用已落地的 Action Model 与交互式 workflow runner。
