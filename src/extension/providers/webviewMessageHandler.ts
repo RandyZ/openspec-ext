@@ -61,6 +61,12 @@ function resolveScopeRoot(
   return { rootPath: scope?.rootPath ?? dataManager.getWorkspaceRoot(), scope };
 }
 
+const directArchiveInFlight = new Map<string, symbol>();
+
+function directArchiveKey(rootPath: string, changeName: string): string {
+  return `${path.resolve(rootPath)}\u0000${changeName}`;
+}
+
 /** Returns true if resolvedPath is under rootPath (no .. escape). */
 function isPathUnderWorkspace(resolvedPath: string, workspaceRoot: string): boolean {
   const normalized = path.normalize(resolvedPath);
@@ -557,26 +563,36 @@ export async function handleWebviewMessage(
     case 'archiveChange': {
       const name = message.name;
       if (!name) break;
-      const { scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
-      const confirm = await confirmDirectArchive(name);
-      if (confirm === 'verifyFirst') {
-        // Route into the interactive Verify & Archive tab (recommended path).
-        await vscode.commands.executeCommand(
-          'openspec.openChangeDetail',
-          name,
-          'verifyArchive',
-          'verify'
-        );
-        break;
-      }
-      if (confirm === 'archive') {
-        try {
-          const afterArchive = await dataManager.archiveChange(name, scope);
-          vscode.window.showInformationMessage(t('command.archived', { name }));
-          webview.postMessage({ type: 'dashboardData', data: afterArchive, debug: getDebug() });
-        } catch (error) {
-          logger.error(`Failed to archive change: ${name}`, error as Error);
-          postError(error, t('command.archiveFailed'));
+      const { rootPath, scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
+      const key = directArchiveKey(rootPath, name);
+      if (directArchiveInFlight.has(key)) break;
+      const token = Symbol(key);
+      directArchiveInFlight.set(key, token);
+      try {
+        const confirm = await confirmDirectArchive(name);
+        if (confirm === 'verifyFirst') {
+          // Route into the interactive Verify & Archive tab (recommended path).
+          await vscode.commands.executeCommand(
+            'openspec.openChangeDetail',
+            name,
+            'verifyArchive',
+            'verify'
+          );
+          break;
+        }
+        if (confirm === 'archive') {
+          try {
+            const afterArchive = await dataManager.archiveChange(name, scope);
+            vscode.window.showInformationMessage(t('command.archived', { name }));
+            webview.postMessage({ type: 'dashboardData', data: afterArchive, debug: getDebug() });
+          } catch (error) {
+            logger.error(`Failed to archive change: ${name}`, error as Error);
+            postError(error, t('command.archiveFailed'));
+          }
+        }
+      } finally {
+        if (directArchiveInFlight.get(key) === token) {
+          directArchiveInFlight.delete(key);
         }
       }
       break;

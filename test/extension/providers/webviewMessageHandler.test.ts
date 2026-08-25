@@ -63,6 +63,16 @@ vi.mock('@extension/utils/logger', () => ({
   },
 }));
 
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 describe('handleWebviewMessage toggleTask', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -868,6 +878,145 @@ describe('handleWebviewMessage toggleTask', () => {
       data: dashboardData,
       debug: false,
     });
+  });
+
+  it('suppresses a duplicate same-root archive while the first CLI call is pending', async () => {
+    vi.mocked(vscode.window.showWarningMessage).mockResolvedValue(t('command.archive') as any);
+    const dashboardData = { changes: [], specs: [], archivedChanges: [{ name: 'demo-change' }], lastRefresh: 1 };
+    const archiveDeferred = createDeferred<typeof dashboardData>();
+    const archiveChange = vi.fn().mockReturnValue(archiveDeferred.promise);
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      archiveChange,
+    };
+    const webview = { postMessage: vi.fn() };
+
+    const first = handleWebviewMessage(
+      { type: 'archiveChange', name: 'demo-change' },
+      webview as any,
+      dataManager as any,
+      undefined
+    );
+    await vi.waitFor(() => expect(archiveChange).toHaveBeenCalledTimes(1));
+
+    const duplicate = handleWebviewMessage(
+      { type: 'archiveChange', name: 'demo-change' },
+      webview as any,
+      dataManager as any,
+      undefined
+    );
+    await Promise.resolve();
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(1);
+    expect(archiveChange).toHaveBeenCalledTimes(1);
+
+    archiveDeferred.resolve(dashboardData);
+    await Promise.all([first, duplicate]);
+
+    await handleWebviewMessage(
+      { type: 'archiveChange', name: 'demo-change' },
+      webview as any,
+      dataManager as any,
+      undefined
+    );
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(2);
+    expect(archiveChange).toHaveBeenCalledTimes(2);
+  });
+
+  it('releases the same-root archive guard after confirmation cancel', async () => {
+    const dashboardData = { changes: [], specs: [], archivedChanges: [{ name: 'demo-change' }], lastRefresh: 1 };
+    vi.mocked(vscode.window.showWarningMessage)
+      .mockResolvedValueOnce(undefined as any)
+      .mockResolvedValue(t('command.archive') as any);
+    const archiveChange = vi.fn().mockResolvedValue(dashboardData);
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      archiveChange,
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'archiveChange', name: 'demo-change' },
+      webview as any,
+      dataManager as any,
+      undefined
+    );
+    await handleWebviewMessage(
+      { type: 'archiveChange', name: 'demo-change' },
+      webview as any,
+      dataManager as any,
+      undefined
+    );
+
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(2);
+    expect(archiveChange).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases the same-root archive guard after CLI failure', async () => {
+    vi.mocked(vscode.window.showWarningMessage).mockResolvedValue(t('command.archive') as any);
+    const dashboardData = { changes: [], specs: [], archivedChanges: [{ name: 'demo-change' }], lastRefresh: 1 };
+    const archiveChange = vi.fn()
+      .mockRejectedValueOnce(new Error('archive failed'))
+      .mockResolvedValueOnce(dashboardData);
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      archiveChange,
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'archiveChange', name: 'demo-change' },
+      webview as any,
+      dataManager as any,
+      undefined
+    );
+    await handleWebviewMessage(
+      { type: 'archiveChange', name: 'demo-change' },
+      webview as any,
+      dataManager as any,
+      undefined
+    );
+
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(2);
+    expect(archiveChange).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not block same-name archives in different roots', async () => {
+    vi.mocked(vscode.window.showWarningMessage).mockResolvedValue(t('command.archive') as any);
+    const scopeA = { id: 'store:a', rootPath: '/stores/a', source: 'store' };
+    const scopeB = { id: 'store:b', rootPath: '/stores/b', source: 'store' };
+    const archiveA = createDeferred<{ changes: never[] }>();
+    const archiveB = createDeferred<{ changes: never[] }>();
+    const archiveChange = vi.fn((_name: string, scope: typeof scopeA) => (
+      scope === scopeA ? archiveA.promise : archiveB.promise
+    ));
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      resolveScope: vi.fn((scopeId?: string) => scopeId === scopeA.id ? scopeA : scopeB),
+      archiveChange,
+    };
+    const webview = { postMessage: vi.fn() };
+
+    const first = handleWebviewMessage(
+      { type: 'archiveChange', name: 'same-name', scopeId: scopeA.id },
+      webview as any,
+      dataManager as any,
+      undefined
+    );
+    await vi.waitFor(() => expect(archiveChange).toHaveBeenCalledTimes(1));
+    const second = handleWebviewMessage(
+      { type: 'archiveChange', name: 'same-name', scopeId: scopeB.id },
+      webview as any,
+      dataManager as any,
+      undefined
+    );
+    await vi.waitFor(() => expect(archiveChange).toHaveBeenCalledTimes(2));
+
+    archiveA.resolve({ changes: [] });
+    archiveB.resolve({ changes: [] });
+    await Promise.all([first, second]);
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledTimes(2);
+    expect(archiveChange).toHaveBeenNthCalledWith(1, 'same-name', scopeA);
+    expect(archiveChange).toHaveBeenNthCalledWith(2, 'same-name', scopeB);
   });
 
   it('archiveChange binds the visible Root via scopeId', async () => {

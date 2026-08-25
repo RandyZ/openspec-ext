@@ -126,6 +126,7 @@ export class DataManager {
   private cliDiagnostic: CliActivationDiagnostic | null = null;
   private refreshInFlight: Promise<DashboardData> | null = null;
   private queuedRefresh: Promise<DashboardData> | null = null;
+  private queuedRefreshScope: OpenSpecScope | undefined;
   private refreshCallbacks: Set<(data: DashboardData) => void> = new Set();
   private artifactChangedCallbacks: Set<(event: ArtifactChangedEvent) => void> = new Set();
   private cliAvailable = false;
@@ -597,28 +598,36 @@ export class DataManager {
   /**
    * Refresh dashboard data from State Reader (CLI list + status, specs with fallback)
    */
-  async refresh(): Promise<DashboardData> {
+  async refresh(scope = this.getSelectedScope()): Promise<DashboardData> {
     if (!this.refreshInFlight) {
-      return this.startRefresh();
+      return this.startRefresh(scope);
     }
 
-    if (!this.queuedRefresh) {
-      const queuedRefresh = this.refreshInFlight
-        .catch(() => undefined)
-        .then(() => {
-          if (this.queuedRefresh === queuedRefresh) {
-            this.queuedRefresh = null;
-          }
-          return this.startRefresh();
-        })
-        .finally(() => {
-          if (this.queuedRefresh === queuedRefresh) {
-            this.queuedRefresh = null;
-          }
-        });
-      this.queuedRefresh = queuedRefresh;
+    if (
+      this.queuedRefresh
+      && (scope === this.queuedRefreshScope || this.scopeMatches(scope, this.queuedRefreshScope))
+    ) {
+      return this.queuedRefresh;
     }
 
+    const previousRefresh = this.queuedRefresh ?? this.refreshInFlight;
+    const queuedRefresh = previousRefresh
+      .catch(() => undefined)
+      .then(() => {
+        if (this.queuedRefresh === queuedRefresh) {
+          this.queuedRefresh = null;
+          this.queuedRefreshScope = undefined;
+        }
+        return this.startRefresh(scope);
+      })
+      .finally(() => {
+        if (this.queuedRefresh === queuedRefresh) {
+          this.queuedRefresh = null;
+          this.queuedRefreshScope = undefined;
+        }
+      });
+    this.queuedRefresh = queuedRefresh;
+    this.queuedRefreshScope = scope;
     return this.queuedRefresh;
   }
 
@@ -769,8 +778,8 @@ export class DataManager {
     });
   }
 
-  private startRefresh(): Promise<DashboardData> {
-    const refresh = this.runRefresh().finally(() => {
+  private startRefresh(scope = this.getSelectedScope()): Promise<DashboardData> {
+    const refresh = this.runRefresh(scope).finally(() => {
       if (this.refreshInFlight === refresh) {
         this.refreshInFlight = null;
       }
@@ -1160,7 +1169,7 @@ export class DataManager {
     await this.cliService.archiveChange(name, scope);
     const resolvedScope = scope ?? this.resolveScope();
     await this.invalidateDashboardCache(resolvedScope);
-    return this.runRefresh(resolvedScope);
+    return this.refresh(resolvedScope);
   }
 
   /**

@@ -202,6 +202,7 @@ describe('DataManager dashboard data loading', () => {
       label: 'Project',
       rootPath: '/workspace',
       source: 'project',
+      capabilities: { context: false, diagnostics: [] },
     } as any;
     const storeScope = {
       id: 'store:/store',
@@ -225,15 +226,180 @@ describe('DataManager dashboard data loading', () => {
     };
     (manager as any).cliService = { archiveChange };
     const runRefreshSpy = vi.spyOn(manager as any, 'runRefresh').mockResolvedValue(storeData);
-    const refreshSpy = vi.spyOn(manager, 'refresh').mockResolvedValue({} as any);
+    const refreshSpy = vi.spyOn(manager, 'refresh').mockResolvedValue(storeData);
 
     const result = await manager.archiveChange('same-name', storeScope);
 
     expect(result).toBe(storeData);
     expect(archiveChange).toHaveBeenCalledWith('same-name', storeScope);
-    expect(runRefreshSpy).toHaveBeenCalledWith(storeScope);
-    expect(refreshSpy).not.toHaveBeenCalled();
+    expect(refreshSpy).toHaveBeenCalledWith(storeScope);
+    expect(runRefreshSpy).not.toHaveBeenCalled();
     expect(manager.getSelectedScope()).toBe(projectScope);
+  });
+
+  it('queues a current-scope archive refresh behind an in-flight refresh', async () => {
+    const manager = new DataManager('/workspace');
+    const scope = {
+      id: 'project:/workspace',
+      label: 'Project',
+      rootPath: '/workspace',
+      source: 'project',
+      capabilities: { context: false, diagnostics: [] },
+    } as any;
+    const initialChanges = createDeferred<ChangeInfo[]>();
+    const initialSpecs = createDeferred<SpecInfo[]>();
+    const archivedChanges = createDeferred<ChangeInfo[]>();
+    const archivedSpecs = createDeferred<SpecInfo[]>();
+    const listChanges = vi.fn()
+      .mockImplementationOnce(() => initialChanges.promise)
+      .mockImplementationOnce(() => archivedChanges.promise);
+    const listSpecs = vi.fn()
+      .mockImplementationOnce(() => initialSpecs.promise)
+      .mockImplementationOnce(() => archivedSpecs.promise);
+    const oldChange = { name: 'same-name', completedTasks: 1, totalTasks: 1 } as ChangeInfo;
+    const archivedChange = { name: 'other-change', completedTasks: 0, totalTasks: 0 } as ChangeInfo;
+    const services = {
+      stateReader: {
+        listChanges,
+        listSpecs,
+        listArchivedChanges: vi.fn().mockResolvedValue([]),
+      },
+      contentAccess: {},
+      rootPath: scope.rootPath,
+      scope,
+    };
+
+    Object.assign(manager as any, {
+      cliAvailable: true,
+      capabilities: {},
+      scopeManager: {
+        getSelectedScope: vi.fn(() => scope),
+        getScopeOptions: vi.fn(() => [scope]),
+      },
+      cliService: {
+        archiveChange: vi.fn().mockResolvedValue(undefined),
+        getCliActivationDiagnostic: vi.fn().mockReturnValue(null),
+      },
+    });
+    vi.spyOn(manager as any, 'getScopedServices').mockReturnValue(services);
+    vi.spyOn(manager as any, 'enrichChangesWithProposalWhy').mockImplementation(async (changes) => changes);
+
+    const initialRefresh = manager.refresh();
+    await vi.waitFor(() => expect(listChanges).toHaveBeenCalledTimes(1));
+
+    const archiveRefresh = manager.archiveChange('same-name', scope);
+    archivedChanges.resolve([archivedChange]);
+    archivedSpecs.resolve([]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(listChanges).toHaveBeenCalledTimes(1);
+    expect((manager as any).cachedData).toBeNull();
+
+    initialChanges.resolve([oldChange]);
+    initialSpecs.resolve([]);
+    await expect(initialRefresh).resolves.toMatchObject({ changes: [oldChange] });
+    await vi.waitFor(() => expect(listChanges).toHaveBeenCalledTimes(2));
+
+    await expect(archiveRefresh).resolves.toMatchObject({ changes: [archivedChange] });
+    expect((manager as any).cachedData).toMatchObject({ changes: [archivedChange] });
+  });
+
+  it('queues an explicit non-current Store archive after an existing queued refresh', async () => {
+    const manager = new DataManager('/workspace');
+    const projectScope = {
+      id: 'project:/workspace',
+      label: 'Project',
+      rootPath: '/workspace',
+      source: 'project',
+      capabilities: { context: false, diagnostics: [] },
+    } as any;
+    const storeScope = {
+      id: 'store:/store',
+      label: 'Store',
+      rootPath: '/store',
+      source: 'store',
+      capabilities: { context: false, diagnostics: [] },
+    } as any;
+    const projectFirstChanges = createDeferred<ChangeInfo[]>();
+    const projectFirstSpecs = createDeferred<SpecInfo[]>();
+    const projectQueuedChanges = createDeferred<ChangeInfo[]>();
+    const projectQueuedSpecs = createDeferred<SpecInfo[]>();
+    const storeChanges = createDeferred<ChangeInfo[]>();
+    const storeSpecs = createDeferred<SpecInfo[]>();
+    const projectChange = { name: 'project-state', completedTasks: 0, totalTasks: 1 } as ChangeInfo;
+    const projectQueuedChange = { name: 'project-after-refresh', completedTasks: 0, totalTasks: 1 } as ChangeInfo;
+    const storeArchivedChange = { name: 'same-name', completedTasks: 1, totalTasks: 1 } as ChangeInfo;
+    const projectListChanges = vi.fn()
+      .mockImplementationOnce(() => projectFirstChanges.promise)
+      .mockImplementationOnce(() => projectQueuedChanges.promise);
+    const projectListSpecs = vi.fn()
+      .mockImplementationOnce(() => projectFirstSpecs.promise)
+      .mockImplementationOnce(() => projectQueuedSpecs.promise);
+    const storeListChanges = vi.fn(() => storeChanges.promise);
+    const storeListSpecs = vi.fn(() => storeSpecs.promise);
+    const getScopedServices = vi.fn((scope: typeof projectScope | typeof storeScope) => ({
+      stateReader: scope === storeScope
+        ? {
+            listChanges: storeListChanges,
+            listSpecs: storeListSpecs,
+            listArchivedChanges: vi.fn().mockResolvedValue([{ name: 'same-name' }]),
+          }
+        : {
+            listChanges: projectListChanges,
+            listSpecs: projectListSpecs,
+            listArchivedChanges: vi.fn().mockResolvedValue([]),
+          },
+      contentAccess: {},
+      rootPath: scope.rootPath,
+      scope,
+    }));
+
+    Object.assign(manager as any, {
+      cliAvailable: true,
+      capabilities: {},
+      scopeManager: {
+        getSelectedScope: vi.fn(() => projectScope),
+        getScopeOptions: vi.fn(() => [projectScope, storeScope]),
+      },
+      cliService: {
+        archiveChange: vi.fn().mockResolvedValue(undefined),
+        getCliActivationDiagnostic: vi.fn().mockReturnValue(null),
+      },
+    });
+    vi.spyOn(manager as any, 'getScopedServices').mockImplementation(getScopedServices);
+    vi.spyOn(manager as any, 'enrichChangesWithProposalWhy').mockImplementation(async (changes) => changes);
+
+    const initialRefresh = manager.refresh();
+    await vi.waitFor(() => expect(projectListChanges).toHaveBeenCalledTimes(1));
+    const queuedRefresh = manager.refresh();
+    const archiveRefresh = manager.archiveChange('same-name', storeScope);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(storeListChanges).not.toHaveBeenCalled();
+
+    projectFirstChanges.resolve([projectChange]);
+    projectFirstSpecs.resolve([]);
+    await vi.waitFor(() => expect(projectListChanges).toHaveBeenCalledTimes(2));
+
+    projectQueuedChanges.resolve([projectQueuedChange]);
+    projectQueuedSpecs.resolve([]);
+    await vi.waitFor(() => expect(storeListChanges).toHaveBeenCalledTimes(1));
+
+    storeChanges.resolve([]);
+    storeSpecs.resolve([]);
+
+    await expect(initialRefresh).resolves.toMatchObject({ changes: [projectChange] });
+    await expect(queuedRefresh).resolves.toMatchObject({ changes: [projectQueuedChange] });
+    await expect(archiveRefresh).resolves.toMatchObject({
+      changes: [],
+      archivedChanges: [{ name: 'same-name' }],
+      scope: expect.objectContaining({ id: storeScope.id }),
+    });
+    expect(manager.getSelectedScope()).toBe(projectScope);
+    expect((manager as any).cachedData).toMatchObject({
+      changes: [projectQueuedChange],
+      scope: expect.objectContaining({ id: projectScope.id }),
+    });
   });
 
   it('uses a Project-bound root for task execution and execution-state IO', async () => {
@@ -353,7 +519,7 @@ describe('DataManager dashboard data loading', () => {
       archivedChanges: [],
       lastRefresh: 2,
     } as any;
-    const refreshSpy = vi.spyOn(manager as any, 'runRefresh').mockResolvedValue(refreshedData);
+    const refreshSpy = vi.spyOn(manager, 'refresh').mockResolvedValue(refreshedData);
     const scope = manager.getSelectedScope();
 
     const result = await manager.archiveChange('demo-change', scope);
