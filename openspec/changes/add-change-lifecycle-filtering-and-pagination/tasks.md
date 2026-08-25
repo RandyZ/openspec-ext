@@ -75,9 +75,9 @@ Header 仅保留 New Change，不实现 Add Operation。筛选标签使用 All �
 
 - [x] Task 8.1 更新 `en.json` 和 `zh-cn.json` 的生命周期、筛选、分页、Attention 和空状态文案
 - [x] Task 8.2 更新旧 tests/fixtures，使生产路径显式提供 lifecycleStatus
-- [x] Task 8.3 为缺少 lifecycleStatus 的 legacy fixture 保留一次性兼容 adapter 并增加 TODO
+- [x] Task 8.3 为缺少 lifecycleStatus 的 legacy fixture 保留一次性兼容 adapter 并以专用测试锁定边界
 - [x] Task 8.4 运行 `pnpm test`
 - [x] Task 8.5 运行 `pnpm run build`
 - [x] Task 8.6 运行 `openspec validate add-change-lifecycle-filtering-and-pagination --strict`
-- [ ] Task 8.7 执行 Sidebar 与 Editor 宽度的手工 smoke test
+- [ ] Task 8.7 验收 Project-first 可达的 Sidebar 与 Project Dashboard，并在存在可信 Store fixture 时补充 Store 正向 smoke
 - [x] Task 8.8 更新 README/CHANGELOG，记录新状态模型、筛选语义和分页顺序

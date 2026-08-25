@@ -2,7 +2,9 @@
 
 ### Requirement: Change List Display
 
-系统 SHALL 基于统一的 Change 生命周期状态展示当前 OpenSpec Root 下的所有 Active 与 Archived Change，并提供可扫描的摘要、时间、Artifact 与进度信息。
+系统 SHALL 将 Dashboard 收缩为当前工程的 compact sidebar home，并仅直接展示当前工程的 active / unarchived changes。All Changes Workspace SHALL 基于统一的 Change 生命周期状态展示当前 OpenSpec Root 下的所有 Active 与 Archived Change，并提供可扫描的摘要、时间、Artifact 与进度信息。
+
+Sidebar MUST 显示当前工程身份、active changes，以及 All Changes 和 Specs 入口。Draft / Active / Completed 的全量分组展示不再属于 sidebar 主界面。
 
 生命周期状态 MUST 为：
 
@@ -14,6 +16,36 @@
 
 系统 MUST NOT 把 `Draft`、`In Progress`、`Completed` 或 `Merged` 作为 Changes Workspace 的一级筛选值。
 
+#### Scenario: Sidebar shows only current-project active work
+
+- **GIVEN** 当前工程同时存在 active changes 和 archived changes
+- **WHEN** 用户打开 OpenSpec sidebar
+- **THEN** sidebar MUST 显示当前工程身份
+- **AND** sidebar MUST 仅展示该工程的 active changes
+- **AND** archived changes MUST NOT 出现在 compact sidebar 主列表中
+- **AND** All Changes 与 Specs 入口 MUST 保持可见
+
+#### Scenario: No active changes still keeps entry points
+
+- **GIVEN** 当前工程没有 active changes
+- **WHEN** 用户打开 OpenSpec sidebar
+- **THEN** 系统 MUST 展示空状态提示
+- **AND** 系统 MUST 继续提供 All Changes 与 Specs 入口
+
+#### Scenario: Changes grouped by status
+
+- **GIVEN** 当前工程存在处于不同生命周期的 Changes
+- **WHEN** 用户打开 All Changes Explorer
+- **THEN** Explorer MUST 按 lifecycle 状态展示 Changes
+- **AND** Sidebar MUST 继续只展示 active / unarchived Changes
+
+#### Scenario: Empty state
+
+- **GIVEN** 当前工程没有 active Change
+- **WHEN** 用户打开 Sidebar
+- **THEN** Sidebar MUST 展示 active work 空状态
+- **AND** New Change、All Changes 与 Specs 入口 MUST 保持可用
+
 #### Scenario: Changes expose lifecycle status
 
 - **GIVEN** 当前 Root 中存在处于不同工作阶段的多个 Change
@@ -23,7 +55,7 @@
 - **AND** Archived Change MUST 显示为 `Archived`
 - **AND** 生命周期状态 MUST 与 ChangeCard 推荐操作使用同一份状态数据
 
-#### Scenario: Empty state
+#### Scenario: Filtered empty state
 
 - **GIVEN** 当前筛选结果没有任何 Change
 - **WHEN** Changes Workspace 渲染

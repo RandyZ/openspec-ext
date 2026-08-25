@@ -58,7 +58,7 @@ ChangesSection
 - 确保筛选发生在分页前。
 - 将 Archived 提升为一级状态。
 - 每个 Root 独立保存列表视图状态。
-- 在 Sidebar 和 Editor 中提供一致但响应式的筛选交互。
+- 在 Sidebar 与可复用的宽屏 ChangesExplorer 布局中提供一致但响应式的筛选交互。
 - 通过纯函数和单元测试保护状态边界。
 
 **Non-Goals:**
@@ -414,7 +414,7 @@ vscode.setState()
 
 ### 9. UI 结构
 
-Editor 宽屏：
+ChangesExplorer 宽屏布局（保留给现有/可复用 surface 与组件测试；Project-first 导航不要求新增可达的 Editor Changes 路由）：
 
 ```text
 Changes                                      [ + New Change ]
@@ -445,6 +445,10 @@ Cards...
 ```
 
 状态筛选为单选。`Needs Attention` 放入高级筛选，可与生命周期组合。Header 仅保留 New Change。
+
+当前 Project-first 导航中，Changes 列表保留在 Sidebar，Editor 只要求可达的 Project Dashboard；因此手工验收以 Sidebar Changes 和 Editor Project Dashboard 为准，不为本 Change 新增 ChangesExplorer 路由。
+
+Store 正向 smoke 仅在存在可信 Workset membership / Store reference 时执行。没有可信关联时，手工验收安全禁用态，并由自动化 Root 隔离测试覆盖 Local/Store 不串数据。恢复页码越界的 clamp 由 reducer/组件测试证明；只有真实 fixture 可稳定构造该状态时才追加手工证据。
 
 #### Visual source
 
@@ -515,7 +519,7 @@ New UI：
 
 Legacy tests/fixtures：
 缺少 lifecycleStatus 时使用一次性 adapter
-并记录测试迁移 TODO
+并以专用兼容性测试锁定边界
 ```
 
 所有生产路径迁移完成后，另开 Change 删除旧字段。

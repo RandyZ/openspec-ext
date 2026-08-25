@@ -47,12 +47,12 @@ All existing tests must remain green.
 
 | Surface | Root | Status | Expected |
 | --- | --- | --- | --- |
-| Editor | Local | All | Active + Archived, paginated |
-| Editor | Local | Applying | Full Applying set before pagination |
-| Editor | Store | Ready to Verify | Only Store data |
-| Editor | Store | Archived | Only Store archives |
-| Sidebar | Local | Planning | Compact selector |
-| Sidebar | Store | All | Counts and cards do not leak Local data |
+| Sidebar | Local | All / Planning / Applying / Archived | Compact selector, filtering before pagination, read-only archives |
+| Editor | Local | Project Dashboard | Lifecycle distribution and current Project binding |
+| Sidebar | No trusted Store reference | Worksets / Store | Safe-disabled state; no fabricated Store data |
+| Sidebar | Trusted Store fixture (conditional) | Ready to Verify / Archived / All | Only Store data; counts and cards do not leak Local data |
+
+Project-first 导航不要求为 ChangesExplorer 新增可达的 Editor 路由。宽屏 ChangesExplorer 行为由组件测试覆盖。恢复页码越界由 reducer/组件测试证明；仅在真实 fixture 可稳定构造时追加手工 smoke。
 
 ## Boundary Fixtures
 
@@ -136,17 +136,17 @@ known limitations
 - [ ] Step 3: Update only the fixture producers that represent production data.
 - [ ] Step 4: Re-run affected tests; expect PASS.
 
-### Task 8.3: 为缺少 lifecycleStatus 的 legacy fixture 保留一次性兼容 adapter 并增加 TODO
+### Task 8.3: 为缺少 lifecycleStatus 的 legacy fixture 保留一次性兼容 adapter 并以专用测试锁定边界
 
 **Spec coverage:** dashboard legacy compatibility scenario.
 **Dependencies / order:** after Task 8.2; before removing legacy field.
 **Files:** Modify the compatibility adapter in `src/extension/`; Test `test/extension/services/dataManagerCliFallback.test.ts`.
-**Implementation notes:** adapter is one-way, emits a diagnostic/TODO marker, and is not used by new production messages.
+**Implementation notes:** adapter is one-way, remains isolated behind a dedicated compatibility test, and is not used by new production messages.
 **Verification:** legacy fixture still renders while the test proves the adapter boundary is exercised.
 **Risks / edge cases:** adapter must not silently reinterpret malformed data as a healthy lifecycle.
 - [ ] Step 1: Add failing legacy-fixture compatibility test.
 - [ ] Step 2: Run it; expect FAIL after explicit lifecycle is required.
-- [ ] Step 3: Add the narrow adapter and TODO marker.
+- [ ] Step 3: Add the narrow adapter and explicit compatibility boundary.
 - [ ] Step 4: Re-run; expect PASS with adapter coverage.
 
 ### Task 8.4: 运行 `pnpm test`
@@ -188,18 +188,18 @@ known limitations
 - [ ] Step 3: Fix only planning artifact structure/content.
 - [ ] Step 4: Re-run; expect valid output.
 
-### Task 8.7: 执行 Sidebar 与 Editor 宽度的手工 smoke test
+### Task 8.7: 验收 Project-first 可达的 Sidebar 与 Project Dashboard，并在存在可信 Store fixture 时补充 Store 正向 smoke
 
-**Spec coverage:** dashboard responsive and accessibility scenarios.
+**Spec coverage:** dashboard responsive, Project-first navigation, Root isolation, and accessibility scenarios.
 **Dependencies / order:** after build succeeds.
 **Files:** Test manual in VS Code Extension Development Host.
-**Implementation notes:** verify All, each lifecycle, Archived, Attention, search, sort, page size, Root switch, card actions, and keyboard focus at both widths.
-**Verification:** record a compact matrix with no console errors and no cross-Root data leakage.
-**Risks / edge cases:** test both empty and populated Roots, including an out-of-range restored page.
+**Implementation notes:** verify reachable Sidebar lifecycle views and Editor Project Dashboard. Execute positive Store switching only with a trusted Workset membership / Store reference; otherwise verify the safe-disabled state and rely on automated Root-isolation coverage. Do not add an Editor Changes route for this task.
+**Verification:** record a compact matrix for reachable surfaces, distinguish extension errors from unrelated VS Code platform warnings, and confirm no cross-Root data leakage. Treat existing reducer/component coverage as the required proof for an out-of-range restored page when the real fixture cannot construct it reliably.
+**Risks / edge cases:** test empty and populated Local views; never fabricate Store membership merely to satisfy the matrix.
 - [ ] Step 1: Start the Extension Development Host with the repository workspace.
-- [ ] Step 2: Execute the smoke matrix and record any failing surface.
+- [ ] Step 2: Execute the reachable smoke matrix and record Store positive cases as conditional when no trusted fixture exists.
 - [ ] Step 3: Fix only UI regressions found in the matrix.
-- [ ] Step 4: Repeat both widths; expect all matrix cells PASS.
+- [ ] Step 4: Repeat the reachable Sidebar and Project Dashboard checks; expect all applicable matrix cells PASS.
 
 ### Task 8.8: 更新 README/CHANGELOG，记录新状态模型、筛选语义和分页顺序
 
