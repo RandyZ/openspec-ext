@@ -3,29 +3,29 @@
 ## Task 1. Priority selection and routing
 <!-- details: task-details/01-priority-selection.md -->
 
-- [ ] Task 1.1 Add RED tests for mutually exclusive priorities and binding-safe receipts
-- [ ] Task 1.2 Keep priority selection and CTA routing on the shared resolver
-- [ ] Task 1.3 Run the priority and workflow routing focused tests to GREEN
+- [x] Task 1.1 Add RED tests for mutually exclusive priorities and binding-safe receipts
+- [x] Task 1.2 Keep priority selection and CTA routing on the shared resolver
+- [x] Task 1.3 Run the priority and workflow routing focused tests to GREEN
 
 ## Task 2. Project action card grid
 <!-- details: task-details/02-project-action-grid.md -->
 
-- [ ] Task 2.1 Add RED Header tests for card hierarchy and accessible states
-- [ ] Task 2.2 Implement the theme-native 2×2 Project action card grid
-- [ ] Task 2.3 Run Header and Project navigation focused tests to GREEN
+- [x] Task 2.1 Add RED Header tests for card hierarchy and accessible states
+- [x] Task 2.2 Implement the theme-native 2×2 Project action card grid
+- [x] Task 2.3 Run Header and Project navigation focused tests to GREEN
 
 ## Task 3. Recommended action rail
 <!-- details: task-details/03-recommended-actions.md -->
 
-- [ ] Task 3.1 Add RED Dashboard tests for priority order, deduplication, and the three-row limit
-- [ ] Task 3.2 Implement compact action rows with resolver-derived CTA labels
-- [ ] Task 3.3 Route Review, Verify, regular, and high-impact CTAs through existing safe handlers
-- [ ] Task 3.4 Run Dashboard and workflow label focused tests to GREEN
+- [x] Task 3.1 Add RED Dashboard tests for priority order, deduplication, and the three-row limit
+- [x] Task 3.2 Implement compact action rows with resolver-derived CTA labels
+- [x] Task 3.3 Route Review, Verify, regular, and high-impact CTAs through existing safe handlers
+- [x] Task 3.4 Run Dashboard and workflow label focused tests to GREEN
 
 ## Task 4. Localization and release acceptance
 <!-- details: task-details/04-acceptance.md -->
 
-- [ ] Task 4.1 Add paired English and Chinese copy with locale parity tests
-- [ ] Task 4.2 Run full tests, lint, build, strict validation, task-details validation, and diff checks
-- [ ] Task 4.3 Verify the narrow dark-theme Sidebar and keyboard flow in a real Extension Development Host
-- [ ] Task 4.4 Complete final code review and resolve every blocking finding
+- [x] Task 4.1 Add paired English and Chinese copy with locale parity tests
+- [x] Task 4.2 Run full tests, lint, build, strict validation, task-details validation, and diff checks
+- [x] Task 4.3 Verify the narrow dark-theme Sidebar and keyboard flow in a real Extension Development Host
+- [x] Task 4.4 Complete final code review and resolve every blocking finding

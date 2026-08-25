@@ -1,6 +1,7 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { setLocale } from '../../../src/i18n';
 import { AppProvider, appReducer, type AppState } from '../../../src/webview/context/AppContext';
 import {
   Dashboard,
@@ -12,6 +13,7 @@ import {
   getDashboardPriorityChanges,
   requestInitialDashboardData,
 } from '../../../src/webview/components/Dashboard';
+import * as dashboardModule from '../../../src/webview/components/Dashboard';
 import { sendMessage } from '../../../src/webview/types/messages';
 import type {
   DashboardData,
@@ -23,6 +25,8 @@ import type {
 } from '../../../src/webview/types/messages';
 import { adaptLegacyDashboardData } from '../../../src/webview/types/legacyDashboardAdapter';
 import type { ChangeStatusCounts } from '../../../src/shared/changeLifecycle';
+
+afterEach(() => setLocale('en'));
 
 const EMPTY_COUNTS: ChangeStatusCounts = {
   all: 0,
@@ -149,6 +153,33 @@ describe('Dashboard action priorities', () => {
     expect(result.recommended.map((change) => change.name)).toEqual(['recommended']);
   });
 
+  it('keeps a Change in the highest-priority bucket when attention overlaps Verify', () => {
+    const result = getDashboardPriorityChanges([
+      hostChange('overlap', {
+        completedTasks: 1,
+        totalTasks: 1,
+        attention: { required: true, reasons: ['workflow-receipt-failed'] },
+        workflowSnapshot: {
+          changeName: 'overlap',
+          schema: 'custom',
+          bindingKey: 'root-overlap',
+          artifacts: [{
+            id: 'proposal',
+            status: 'done',
+            requires: [],
+            missingDeps: [],
+            outputPath: 'proposal.md',
+            existingOutputPaths: ['proposal.md'],
+          }],
+        },
+      }),
+    ]);
+
+    expect(result.needsAttention.map((change) => change.name)).toEqual(['overlap']);
+    expect(result.readyToVerify).toEqual([]);
+    expect(result.recommended).toEqual([]);
+  });
+
   it('promotes failed receipts only for the matching bound Change', () => {
     const change = hostChange('change', {
       workflowSnapshot: {
@@ -179,6 +210,224 @@ describe('Dashboard action priorities', () => {
     ]);
 
     expect(result.needsAttention.map((item) => item.name)).toEqual(['change']);
+  });
+
+  it('ignores stale and cross-binding receipts for same-named Changes', () => {
+    const snapshot = (bindingKey: string) => ({
+      changeName: 'same-name',
+      schema: 'custom',
+      bindingKey,
+      artifacts: [{
+        id: 'proposal',
+        status: 'ready' as const,
+        requires: [],
+        missingDeps: [],
+        outputPath: 'proposal.md',
+        existingOutputPaths: ['proposal.md'],
+      }],
+    });
+    const result = getDashboardPriorityChanges([
+      hostChange('same-name', { workflowSnapshot: snapshot('root-a') }),
+      hostChange('same-name', { workflowSnapshot: snapshot('root-b') }),
+    ], [
+      {
+        requestId: 'request-old',
+        changeName: 'same-name',
+        bindingKey: 'root-a',
+        action: 'continue',
+        target: 'clipboard',
+        status: 'failed',
+      },
+      {
+        requestId: 'request-current',
+        changeName: 'same-name',
+        bindingKey: 'root-a',
+        action: 'continue',
+        target: 'clipboard',
+        status: 'completed',
+      },
+      {
+        requestId: 'request-other-root',
+        changeName: 'same-name',
+        bindingKey: 'root-c',
+        action: 'continue',
+        target: 'clipboard',
+        status: 'fallback',
+      },
+    ]);
+
+    expect(result.needsAttention).toEqual([]);
+    expect(result.recommended).toHaveLength(2);
+  });
+});
+
+describe('Dashboard recommended action rail', () => {
+  it('renders unique prioritized rows with a three-row limit and explicit CTAs', () => {
+    const snapshot = (changeName: string, bindingKey = 'project-root', status: 'ready' | 'done' = 'ready') => ({
+      changeName,
+      schema: 'custom',
+      bindingKey,
+      artifacts: [{
+        id: 'proposal',
+        status,
+        requires: [],
+        missingDeps: [],
+        outputPath: 'proposal.md',
+        existingOutputPaths: ['proposal.md'],
+      }],
+    });
+    const attention = hostChange('attention-change', {
+      attention: { required: true, reasons: ['workflow-receipt-failed'] },
+      workflowSnapshot: snapshot('attention-change'),
+    });
+    const verify = hostChange('verify-change', {
+      completedTasks: 1,
+      totalTasks: 1,
+      workflowSnapshot: snapshot('verify-change', 'project-root', 'done'),
+    });
+    const recommended = hostChange('recommended-change', {
+      workflowSnapshot: snapshot('recommended-change'),
+    });
+    const html = renderProjectSidebar({
+      ...projectSidebarData,
+      changes: [
+        attention,
+        { ...attention },
+        verify,
+        recommended,
+      ],
+    });
+    const rowNames = [...html.matchAll(/data-priority-row="([^"]+)"/g)].map((match) => match[1]);
+    const ctaCount = (html.match(/data-priority-cta/g) ?? []).length;
+
+    expect(rowNames).toEqual(['attention-change', 'verify-change', 'recommended-change']);
+    expect(new Set(rowNames).size).toBe(rowNames.length);
+    expect(rowNames).toHaveLength(3);
+    expect(ctaCount).toBe(3);
+    expect(html).toMatch(/data-priority-row="attention-change"[^>]*data-priority-status="[^"]+"/);
+    expect(html).toMatch(/data-priority-row="verify-change"[^>]*data-priority-status="[^"]+"/);
+    expect(html).toMatch(/data-priority-row="recommended-change"[^>]*data-priority-status="[^"]+"/);
+    expect(html).toMatch(/data-change-name="attention-change"[^>]*class="[^"]*truncate/);
+    expect(html).toContain('Review');
+    expect(html).toMatch(/Verify(?: &amp;| &) Archive/);
+    expect(html).toContain('Copy Continue planning');
+    expect(html).not.toContain('Archive Now');
+    expect(html).not.toMatch(/data-priority-cta="[^"]+"[^>]*tabindex="-1"/);
+  });
+
+  it('routes attention, verify, regular, and high-impact actions through safe handlers', () => {
+    const route = (dashboardModule as typeof dashboardModule & {
+      routeDashboardPriorityAction?: typeof dashboardModule['routeDashboardPriorityAction'];
+    }).routeDashboardPriorityAction;
+    expect(route).toBeTypeOf('function');
+
+    const openChange = vi.fn();
+    const launchWorkflow = vi.fn();
+    const handlers = { onOpenChange: openChange, onLaunchWorkflow: launchWorkflow };
+    const snapshot = (changeName: string, bindingKey: string, status: 'ready' | 'done') => ({
+      changeName,
+      schema: 'custom',
+      bindingKey,
+      artifacts: [{
+        id: 'proposal',
+        status,
+        requires: [],
+        missingDeps: [],
+        outputPath: 'proposal.md',
+        existingOutputPaths: ['proposal.md'],
+      }],
+    });
+
+    route?.(
+      hostChange('attention-change', {
+        workflowSnapshot: snapshot('attention-change', 'bound-root', 'ready'),
+      }),
+      'needs-attention',
+      handlers,
+    );
+    expect(openChange).toHaveBeenCalledWith('attention-change');
+
+    route?.(
+      hostChange('verify-change', {
+        completedTasks: 1,
+        totalTasks: 1,
+        workflowSnapshot: snapshot('verify-change', 'bound-root', 'done'),
+      }),
+      'ready-to-verify',
+      handlers,
+    );
+    expect(launchWorkflow).toHaveBeenCalledWith('verify', 'verify-change', 'bound-root');
+
+    route?.(
+      hostChange('regular-change', {
+        workflowSnapshot: snapshot('regular-change', 'bound-root', 'ready'),
+      }),
+      'recommended',
+      handlers,
+    );
+    expect(launchWorkflow).toHaveBeenCalledWith('continue', 'regular-change', 'bound-root');
+
+    route?.(
+      hostChange('high-impact-change', {
+        completedTasks: 1,
+        totalTasks: 1,
+        workflowSnapshot: snapshot('high-impact-change', 'bound-root', 'done'),
+      }),
+      'recommended',
+      handlers,
+    );
+    expect(launchWorkflow).toHaveBeenCalledWith('verify', 'high-impact-change', 'bound-root');
+    expect(launchWorkflow).not.toHaveBeenCalledWith('archive', expect.anything(), expect.anything());
+  });
+
+  it('uses translated priority reasons and accessible CTA names', () => {
+    setLocale('zh-cn');
+    const snapshot = (changeName: string, status: 'ready' | 'done' = 'ready') => ({
+      changeName,
+      schema: 'custom',
+      bindingKey: 'project-root',
+      artifacts: [{
+        id: 'proposal',
+        status,
+        requires: [],
+        missingDeps: [],
+        outputPath: 'proposal.md',
+        existingOutputPaths: ['proposal.md'],
+      }],
+    });
+    const html = renderProjectSidebar({
+      ...projectSidebarData,
+      changes: [
+        hostChange('attention-change', {
+          attention: { required: true, reasons: ['workflow-receipt-failed'] },
+          workflowSnapshot: snapshot('attention-change'),
+        }),
+        hostChange('verify-change', {
+          completedTasks: 1,
+          totalTasks: 1,
+          workflowSnapshot: snapshot('verify-change', 'done'),
+        }),
+      ],
+    });
+
+    expect(html).toContain('aria-label="工作流优先级"');
+    expect(html).toContain('需要关注');
+    expect(html).toContain('可以验证');
+    expect(html).toContain('aria-label="审查并归档（Change：attention-change）"');
+    setLocale('en');
+  });
+
+  it('uses the translated scope health label for the status title', () => {
+    setLocale('zh-cn');
+    const html = renderDashboardWithData({
+      ...dashboardData,
+      relationships: {
+        references: [],
+        health: { root: { path: '/workspace', healthy: true, status: [] } },
+      },
+    });
+
+    expect(html).toContain('title="正常"');
   });
 });
 

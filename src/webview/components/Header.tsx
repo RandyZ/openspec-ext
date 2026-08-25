@@ -57,6 +57,10 @@ export const Header: React.FC<HeaderProps> = ({
   const projectScopes = scopes.filter((s) => s.source === 'local' || s.source === 'declared');
   const storeScopes = scopes.filter((s) => s.source === 'store');
   const storeFeaturesAvailable = scope?.capabilities?.stores === true;
+  const worksetsAvailable = Boolean(onOpenWorksets && worksetCount !== undefined && worksetCount > 0);
+  const worksetsAccessibleName = `${t('projectSidebar.worksets')}${worksetCount !== undefined ? ` (${worksetCount})` : ''}`;
+  const dashboardAccessibleName = `${t('projectSidebar.dashboard')} · ${t('action.openInEditor')}`;
+  const worksetsUnavailableId = 'project-worksets-unavailable';
 
   // Disable root actions during any in-flight scope/store operation so the
   // selector reflects the pending state (preserved from the old ScopeBar logic).
@@ -112,7 +116,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           <div
             className="min-w-0 space-y-1"
-            aria-label="Current Project"
+            aria-label={t('projectSidebar.currentProject')}
             data-project-identity
             title={project.projectPath}
           >
@@ -136,7 +140,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           <nav
             className="flex flex-col gap-1"
-            aria-label="Project navigation"
+            aria-label={t('projectSidebar.navigationLabel')}
             data-project-navigation
           >
             <div className="grid grid-cols-2 gap-1" data-project-action-grid>
@@ -147,14 +151,27 @@ export const Header: React.FC<HeaderProps> = ({
                 aria-pressed={activeProjectTab === 'changes'}
                 aria-label={t('projectSidebar.allChanges')}
                 title={t('projectSidebar.allChanges')}
-                className="min-w-0 rounded px-2 py-1.5 text-left text-xs focus:outline-none focus:ring-1"
+                className="group min-w-0 overflow-hidden rounded border px-2 py-2 text-left text-xs hover:brightness-110 focus:outline-none focus-visible:ring-1"
                 style={{
-                  background: 'var(--vscode-button-secondaryBackground)',
-                  color: 'var(--vscode-button-secondaryForeground)',
+                  borderColor: 'var(--vscode-panel-border)',
+                  background: activeProjectTab === 'changes'
+                    ? 'var(--vscode-list-activeSelectionBackground)'
+                    : 'var(--vscode-sideBar-background)',
+                  color: activeProjectTab === 'changes'
+                    ? 'var(--vscode-list-activeSelectionForeground)'
+                    : 'var(--vscode-foreground)',
                   outlineColor: 'var(--vscode-focusBorder)',
                 }}
               >
-                <span className="block truncate">{t('projectSidebar.allChanges')}</span>
+                <span className="flex min-w-0 items-start gap-2">
+                  <span className="codicon codicon-files mt-0.5 shrink-0" aria-hidden="true" />
+                  <span className="min-w-0">
+                    <span className="block truncate font-semibold">{t('projectSidebar.allChanges')}</span>
+                    <span data-project-action-supporting className="block truncate text-[10px]" style={{ color: 'var(--vscode-descriptionForeground)' }}>
+                      {t('projectSidebar.cardChangesSupporting')}
+                    </span>
+                  </span>
+                </span>
               </button>
               <button
                 type="button"
@@ -163,55 +180,89 @@ export const Header: React.FC<HeaderProps> = ({
                 aria-pressed={activeProjectTab === 'specs'}
                 aria-label={t('projectSidebar.specs')}
                 title={t('projectSidebar.specs')}
-                className="min-w-0 rounded px-2 py-1.5 text-left text-xs focus:outline-none focus:ring-1"
+                className="group min-w-0 overflow-hidden rounded border px-2 py-2 text-left text-xs hover:brightness-110 focus:outline-none focus-visible:ring-1"
                 style={{
-                  background: 'var(--vscode-button-secondaryBackground)',
-                  color: 'var(--vscode-button-secondaryForeground)',
+                  borderColor: 'var(--vscode-panel-border)',
+                  background: activeProjectTab === 'specs'
+                    ? 'var(--vscode-list-activeSelectionBackground)'
+                    : 'var(--vscode-sideBar-background)',
+                  color: activeProjectTab === 'specs'
+                    ? 'var(--vscode-list-activeSelectionForeground)'
+                    : 'var(--vscode-foreground)',
                   outlineColor: 'var(--vscode-focusBorder)',
                 }}
               >
-                <span className="block truncate">{t('projectSidebar.specs')}</span>
+                <span className="flex min-w-0 items-start gap-2">
+                  <span className="codicon codicon-book mt-0.5 shrink-0" aria-hidden="true" />
+                  <span className="min-w-0">
+                    <span className="block truncate font-semibold">{t('projectSidebar.specs')}</span>
+                    <span data-project-action-supporting className="block truncate text-[10px]" style={{ color: 'var(--vscode-descriptionForeground)' }}>
+                      {t('projectSidebar.cardSpecsSupporting')}
+                    </span>
+                  </span>
+                </span>
               </button>
               <button
                 type="button"
-                onClick={onOpenWorksets}
-                disabled={!onOpenWorksets || worksetCount === 0}
+                onClick={worksetsAvailable ? onOpenWorksets : undefined}
+                disabled={!worksetsAvailable}
                 data-project-action="worksets"
                 aria-pressed={activeProjectTab === 'worksets'}
-                aria-label={t('projectSidebar.worksets')}
-                title={onOpenWorksets && worksetCount !== 0
+                aria-describedby={!worksetsAvailable ? worksetsUnavailableId : undefined}
+                aria-label={worksetsAccessibleName}
+                title={worksetsAvailable
                   ? t('projectSidebar.worksets')
                   : t('projectSidebar.worksetsUnavailable')}
-                className="min-w-0 rounded px-2 py-1.5 text-left text-xs focus:outline-none focus:ring-1 disabled:cursor-not-allowed disabled:opacity-60"
+                className="group min-w-0 overflow-hidden rounded border px-2 py-2 text-left text-xs hover:brightness-110 focus:outline-none focus-visible:ring-1 disabled:cursor-not-allowed disabled:opacity-60"
                 style={{
-                  background: 'var(--vscode-button-secondaryBackground)',
-                  color: 'var(--vscode-button-secondaryForeground)',
+                  borderColor: 'var(--vscode-panel-border)',
+                  background: 'var(--vscode-sideBar-background)',
+                  color: 'var(--vscode-foreground)',
                   outlineColor: 'var(--vscode-focusBorder)',
                 }}
               >
-                <span className="block truncate">
-                  {t('projectSidebar.worksets')}{worksetCount ? ` (${worksetCount})` : ''}
-                </span>
-                {(!onOpenWorksets || worksetCount === 0) && (
-                  <span className="block truncate text-[10px]" style={{ color: 'var(--vscode-descriptionForeground)' }}>
-                    {t('projectSidebar.worksetsUnavailable')}
+                <span className="flex min-w-0 items-start gap-2">
+                  <span className="codicon codicon-repo-clone mt-0.5 shrink-0" aria-hidden="true" />
+                  <span className="min-w-0">
+                    <span className="block truncate font-semibold">
+                      {t('projectSidebar.worksets')}{worksetCount ? ` (${worksetCount})` : ''}
+                    </span>
+                    <span
+                      id={!worksetsAvailable ? worksetsUnavailableId : undefined}
+                      data-project-action-supporting
+                      className="block truncate text-[10px]"
+                      style={{ color: 'var(--vscode-descriptionForeground)' }}
+                    >
+                      {worksetsAvailable
+                        ? t('projectSidebar.cardWorksetsSupporting')
+                        : t('projectSidebar.worksetsUnavailable')}
+                    </span>
                   </span>
-                )}
+                </span>
               </button>
               <button
                 type="button"
                 onClick={onOpenDashboard}
                 data-project-action="dashboard"
-                aria-label={t('projectSidebar.dashboard')}
-                title={t('projectSidebar.dashboard')}
-                className="min-w-0 rounded px-2 py-1.5 text-left text-xs focus:outline-none focus:ring-1"
+                aria-label={dashboardAccessibleName}
+                title={dashboardAccessibleName}
+                className="group min-w-0 overflow-hidden rounded border px-2 py-2 text-left text-xs hover:brightness-110 focus:outline-none focus-visible:ring-1"
                 style={{
-                  background: 'var(--vscode-button-secondaryBackground)',
-                  color: 'var(--vscode-button-secondaryForeground)',
+                  borderColor: 'var(--vscode-panel-border)',
+                  background: 'var(--vscode-sideBar-background)',
+                  color: 'var(--vscode-foreground)',
                   outlineColor: 'var(--vscode-focusBorder)',
                 }}
               >
-                <span className="block truncate">{t('projectSidebar.dashboard')}</span>
+                <span className="flex min-w-0 items-start gap-2">
+                  <span className="codicon codicon-dashboard mt-0.5 shrink-0" aria-hidden="true" />
+                  <span className="min-w-0">
+                    <span className="block truncate font-semibold">{t('projectSidebar.dashboard')}</span>
+                    <span data-project-action-supporting className="block truncate text-[10px]" style={{ color: 'var(--vscode-descriptionForeground)' }}>
+                      {t('projectSidebar.cardDashboardSupporting')}
+                    </span>
+                  </span>
+                </span>
               </button>
             </div>
           </nav>
@@ -249,7 +300,7 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Root selector: visually grouped with Refresh/New Change, not cache status.
             On narrow sidebar widths, this wraps to a second row. */}
         {scope && (
-          <div className="flex min-w-0 flex-wrap items-center gap-2" aria-label="OpenSpec root context">
+          <div className="flex min-w-0 flex-wrap items-center gap-2" aria-label={t('projectSidebar.rootContextLabel')}>
             {showSelector ? (
               <select
                 disabled={disableScopeActions}

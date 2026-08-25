@@ -32,7 +32,10 @@ import {
   resolveWorkflowActions,
   type WorkflowActionReceipt,
 } from '../../shared/changeWorkflow';
-import type { WorkflowLaunchConfigView } from '../utils/workflowLaunchLabels';
+import {
+  getWorkflowActionButtonLabel,
+  type WorkflowLaunchConfigView,
+} from '../utils/workflowLaunchLabels';
 import type { CacheAction, CacheStatsView } from '../types/messages';
 import {
   DEFAULT_CHANGES_VIEW_STATE,
@@ -87,29 +90,74 @@ export function getDashboardPriorityChanges(
   readyToVerify: ChangeInfo[];
   recommended: ChangeInfo[];
 } {
-  const receiptAttentionKeys = new Set(
-    receipts
-      .filter((receipt) => receipt.status === 'failed' || receipt.status === 'fallback')
-      .map((receipt) => `${receipt.changeName}\u0000${receipt.bindingKey}`),
-  );
-  const needsAttention = changes.filter((change) => (
-    change.attention?.required === true
-    || (change.workflowSnapshot !== undefined
-      && receiptAttentionKeys.has(`${change.name}\u0000${change.workflowSnapshot.bindingKey}`))
-  ));
+  const latestReceipts = new Map<string, WorkflowActionReceipt>();
+  for (const receipt of receipts) {
+    latestReceipts.set(`${receipt.changeName}\u0000${receipt.bindingKey}`, receipt);
+  }
   const readyToVerify: ChangeInfo[] = [];
+  const needsAttention: ChangeInfo[] = [];
   const recommended: ChangeInfo[] = [];
   for (const change of changes) {
-    if (!change.workflowSnapshot) continue;
-    const resolved = resolveWorkflowActions(change.workflowSnapshot, {
-      completedTasks: change.completedTasks,
-      totalTasks: change.totalTasks,
-      isArchived: change.lifecycleStatus === 'archived',
-    });
-    if (resolved.recommended?.action === 'verify') readyToVerify.push(change);
-    else if (resolved.recommended && !change.attention?.required) recommended.push(change);
+    const snapshot = change.workflowSnapshot;
+    const resolved = snapshot
+      ? resolveWorkflowActions(snapshot, {
+        completedTasks: change.completedTasks,
+        totalTasks: change.totalTasks,
+        isArchived: change.lifecycleStatus === 'archived',
+      })
+      : undefined;
+    const receipt = snapshot
+      ? latestReceipts.get(`${change.name}\u0000${snapshot.bindingKey}`)
+      : undefined;
+    const hasReceiptAttention = receipt?.status === 'failed' || receipt?.status === 'fallback';
+    const hasResolverAttention = resolved !== undefined && resolved.attentionReasons.length > 0;
+    if (change.attention?.required === true || hasReceiptAttention || hasResolverAttention) {
+      needsAttention.push(change);
+      continue;
+    }
+    if (resolved?.recommended?.action === 'verify') readyToVerify.push(change);
+    else if (resolved?.recommended) recommended.push(change);
   }
   return { needsAttention, readyToVerify, recommended };
+}
+
+type DashboardPriorityGroupKey = 'needs-attention' | 'ready-to-verify' | 'recommended';
+
+export function routeDashboardPriorityAction(
+  change: ChangeInfo,
+  groupKey: DashboardPriorityGroupKey,
+  handlers: {
+    onOpenChange: (changeName: string) => void;
+    onLaunchWorkflow: (action: WorkflowAction, changeName: string, bindingKey?: string) => void;
+  },
+): void {
+  const bindingKey = change.workflowSnapshot?.bindingKey;
+  if (groupKey === 'needs-attention') {
+    handlers.onOpenChange(change.name);
+    return;
+  }
+  if (groupKey === 'ready-to-verify') {
+    handlers.onLaunchWorkflow('verify', change.name, bindingKey);
+    return;
+  }
+
+  const snapshot = change.workflowSnapshot;
+  if (!snapshot) return;
+  const recommended = resolveWorkflowActions(snapshot, {
+    completedTasks: change.completedTasks,
+    totalTasks: change.totalTasks,
+    isArchived: change.lifecycleStatus === 'archived',
+  }).recommended;
+  if (!recommended) return;
+  if (recommended.highImpact || recommended.action === 'archive') {
+    if (recommended.action === 'verify') {
+      handlers.onLaunchWorkflow('verify', change.name, bindingKey);
+    } else {
+      handlers.onOpenChange(change.name);
+    }
+    return;
+  }
+  handlers.onLaunchWorkflow(recommended.action, change.name, bindingKey);
 }
 
 export function returnToCurrentProject(
@@ -446,11 +494,10 @@ export const Dashboard: React.FC = () => {
   };
 
   const handleOpenPriorityChange = (change: ChangeInfo, groupKey: string) => {
-    if (groupKey === 'ready-to-verify') {
-      handleLaunchWorkflow('verify', change.name, change.workflowSnapshot?.bindingKey);
-      return;
-    }
-    handleOpenChange(change.name);
+    routeDashboardPriorityAction(change, groupKey as DashboardPriorityGroupKey, {
+      onOpenChange: handleOpenChange,
+      onLaunchWorkflow: handleLaunchWorkflow,
+    });
   };
 
   const handleOpenSpec = (spec: SpecInfo) => {
@@ -494,10 +541,21 @@ export const Dashboard: React.FC = () => {
   const prioritySourceChanges = projectSidebar ? projectChanges : data?.changes ?? [];
   const priorities = getDashboardPriorityChanges(prioritySourceChanges, workflowReceipts);
   const priorityGroups = [
-    { key: 'needs-attention', label: t('dashboard.priorityNeedsAttention'), changes: priorities.needsAttention },
-    { key: 'ready-to-verify', label: t('dashboard.priorityReadyToVerify'), changes: priorities.readyToVerify },
-    { key: 'recommended', label: t('dashboard.priorityRecommended'), changes: priorities.recommended },
-  ];
+    { key: 'needs-attention', label: t('dashboard.priorityReasonNeedsAttention'), changes: priorities.needsAttention },
+    { key: 'ready-to-verify', label: t('dashboard.priorityReasonReadyToVerify'), changes: priorities.readyToVerify },
+    { key: 'recommended', label: t('dashboard.priorityReasonRecommended'), changes: priorities.recommended },
+  ] as const;
+  const seenPriorityKeys = new Set<string>();
+  const priorityRows = priorityGroups
+    .flatMap((group) => group.changes.map((change) => ({ group, change })))
+    .filter(({ change }) => {
+      const key = `${change.name}\u0000${change.workflowSnapshot?.bindingKey ?? ''}`;
+      if (seenPriorityKeys.has(key)) return false;
+      seenPriorityKeys.add(key);
+      return true;
+    })
+    .slice(0, 3);
+  const priorityWorkflowConfig = projectSidebar?.workflowLaunchConfig ?? workflowLaunchConfig;
 
   return (
     <div className="min-h-screen" style={{ 
@@ -555,30 +613,74 @@ export const Dashboard: React.FC = () => {
           />
         )}
 
-        {priorityGroups.some((group) => group.changes.length > 0) && (
-          <div className="mb-4 flex flex-col gap-3" aria-label="Workflow priorities">
-            {priorityGroups.map((group) => group.changes.length > 0 && (
-              <section key={group.key} data-priority={group.key}>
-                <h2 className="text-xs font-semibold uppercase tracking-wide mb-1">{group.label}</h2>
-                <div className="flex flex-wrap gap-1">
-                  {group.changes.map((change) => (
-                    <button
-                      key={`${group.key}:${change.name}`}
-                      type="button"
-                      data-action
-                      className="px-2 py-1 rounded text-xs cursor-pointer"
-                      style={{
-                        background: 'var(--vscode-button-secondaryBackground)',
-                        color: 'var(--vscode-button-secondaryForeground)',
-                      }}
-                       onClick={() => handleOpenPriorityChange(change, group.key)}
+        {priorityRows.length > 0 && (
+          <div className="mb-4 flex flex-col gap-1" aria-label={t('dashboard.workflowPriorities')} data-action-rail>
+            {priorityRows.map(({ group, change }) => {
+              const recommended = change.workflowSnapshot
+                ? resolveWorkflowActions(change.workflowSnapshot, {
+                  completedTasks: change.completedTasks,
+                  totalTasks: change.totalTasks,
+                  isArchived: change.lifecycleStatus === 'archived',
+                }).recommended
+                : null;
+              const ctaLabel = group.key === 'needs-attention'
+                ? t('verifyArchive.reviewArchive')
+                : group.key === 'ready-to-verify'
+                  ? t('detail.verifyArchive')
+                  : recommended
+                    ? getWorkflowActionButtonLabel(recommended.label, priorityWorkflowConfig)
+                    : null;
+              if (!ctaLabel) return null;
+              const ctaAccessibleName = t('dashboard.priorityActionAriaLabel', {
+                action: ctaLabel,
+                name: change.name,
+              });
+              const statusIcon = group.key === 'needs-attention'
+                ? 'codicon-warning'
+                : group.key === 'ready-to-verify'
+                  ? 'codicon-check'
+                  : 'codicon-lightbulb';
+              return (
+                <div
+                  key={`${group.key}:${change.name}:${change.workflowSnapshot?.bindingKey ?? ''}`}
+                  data-priority-row={change.name}
+                  data-priority-status={group.key}
+                  className="flex min-w-0 items-center gap-2 rounded border px-2 py-1.5 transition-colors hover:bg-[var(--vscode-list-hoverBackground)]"
+                  style={{
+                    background: 'var(--vscode-sideBar-background)',
+                    borderColor: 'var(--vscode-panel-border)',
+                  }}
+                >
+                  <span className={`codicon ${statusIcon} shrink-0`} aria-hidden="true" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--vscode-descriptionForeground)' }}>
+                      {group.label}
+                    </div>
+                    <div
+                      data-change-name={change.name}
+                      className="truncate text-xs"
+                      title={change.name}
                     >
                       {change.name}
-                    </button>
-                  ))}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    data-priority-cta={change.name}
+                    className="shrink-0 rounded px-2 py-1 text-xs focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)]"
+                    style={{
+                      background: 'var(--vscode-button-secondaryBackground)',
+                      color: 'var(--vscode-button-secondaryForeground)',
+                    }}
+                    title={ctaAccessibleName}
+                    aria-label={ctaAccessibleName}
+                    onClick={() => handleOpenPriorityChange(change, group.key)}
+                  >
+                    {ctaLabel}
+                  </button>
                 </div>
-              </section>
-            ))}
+              );
+            })}
           </div>
         )}
 
@@ -659,7 +761,11 @@ export const Dashboard: React.FC = () => {
                 data.relationships?.health?.root
                   ? {
                       status: data.relationships.health.root.healthy ? ('ok' as const) : ('warning' as const),
-                      label: data.relationships.health.root.healthy ? 'Healthy' : 'Issues',
+                      label: t(
+                        data.relationships.health.root.healthy
+                          ? 'scope.health.ok'
+                          : 'scope.health.warning',
+                      ),
                     }
                   : undefined
               }

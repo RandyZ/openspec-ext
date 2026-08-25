@@ -406,7 +406,7 @@ describe('Dashboard ready-to-verify Verify & Archive path', () => {
       'utf8'
     );
     expect(source).toContain("groupKey === 'ready-to-verify'");
-    expect(source).toContain("handleLaunchWorkflow('verify', change.name, change.workflowSnapshot?.bindingKey)");
+    expect(source).toContain("handlers.onLaunchWorkflow('verify', change.name, bindingKey)");
   });
 
   it('keeps direct Archive Now and archiveChange out of Dashboard/card surfaces', () => {

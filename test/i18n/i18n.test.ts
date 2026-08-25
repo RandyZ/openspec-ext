@@ -258,5 +258,32 @@ describe('i18n', () => {
       expect(zhCn['dashboard.lifecycleAll']).toBe('全部');
       expect(zhCn['dashboard.lifecycleArchived']).toBe('已归档');
     });
+
+    it('contains paired Project-first card, priority reason, and action accessibility keys', () => {
+      const requiredKeys = [
+        'projectSidebar.navigationLabel',
+        'projectSidebar.cardChangesSupporting',
+        'projectSidebar.cardSpecsSupporting',
+        'projectSidebar.cardWorksetsSupporting',
+        'projectSidebar.cardDashboardSupporting',
+        'dashboard.workflowPriorities',
+        'dashboard.priorityReasonNeedsAttention',
+        'dashboard.priorityReasonReadyToVerify',
+        'dashboard.priorityReasonRecommended',
+        'dashboard.priorityActionAriaLabel',
+      ];
+
+      for (const key of requiredKeys) {
+        expect((en as Record<string, string>)[key]).toBeTruthy();
+        expect((zhCn as Record<string, string>)[key]).toBeTruthy();
+      }
+
+      expect((en as Record<string, string>)['projectSidebar.navigationLabel']).toBe('Project navigation');
+      expect((zhCn as Record<string, string>)['projectSidebar.navigationLabel']).toBe('项目导航');
+      expect((en as Record<string, string>)['dashboard.priorityActionAriaLabel'])
+        .toBe('{action} for Change {name}');
+      expect((zhCn as Record<string, string>)['dashboard.priorityActionAriaLabel'])
+        .toBe('{action}（Change：{name}）');
+    });
   });
 });
