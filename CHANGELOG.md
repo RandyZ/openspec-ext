@@ -7,8 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-26
+
 ### Added
 
+- Project-first sidebar navigation with fixed Changes, Specs, Worksets, and Dashboard cards.
+- Workset and root/store management flows, with Worksets remaining visibly disabled when no trusted membership is available.
+- Recommended Actions rail with mutually exclusive Needs Attention, Ready to Verify, and Recommended priorities, capped at three actions.
 - Dashboard change lifecycle model: Planning, Ready to Apply, Applying, Ready to Verify, and Archived (first-class, read-only).
 - Lifecycle status filter UI (Editor segments + Sidebar compact selector), Needs Attention orthogonal filter, sort controls, and pagination.
 - Host-published `lifecycleStatus` and `changeStatusCounts` on dashboard payloads; Root-scoped view state for filters/search/sort/page size.
@@ -18,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Change list processing order is filter → search → sort → paginate (status filters apply before pagination).
 - User-facing status labels use the lifecycle vocabulary above (not Draft / In Progress / Merged).
+
+### Fixed
+
+- Archive refresh ordering, archive-scope result preservation, detail-state refresh, and duplicate refresh guards.
 
 ## [0.1.4] - 2026-05-20
 
@@ -85,7 +94,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Workspace and bundled path resolution for extension resources.
 
-[Unreleased]: https://github.com/RandyZ/openspec-ext/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/RandyZ/openspec-ext/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/RandyZ/openspec-ext/compare/v0.1.4...v0.2.0
 [0.1.4]: https://github.com/RandyZ/openspec-ext/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/RandyZ/openspec-ext/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/RandyZ/openspec-ext/releases/tag/v0.1.2
