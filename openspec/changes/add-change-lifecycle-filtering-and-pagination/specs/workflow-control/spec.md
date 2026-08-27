@@ -1,52 +1,66 @@
 ## MODIFIED Requirements
 
-### Requirement: Dashboard ChangeCard 智能操作
+### Requirement: Shared workflow action resolution
 
-ChangeCard 的 workflow 快捷操作 SHALL 直接消费 Extension Host 提供的统一 `ChangeLifecycleStatus`，并与 Changes Workspace 的状态标签保持一致。
+The extension SHALL derive workflow actions through one shared resolver that consumes the root-bound Change workflow snapshot and supplies consistent results to Sidebar, Change Detail, and Dashboard.
 
-ChangeCard MUST NOT 再独立根据 Artifact 和 Task 数据重新推导另一套生命周期。
+Lifecycle status MAY drive badges, filters, and counts, but it MUST NOT become a parallel workflow-action resolver inside an individual surface.
 
-#### Scenario: Planning change emphasizes planning progression
+#### Scenario: First ready artifact is recommended
 
-- **GIVEN** 某个 Change 的生命周期状态为 `planning`
-- **WHEN** 用户在 Dashboard 中进入该卡片的 hover 或 focus 状态
-- **THEN** 推荐操作 MUST 包含 Continue
-- **AND** 系统 SHOULD 提供 FF 作为次要推进操作
-- **AND** 系统 MUST NOT 推荐 Verify 或 Archive
+- **GIVEN** the ordered artifact graph contains one or more artifacts with status `ready`
+- **WHEN** workflow actions are resolved
+- **THEN** the first ready artifact in CLI declaration order MUST determine the recommended planning action
+- **AND** every other ready artifact MUST remain visible as available now
 
-#### Scenario: Ready to Apply change emphasizes Apply
+#### Scenario: Blocked and skipped artifacts retain distinct meaning
 
-- **GIVEN** 某个 Change 的生命周期状态为 `ready-to-apply`
-- **WHEN** 用户进入卡片的 hover 或 focus 状态
-- **THEN** 主要推荐操作 MUST 为 Apply
-- **AND** 卡片显示的生命周期标签 MUST 为 `Ready to Apply`
+- **GIVEN** the artifact graph contains blocked and skipped artifacts
+- **WHEN** workflow state is displayed
+- **THEN** blocked artifacts MUST be non-actionable and MUST expose their missing dependencies
+- **AND** skipped artifacts MUST be identified as skipped rather than completed or blocked
 
-#### Scenario: Applying change continues implementation
+#### Scenario: Planning completion recommends Apply
 
-- **GIVEN** 某个 Change 的生命周期状态为 `applying`
-- **WHEN** 用户进入卡片的 hover 或 focus 状态
-- **THEN** 推荐操作 MUST 指向 Apply 或 Continue Apply
-- **AND** 系统 MUST NOT 将该 Change 显示为 Ready to Verify
+- **GIVEN** OpenSpec reports planning complete
+- **AND** tasks remain incomplete
+- **WHEN** workflow actions are resolved
+- **THEN** Apply MUST be the recommended implementation action
+- **AND** planning creation actions MUST NOT remain the primary action
 
-#### Scenario: Ready to Verify change emphasizes verification path
+#### Scenario: Completed tasks recommend Verify without auto-archive
 
-- **GIVEN** 某个 Change 的生命周期状态为 `ready-to-verify`
-- **WHEN** 用户进入卡片的 hover 或 focus 状态
-- **THEN** 推荐操作 MUST 突出 Verify
-- **AND** Verify MUST 进入既有 `Verify & Archive` 交互式流程
-- **AND** 系统 MAY 同时提供 Archive 的次要入口，但 MUST 保留 Verify guidance
+- **GIVEN** planning is complete and all tasks are complete
+- **WHEN** workflow actions are resolved
+- **THEN** Verify MUST be recommended
+- **AND** Archive MUST remain a separate high-impact action
+- **AND** the Change MUST NOT be represented as archived until OpenSpec reports it as archived
 
-#### Scenario: Archived change remains read-only
+#### Scenario: Sync Specs is conditional
 
-- **GIVEN** 某个 Change 的生命周期状态为 `archived`
-- **WHEN** 卡片渲染或进入 hover/focus 状态
-- **THEN** 系统 MUST NOT 展示 Continue、FF、Apply、Verify、Archive 等写入型操作
-- **AND** 系统 MAY 提供打开详情、复制名称等只读操作
+- **GIVEN** a Change has no delta specs eligible for synchronization
+- **WHEN** workflow actions are resolved
+- **THEN** Sync Specs MUST NOT be shown as a fixed workflow stage
+- **AND** it MUST appear only when current Change data indicates applicable spec deltas
 
-#### Scenario: Lifecycle status is the single source of truth
+#### Scenario: All surfaces consume the same resolved action semantics
 
-- **GIVEN** ChangeCard 收到生命周期状态和原始 Artifact/Task 数据
-- **WHEN** 卡片生成状态标签和 workflow 快捷操作
-- **THEN** 状态标签和操作映射 MUST 以生命周期状态为唯一阶段输入
-- **AND** 原始 Artifact/Task 数据 MAY 用于展示详情
-- **AND** 原始数据 MUST NOT 在卡片内重新生成另一套阶段状态
+- **GIVEN** Sidebar, Change Detail, and Dashboard display the same bound Change snapshot
+- **WHEN** each surface renders its workflow summary
+- **THEN** they MUST agree on the recommended action, other available actions, and blocked reasons
+- **AND** a surface MAY reduce detail but MUST NOT independently recalculate a contradictory lifecycle
+
+#### Scenario: Archived Change remains read-only history
+
+- **GIVEN** a Change is archived
+- **WHEN** workflow actions are resolved
+- **THEN** no write-producing workflow action MUST be returned
+- **AND** the UI MUST NOT fabricate completed states for artifacts absent from the archived data
+
+#### Scenario: Lifecycle presentation does not create a second action model
+
+- **GIVEN** the Extension Host provides both `lifecycleStatus` and a binding-matching workflow snapshot for a Change
+- **WHEN** ChangeCard or another surface renders lifecycle presentation and workflow controls
+- **THEN** badges, filters, and counts MUST use the Host-provided lifecycle status
+- **AND** recommended, available, and high-impact actions MUST come from the shared workflow resolver and the bound snapshot
+- **AND** the surface MUST NOT independently infer another action set from lifecycle, artifact, or task fields
