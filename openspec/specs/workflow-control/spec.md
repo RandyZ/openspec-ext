@@ -167,6 +167,8 @@ The interactive Verify and Archive workflows SHALL make the selected scope expli
 ### Requirement: Shared workflow action resolution
 The extension SHALL derive workflow actions through one shared resolver that consumes the root-bound Change workflow snapshot and supplies consistent results to Sidebar, Change Detail, and Dashboard.
 
+Lifecycle status MAY drive badges, filters, and counts, but it MUST NOT become a parallel workflow-action resolver inside an individual surface.
+
 #### Scenario: First ready artifact is recommended
 - **GIVEN** the ordered artifact graph contains one or more artifacts with status `ready`
 - **WHEN** workflow actions are resolved
@@ -210,6 +212,14 @@ The extension SHALL derive workflow actions through one shared resolver that con
 - **WHEN** workflow actions are resolved
 - **THEN** no write-producing workflow action MUST be returned
 - **AND** the UI MUST NOT fabricate completed states for artifacts absent from the archived data
+
+#### Scenario: Lifecycle presentation does not create a second action model
+
+- **GIVEN** the Extension Host provides both `lifecycleStatus` and a binding-matching workflow snapshot for a Change
+- **WHEN** ChangeCard or another surface renders lifecycle presentation and workflow controls
+- **THEN** badges, filters, and counts MUST use the Host-provided lifecycle status
+- **AND** recommended, available, and high-impact actions MUST come from the shared workflow resolver and the bound snapshot
+- **AND** the surface MUST NOT independently infer another action set from lifecycle, artifact, or task fields
 
 ### Requirement: Continue planning describes its real capability
 The extension SHALL present `/opsx:continue <changeName>` as a generic planning continuation action unless the execution contract explicitly supports selecting a target artifact.
