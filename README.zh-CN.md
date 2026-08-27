@@ -1,35 +1,35 @@
 # OpenSpec 扩展
 
-> 面向 VS Code / Cursor 的 OpenSpec 可视化工作流管理界面。
+> 面向 VS Code / Cursor 的项目优先 OpenSpec 工作台：集中查看 changes、specs，并安全推进工作流。
 
 [English](README.md) | 简体中文
 
 ## 概览
 
-OpenSpec 扩展为 [OpenSpec](https://github.com/Fission-AI/OpenSpec) 提供可视化 Dashboard，让你无需离开编辑器即可管理 changes、查看 specs、推进 tasks 和执行 OpenSpec 工作流。
+OpenSpec 将 change 规划与执行带回编辑器：集中查看需要关注的事项、检查 specs 和 artifacts，并在不丢失上下文的情况下推进下一步工作流。
 
-### 功能特性
+### 核心能力
 
-- **可视化 Dashboard**：生命周期状态筛选（Planning → Ready to Verify + Archived）、Needs Attention、搜索、排序与分页
-- **Change 详情**：Proposal、Specs、Design、Tasks、Verify & Archive 标签页；Markdown 渲染；任务执行入口
-- **CLI 集成**：集成 OpenSpec CLI（list、status、new、archive），支持重试、超时和 `openspec.cliPath` 兜底
-- **快捷操作**：Continue、FF、Apply、Verify、Archive、Open in Editor、Refresh
-- **命令面板**：Open Dashboard、Refresh Data、Create New Change、Archive Change
-- **日志输出**：Output 面板中的 `OpenSpec` channel
+- **项目优先侧栏**：固定提供 Changes、Specs、Worksets、Dashboard 四个入口，清晰表达 active、focus 和不可用状态。
+- **推荐动作**：紧凑的、由 resolver 驱动的动作栏按 Needs Attention、Ready to Verify、Recommended 优先级展示最多三条下一步动作。
+- **Change 详情**：提供 Proposal、Specs、Design、Tasks、Verify & Archive 标签页、Markdown 渲染、任务进度和工作流控制。
+- **安全路由**：Review 和 Verify 会进入对应详情页或交互式终端；高影响归档动作始终保留确认保护。
+- **CLI 集成**：支持 OpenSpec CLI 的 list、status、new、archive，并提供重试、超时和 `openspec.cliPath` 兜底。
+- **编辑器原生体验**：复用 VS Code 主题 token 和 Codicon，支持键盘操作，并适配窄侧栏布局。
 
 ## 截图
 
-### Dashboard 侧边栏
+### 项目 Dashboard 侧栏
 
-<img src="docs/images/openspec-dashboard.png" alt="OpenSpec 仪表板侧边栏" />
+<img src="docs/images/openspec-dashboard.png" alt="OpenSpec 项目 Dashboard 侧栏，包含导航卡片和推荐动作" width="430" />
 
-侧边栏展示活跃与已归档 changes，支持生命周期筛选、搜索、任务进度、artifact badges 和 Proposal Why 摘要。
+侧栏将项目导航和下一步推荐动作集中在一个紧凑界面中。截图使用公开示例工作区，不包含私人路径、凭据或运行时日志。
 
-### Change 详情与任务确认
+### Change 详情与任务操作
 
-<img src="docs/images/openspec-change-detail.png" alt="OpenSpec Change 详情与任务确认" />
+<img src="docs/images/openspec-change-detail.png" alt="OpenSpec Change 详情，展示任务和工作流动作" width="759" />
 
-Change 详情页提供工作流操作、artifact tabs、任务执行入口，以及修改任务完成状态前的 webview 确认框。
+详情页将 artifacts、任务进度和工作流动作放在一起。Verify 和 Archive 与普通任务执行分开，安全路径更加明确。
 
 ## 安装
 

@@ -1,35 +1,35 @@
 # OpenSpec Extension
 
-> Visual interface for managing OpenSpec workflows in VSCode, Cursor.
+> A focused, project-first dashboard for OpenSpec changes, specs, and safe workflow actions in VS Code and Cursor.
 
 English | [简体中文](README.zh-CN.md)
 
 ## Overview
 
-A VSCode/Cursor extension that provides a visual dashboard for [OpenSpec](https://github.com/Fission-AI/OpenSpec), making it easier to manage changes, view specs, and track tasks without leaving your editor.
+OpenSpec brings change planning and execution into the editor. Review what needs attention, inspect specs and artifacts, and take the next workflow step without losing context.
 
-### Features
+### Highlights
 
-- **Visual Dashboard**: Lifecycle status filters (Planning → Ready to Verify + Archived), Needs Attention, search, sort, and pagination
-- **Change Detail**: Tabs for Proposal, Specs, Design, Tasks, and Verify & Archive; markdown viewer; task execution controls
-- **CLI Integration**: OpenSpec CLI (list, status, new, archive) with retry, timeout, and `openspec.cliPath` fallback
-- **Quick Actions**: Continue, FF, Apply, Verify, Archive, Open in Editor, Refresh
-- **Commands**: Open Dashboard, Refresh Data, Create New Change, Archive Change
-- **Logging**: Output panel "OpenSpec" channel
+- **Project-first sidebar**: Fixed Changes, Specs, Worksets, and Dashboard entry points, with clear active, focus, and unavailable states.
+- **Recommended actions**: A compact, resolver-backed action rail surfaces up to three next steps by priority: Needs Attention, Ready to Verify, then Recommended.
+- **Change detail**: Proposal, Specs, Design, Tasks, and Verify & Archive tabs with markdown rendering, task progress, and workflow controls.
+- **Safe workflow routing**: Review and verify actions open the appropriate detail or interactive terminal flow; high-impact archive actions stay confirmation-protected.
+- **CLI integration**: OpenSpec CLI list, status, new, and archive flows with retry, timeout, and `openspec.cliPath` fallback.
+- **Editor-native**: Uses VS Code theme tokens, Codicons, keyboard-accessible controls, and narrow-sidebar-friendly layouts.
 
 ## Screenshots
 
-### Dashboard sidebar
+### Project dashboard sidebar
 
-<img src="docs/images/openspec-dashboard.png" alt="OpenSpec dashboard sidebar" />
+<img src="docs/images/openspec-dashboard.png" alt="OpenSpec project dashboard sidebar with navigation cards and recommended actions" width="430" />
 
-The sidebar shows active and archived changes with lifecycle filters, searchable cards, task progress, artifact badges, and Proposal Why summaries.
+The sidebar keeps project navigation and the next recommended workflow actions in one compact surface. The screenshot uses a public demo workspace and contains no private paths, credentials, or runtime logs.
 
-### Change details and task confirmation
+### Change detail and task actions
 
-<img src="docs/images/openspec-change-detail.png" alt="OpenSpec change detail and task confirmation" />
+<img src="docs/images/openspec-change-detail.png" alt="OpenSpec change detail with tasks and workflow actions" width="759" />
 
-The change detail view provides workflow actions, artifact tabs, task execution, and a webview confirmation dialog before changing task completion state.
+The detail view keeps artifacts, task progress, and workflow actions together. Verify and Archive remain separate from ordinary task execution so the safe route is explicit.
 
 ## Installation
 
