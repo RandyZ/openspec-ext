@@ -202,7 +202,53 @@ describe('i18n', () => {
 
       for (const key of requiredKeys) {
         expect(en[key as keyof typeof en]).toBeTruthy();
-        expect(zhCn[key as keyof typeof zhCn]).toBeTruthy();
+        expect(zhCn[key as keyof typeof en]).toBeTruthy();
+      }
+    });
+
+    it('contains Workset picker action, state, and helper copy in both locales', () => {
+      const requiredKeys = [
+        'worksetNavigation.title',
+        'worksetNavigation.returnCurrent',
+        'worksetNavigation.backToList',
+        'worksetNavigation.openDetail',
+        'worksetNavigation.openAll',
+        'worksetNavigation.openWithTool',
+        'worksetNavigation.oneTimeOpenerLabel',
+        'worksetNavigation.oneTimeOpenerSubmit',
+        'worksetNavigation.toolShortcut',
+        'worksetNavigation.switchProject',
+        'worksetNavigation.switchProjectShort',
+        'worksetNavigation.planningStore',
+        'worksetNavigation.current',
+        'worksetNavigation.currentRoot',
+        'worksetNavigation.useAsPlanningRoot',
+        'worksetNavigation.useAsPlanningRootAria',
+        'worksetNavigation.useProjectDefault',
+        'worksetNavigation.membersSection',
+        'worksetCreate.formLabel',
+        'worksetCreate.createAction',
+        'worksetCreate.nameLabel',
+        'worksetCreate.membersLabel',
+        'worksetCreate.primaryHint',
+        'worksetCreate.toolLabel',
+        'worksetCreate.toolHint',
+        'worksetCreate.addMembers',
+        'worksetCreate.currentProjectMember',
+        'worksetCreate.primaryBadge',
+        'worksetCreate.makePrimary',
+        'worksetCreate.removeMember',
+        'worksetCreate.cancel',
+        'worksetCreate.submit',
+        'worksetCreate.emptyList',
+        'worksetsPage.openWholeWorkset',
+        'worksetsPage.openWholeWorksetShort',
+        'worksetsPage.memberCount',
+      ];
+
+      for (const key of requiredKeys) {
+        expect((en as Record<string, string>)[key]).toBeTruthy();
+        expect((zhCn as Record<string, string>)[key]).toBeTruthy();
       }
     });
 

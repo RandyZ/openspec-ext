@@ -168,6 +168,118 @@ export function returnToCurrentProject(
   postMessage(sendMessage.selectCurrentProject());
 }
 
+/**
+ * Active Planning-root Store id for the Worksets surface, derived only from
+ * the trusted Host binding (binding.storeId). `undefined` means the Project
+ * default root is active; the webview never re-classifies member paths.
+ */
+export function getWorksetPickerActiveStoreId(
+  projectSidebar: ProjectSidebarData | null | undefined,
+): string | undefined {
+  return projectSidebar?.binding?.storeId;
+}
+
+/**
+ * Authoritative "explicit Planning Store selector active" fact for the
+ * Worksets surface, read only from the Host-returned flag. A selector-free
+ * default binding may still carry `binding.storeId` when the CLI's
+ * root.store_id is set, so selector-dependent recovery must key on this flag.
+ */
+export function getWorksetPickerExplicitStoreSelector(
+  projectSidebar: ProjectSidebarData | null | undefined,
+): boolean {
+  return projectSidebar?.explicitStoreSelector === true;
+}
+
+/**
+ * Whether the Worksets tab is reachable: a trusted navigation must exist AND
+ * the Host-resolved Workset capability must not be explicitly unavailable.
+ * Zero worksets is NOT a blocker — the empty list with its Create entry is the
+ * primary first-creation surface. `undefined` capability (legacy cached
+ * payloads) keeps the tab available.
+ */
+export function getWorksetsTabAvailable(
+  projectSidebar: ProjectSidebarData | null | undefined,
+): boolean {
+  return projectSidebar?.worksetNavigation !== undefined
+    && projectSidebar?.worksetCapabilityAvailable !== false;
+}
+
+/**
+ * Whether the create flow may be offered inside the Worksets surface. Derived
+ * only from the Host capability flag; `undefined` capability (legacy payloads)
+ * is treated as available, `false` hides/disables Create with the upgrade
+ * explanation. Without a sidebar at all, nothing is available.
+ */
+export function getWorksetCreateAvailable(
+  projectSidebar: ProjectSidebarData | null | undefined,
+): boolean {
+  return projectSidebar != null && projectSidebar.worksetCapabilityAvailable !== false;
+}
+
+/**
+ * Untrusted `worksetMembersPicked` payload → picker-response state. Paths
+ * default to an empty add; only a string-array `droppedPaths` is forwarded.
+ */
+export function toWorksetPickedMembersState(
+  message: { paths?: unknown; droppedPaths?: unknown },
+): { paths: unknown[]; droppedPaths?: string[] } {
+  const droppedPaths = Array.isArray(message.droppedPaths)
+    && message.droppedPaths.every((value) => typeof value === 'string')
+    ? message.droppedPaths as string[]
+    : undefined;
+  return {
+    paths: Array.isArray(message.paths) ? message.paths : [],
+    ...(droppedPaths && droppedPaths.length ? { droppedPaths } : {}),
+  };
+}
+
+/**
+ * Untrusted `worksetCreateResult` payload → picker-response state. `success`
+ * is strictly boolean, the echoed name defaults to empty, and only string
+ * messages survive.
+ */
+export function toWorksetCreateResultState(
+  message: { success?: unknown; name?: unknown; message?: unknown },
+): { success: boolean; name: string; message?: string } {
+  return {
+    success: message.success === true,
+    name: typeof message.name === 'string' ? message.name : '',
+    ...(typeof message.message === 'string' ? { message: message.message } : {}),
+  };
+}
+
+/**
+ * Single-purpose Workset picker actions: each callback posts exactly one
+ * explicit message. Project switching never invokes `workset open`, Store
+ * members are never routed as Project selections, and the one-time opener is
+ * forwarded as an explicit optional tool. Creation requests carry the draft
+ * verbatim (ordered unique members, optional trimmed tool) — validation and
+ * canonicalization are Host responsibilities.
+ */
+export function createWorksetPickerHandlers(postMessage: DashboardPostMessage) {
+  return {
+    onSelectProject: (worksetName: string, memberPath: string) => {
+      postMessage(sendMessage.selectWorksetProject(worksetName, memberPath));
+    },
+    onSelectWorksetStore: (worksetName: string, memberPath: string) => {
+      postMessage(sendMessage.selectWorksetStore(worksetName, memberPath));
+    },
+    onSelectProjectDefaultRoot: () => {
+      postMessage(sendMessage.selectProjectDefaultRoot());
+    },
+    onOpenWorkset: (name: string, tool?: string) => {
+      postMessage(sendMessage.openWorkset(name, tool));
+    },
+    onPickMembers: () => {
+      postMessage(sendMessage.pickWorksetMembers());
+    },
+    onCreateWorkset: (name: string, members: string[], tool?: string) => {
+      postMessage(sendMessage.createWorkset(name, members, tool));
+    },
+  };
+}
+
 export function createScopeSelectHandler(
   dispatch: DashboardDispatch,
   postMessage: DashboardPostMessage,
@@ -241,6 +353,22 @@ export const Dashboard: React.FC = () => {
   // effect run) can read the latest scope without closing over stale state.
   const scopeIdRef = useRef<string | undefined>(undefined);
   const [workflowLaunchConfig, setWorkflowLaunchConfig] = useState<WorkflowLaunchConfigView | null>(null);
+  // Sequence-stamped Host responses for the Workset create flow. The sequence
+  // lets the picker apply each Host message at most once, and ignore responses
+  // that arrive after the form was left. The payloads stay untrusted: the
+  // picker re-checks member eligibility before merging.
+  const worksetResponseSeqRef = useRef(0);
+  const [worksetPickedMembers, setWorksetPickedMembers] = useState<{
+    seq: number;
+    paths: unknown[];
+    droppedPaths?: string[];
+  } | null>(null);
+  const [worksetCreateResult, setWorksetCreateResult] = useState<{
+    seq: number;
+    success: boolean;
+    name: string;
+    message?: string;
+  } | null>(null);
 
   const { data, loading, loadingReason, pendingScopeId, activity, error } = state;
   const projectSidebar = state.projectSidebar;
@@ -371,6 +499,22 @@ export const Dashboard: React.FC = () => {
         if (message.success) {
           postMessage(sendMessage.getCacheStats(true));
         }
+      } else if (message.type === 'worksetMembersPicked') {
+        // Folder-picker result from the Host. Cancelled pickers never produce
+        // this message, and the picker ignores it unless the create form is
+        // active — a late response after leaving the form is harmless.
+        // Host-dropped (unrealpath-able) picks ride along as droppedPaths.
+        worksetResponseSeqRef.current += 1;
+        setWorksetPickedMembers({
+          seq: worksetResponseSeqRef.current,
+          ...toWorksetPickedMembersState(message),
+        });
+      } else if (message.type === 'worksetCreateResult') {
+        worksetResponseSeqRef.current += 1;
+        setWorksetCreateResult({
+          seq: worksetResponseSeqRef.current,
+          ...toWorksetCreateResultState(message),
+        });
       }
     });
 
@@ -588,7 +732,10 @@ export const Dashboard: React.FC = () => {
             : undefined}
           activeProjectTab={projectSidebar ? projectFirstTab : undefined}
           worksetCount={projectSidebar?.worksetNavigation?.worksets.length ?? 0}
-          onOpenWorksets={projectSidebar?.worksetNavigation?.worksets.length
+          worksetsCapabilityAvailable={projectSidebar
+            ? projectSidebar.worksetCapabilityAvailable !== false
+            : undefined}
+          onOpenWorksets={projectSidebar && getWorksetsTabAvailable(projectSidebar)
             ? () => selectProjectFirstTab(setProjectFirstTab, 'worksets')
             : undefined}
         />
@@ -698,12 +845,12 @@ export const Dashboard: React.FC = () => {
             {projectFirstTab === 'worksets' && projectSidebar.worksetNavigation ? (
               <WorksetProjectPicker
                 navigation={projectSidebar.worksetNavigation}
-                onSelectProject={(worksetName, memberPath) => {
-                  postMessage(sendMessage.selectWorksetProject(worksetName, memberPath));
-                }}
-                onOpenWorkset={(name) => {
-                  postMessage(sendMessage.openWorkset(name));
-                }}
+                activeStoreId={getWorksetPickerActiveStoreId(projectSidebar)}
+                explicitStoreSelector={getWorksetPickerExplicitStoreSelector(projectSidebar)}
+                createAvailable={getWorksetCreateAvailable(projectSidebar)}
+                {...createWorksetPickerHandlers(postMessage)}
+                pickedMembers={worksetPickedMembers}
+                createResult={worksetCreateResult}
                 onBackToCurrentProject={() => returnToCurrentProject(setProjectFirstTab, postMessage)}
               />
             ) : (

@@ -128,7 +128,11 @@ export type WebviewMessage =
   | { type: 'copyCliDiagnostic' }
   | { type: 'openCliInstallDocs' }
   | { type: 'selectScope'; scopeId: string }
-  | { type: 'openWorkset'; name: string }
+  | { type: 'selectWorksetStore'; worksetName: string; memberPath: string }
+  | { type: 'selectProjectDefaultRoot' }
+  | { type: 'pickWorksetMembers' }
+  | { type: 'createWorkset'; name: string; members: string[]; tool?: string }
+  | { type: 'openWorkset'; name: string; tool?: string }
   | { type: 'removeWorkset'; name: string }
   | { type: 'requestRegisterStore' }
   | { type: 'requestSetupStore' };
@@ -215,7 +219,18 @@ export type ExtensionMessage =
   | { type: 'specRequirements'; specId: string; requirements: string[] }
   | { type: 'artifactInvalidated'; changeName: string; artifactTypes: string[] }
   | { type: 'interactiveWorkflowState'; changeName: string; state: InteractiveWorkflowState }
-  | { type: 'cliActivationDiagnostic'; diagnostic: CliActivationDiagnosticView; mode: 'blocking' | 'warning' };
+  | { type: 'cliActivationDiagnostic'; diagnostic: CliActivationDiagnosticView; mode: 'blocking' | 'warning' }
+  | {
+    type: 'worksetMembersPicked';
+    paths: string[];
+    /**
+     * Picks the Host dropped because their realpath could not be resolved.
+     * Optional so older senders/consumers are unaffected; non-empty means the
+     * create form must show the recoverable invalid-member explanation.
+     */
+    droppedPaths?: string[];
+  }
+  | { type: 'worksetCreateResult'; success: boolean; name: string; message?: string };
 
 // Data types
 export interface CliActivationDiagnosticView {
@@ -721,9 +736,31 @@ export const sendMessage = {
     scopeId,
   }),
 
-  openWorkset: (name: string): WebviewMessage => ({
+  openWorkset: (name: string, tool?: string): WebviewMessage => ({
     type: 'openWorkset',
     name,
+    ...(tool ? { tool } : {}),
+  }),
+
+  pickWorksetMembers: (): WebviewMessage => ({
+    type: 'pickWorksetMembers',
+  }),
+
+  createWorkset: (name: string, members: string[], tool?: string): WebviewMessage => ({
+    type: 'createWorkset',
+    name,
+    members,
+    ...(tool ? { tool } : {}),
+  }),
+
+  selectWorksetStore: (worksetName: string, memberPath: string): WebviewMessage => ({
+    type: 'selectWorksetStore',
+    worksetName,
+    memberPath,
+  }),
+
+  selectProjectDefaultRoot: (): WebviewMessage => ({
+    type: 'selectProjectDefaultRoot',
   }),
 
   removeWorkset: (name: string): WebviewMessage => ({

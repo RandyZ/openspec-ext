@@ -1275,6 +1275,52 @@ describe('ProjectDataGateway Workset navigation', () => {
     expect(readGitMetadata).toHaveBeenCalledWith(canonicalWorktreePath);
   });
 
+  it('canonicalizes the navigation project path so a symlinked project root dedups with picked members', async () => {
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'openspec-workset-canonical-project-'));
+    temporaryDirectories.push(base);
+    const realPath = path.join(base, 'current-project');
+    const aliasPath = path.join(base, 'current-alias');
+    await fs.mkdir(path.join(realPath, 'openspec'), { recursive: true });
+    await fs.symlink(realPath, aliasPath, 'dir');
+    const canonicalRealPath = await fs.realpath(realPath);
+
+    // The Project context arrives through a symlinked root: without gateway
+    // canonicalization its navigation.project.projectPath would not match the
+    // canonical member paths (or Host folder-picker results), showing two
+    // rows for one folder in the creation form.
+    const aliasedProject: ProjectContext = {
+      id: aliasPath,
+      label: 'Current Project',
+      projectPath: aliasPath,
+    };
+    const gateway = new ProjectDataGateway({
+      createCli: () => ({
+        // Inlined CLI context payload (no `context` helper is in scope in this
+        // describe block, so referencing one would only add tsc debt).
+        getContext: async () => ({ root: { path: realPath, source: 'nearest' } }) as OpenSpecContextResult,
+        listWorksets: async () => ({
+          worksets: [{
+            name: 'planning',
+            members: [{ name: 'current', path: realPath }],
+          }],
+        }),
+        listStores: async () => ({ stores: [] }),
+      }) as any,
+      readGitMetadata: async () => ({}),
+    } as any);
+
+    const data = await gateway.loadWorksetNavigation(aliasedProject);
+
+    expect(data.project.projectPath).toBe(canonicalRealPath);
+    expect(data.project.id).toBe(canonicalRealPath);
+    // The current member dedups against the navigation project path: the
+    // locked create-form member and the canonical member are one row.
+    expect(data.worksets).toHaveLength(1);
+    const member = data.worksets[0]?.members.find((m) => m.path === canonicalRealPath);
+    expect(member).toMatchObject({ role: 'project', selectable: true });
+    expect(member?.path).toBe(data.project.projectPath);
+  });
+
   it('uses the canonical Git common directory for linked Worktree identity', async () => {
     const base = await fs.mkdtemp(path.join(os.tmpdir(), 'openspec-workset-git-identity-'));
     temporaryDirectories.push(base);
@@ -1400,7 +1446,7 @@ describe('ProjectDataGateway Workset navigation', () => {
     const currentProject = await createProjectContext('Current Project', currentPath);
     const gateway = new ProjectDataGateway({
       createCli: () => ({
-        getContext: async () => context(currentPath, 'nearest'),
+        getContext: async () => ({ root: { path: currentPath, source: 'nearest' } }) as OpenSpecContextResult,
         listWorksets: async () => ({
           worksets: [{
             name: 'planning',
@@ -1419,6 +1465,252 @@ describe('ProjectDataGateway Workset navigation', () => {
       project: currentProject,
       worksets: [],
     });
+  });
+});
+
+describe('ProjectDataGateway Workset Planning Store resolution', () => {
+  const temporaryDirectories: string[] = [];
+
+  afterEach(async () => {
+    await Promise.all(
+      temporaryDirectories.splice(0).map((directory) => fs.rm(directory, { recursive: true, force: true }))
+    );
+  });
+
+  function context(rootPath: string, rootSource: string, extra: Record<string, unknown> = {}): OpenSpecContextResult {
+    return { root: { path: rootPath, source: rootSource }, ...extra };
+  }
+
+  async function createStoreFixture() {
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'openspec-store-selection-'));
+    temporaryDirectories.push(base);
+    const projectPath = path.join(base, 'current-project');
+    const storePath = path.join(base, 'planning-store');
+    const otherProjectPath = path.join(base, 'other-project');
+    const forgedPath = path.join(base, 'forged-directory');
+    await Promise.all([
+      fs.mkdir(path.join(projectPath, 'openspec'), { recursive: true }),
+      fs.mkdir(path.join(storePath, 'openspec'), { recursive: true }),
+      fs.mkdir(path.join(otherProjectPath, 'openspec'), { recursive: true }),
+      fs.mkdir(forgedPath, { recursive: true }),
+    ]);
+    const storeAlias = path.join(base, 'planning-store-alias');
+    await fs.symlink(storePath, storeAlias, 'dir');
+    return {
+      base,
+      project: await createProjectContext('Current Project', projectPath),
+      projectPath,
+      storePath,
+      storeAlias,
+      otherProjectPath,
+      forgedPath,
+      canonicalStorePath: await fs.realpath(storePath),
+    };
+  }
+
+  it('returns the official Store id from fresh inventories after canonicalizing the member path', async () => {
+    const fixture = await createStoreFixture();
+    const inventoryCalls: string[] = [];
+    const getContext = vi.fn();
+    const gateway = new ProjectDataGateway({
+      createCli: () => ({
+        getContext,
+        listWorksets: async () => {
+          inventoryCalls.push('worksets');
+          return {
+            worksets: [{
+              name: 'team',
+              members: [
+                { name: 'current', path: fixture.projectPath },
+                { name: 'planning', path: fixture.storeAlias },
+              ],
+            }],
+          };
+        },
+        listStores: async () => {
+          inventoryCalls.push('stores');
+          return { stores: [{ id: 'team-store', root: fixture.storePath }] };
+        },
+      }) as any,
+      readGitMetadata: async () => ({}),
+    });
+
+    const resolution = await gateway.resolveWorksetStore(fixture.project, 'team', fixture.storeAlias);
+
+    expect(resolution).toEqual({
+      storeId: 'team-store',
+      canonicalRoot: fixture.canonicalStorePath,
+    });
+    expect(inventoryCalls).toEqual(['stores', 'worksets']);
+    expect(getContext).not.toHaveBeenCalled();
+  });
+
+  it('rejects a member path that no fresh Store inventory registers', async () => {
+    const fixture = await createStoreFixture();
+    const gateway = new ProjectDataGateway({
+      createCli: () => ({
+        getContext: async () => context(fixture.projectPath, 'nearest'),
+        listWorksets: async () => ({
+          worksets: [{
+            name: 'team',
+            members: [
+              { name: 'current', path: fixture.projectPath },
+              { name: 'forged', path: fixture.forgedPath },
+            ],
+          }],
+        }),
+        listStores: async () => ({ stores: [{ id: 'team-store', root: fixture.storePath }] }),
+      }) as any,
+    });
+
+    const error = await gateway.resolveWorksetStore(fixture.project, 'team', fixture.forgedPath).catch((value) => value);
+
+    expect(error).toBeInstanceOf(ProjectDataAccessError);
+    expect(error).toMatchObject({ projectId: fixture.project.id, phase: 'resolve' });
+  });
+
+  it('rejects a registered Store root that the named Workset no longer lists', async () => {
+    const fixture = await createStoreFixture();
+    const gateway = new ProjectDataGateway({
+      createCli: () => ({
+        getContext: async () => context(fixture.projectPath, 'nearest'),
+        listWorksets: async () => ({
+          worksets: [{
+            name: 'team',
+            members: [{ name: 'current', path: fixture.projectPath }],
+          }],
+        }),
+        listStores: async () => ({ stores: [{ id: 'team-store', root: fixture.storePath }] }),
+      }) as any,
+    });
+
+    const staleError = await gateway.resolveWorksetStore(fixture.project, 'team', fixture.storePath).catch((value) => value);
+    const unknownWorksetError = await gateway
+      .resolveWorksetStore(fixture.project, 'renamed-workset', fixture.storePath)
+      .catch((value) => value);
+
+    expect(staleError).toBeInstanceOf(ProjectDataAccessError);
+    expect(staleError).toMatchObject({ projectId: fixture.project.id, phase: 'resolve' });
+    expect(unknownWorksetError).toBeInstanceOf(ProjectDataAccessError);
+    expect(unknownWorksetError).toMatchObject({ projectId: fixture.project.id, phase: 'resolve' });
+  });
+
+  it('rejects a Workset member that has the Project role instead of a Store role', async () => {
+    const fixture = await createStoreFixture();
+    const gateway = new ProjectDataGateway({
+      createCli: () => ({
+        getContext: async () => context(fixture.projectPath, 'nearest'),
+        listWorksets: async () => ({
+          worksets: [{
+            name: 'team',
+            members: [
+              { name: 'current', path: fixture.projectPath },
+              { name: 'other', path: fixture.otherProjectPath },
+            ],
+          }],
+        }),
+        listStores: async () => ({ stores: [{ id: 'team-store', root: fixture.storePath }] }),
+      }) as any,
+    });
+
+    const error = await gateway.resolveWorksetStore(fixture.project, 'team', fixture.otherProjectPath).catch((value) => value);
+
+    expect(error).toBeInstanceOf(ProjectDataAccessError);
+    expect(error).toMatchObject({ projectId: fixture.project.id, phase: 'resolve' });
+  });
+
+  it('rejects a member path that cannot be canonicalized before any inventory read', async () => {
+    const fixture = await createStoreFixture();
+    const inventoryCalls: string[] = [];
+    const gateway = new ProjectDataGateway({
+      createCli: () => ({
+        getContext: async () => context(fixture.projectPath, 'nearest'),
+        listWorksets: async () => {
+          inventoryCalls.push('worksets');
+          return { worksets: [] };
+        },
+        listStores: async () => {
+          inventoryCalls.push('stores');
+          return { stores: [{ id: 'team-store', root: fixture.storePath }] };
+        },
+      }) as any,
+    });
+
+    const error = await gateway
+      .resolveWorksetStore(fixture.project, 'team', path.join(fixture.base, 'missing-member'))
+      .catch((value) => value);
+
+    expect(error).toBeInstanceOf(ProjectDataAccessError);
+    expect(error).toMatchObject({ projectId: fixture.project.id, phase: 'resolve' });
+    expect(inventoryCalls).toEqual([]);
+  });
+
+  it('fails closed when the Store or Workset inventory probe fails or is malformed', async () => {
+    const fixture = await createStoreFixture();
+
+    const failingCases: Array<{ name: string; cli: Record<string, unknown> }> = [
+      {
+        name: 'listStores throws',
+        cli: {
+          getContext: async () => context(fixture.projectPath, 'nearest'),
+          listWorksets: async () => ({ worksets: [{ name: 'team', members: [{ path: fixture.storePath }] }] }),
+          listStores: async () => {
+            throw new Error('store list unavailable');
+          },
+        },
+      },
+      {
+        name: 'Store inventory malformed',
+        cli: {
+          getContext: async () => context(fixture.projectPath, 'nearest'),
+          listWorksets: async () => ({ worksets: [{ name: 'team', members: [{ path: fixture.storePath }] }] }),
+          listStores: async () => ({ stores: [{ id: 'team-store' }] }),
+        },
+      },
+      {
+        name: 'listWorksets throws',
+        cli: {
+          getContext: async () => context(fixture.projectPath, 'nearest'),
+          listWorksets: async () => {
+            throw new Error('workset list unavailable');
+          },
+          listStores: async () => ({ stores: [{ id: 'team-store', root: fixture.storePath }] }),
+        },
+      },
+      {
+        name: 'worksets capability missing',
+        cli: {
+          getContext: async () => context(fixture.projectPath, 'nearest'),
+          listStores: async () => ({ stores: [{ id: 'team-store', root: fixture.storePath }] }),
+        },
+      },
+    ];
+
+    for (const failingCase of failingCases) {
+      const cause = new Error('probe failed');
+      const gateway = new ProjectDataGateway({
+        createCli: () => failingCase.cli as any,
+        readGitMetadata: async () => { throw cause; },
+      });
+
+      const error = await gateway
+        .resolveWorksetStore(fixture.project, 'team', fixture.storePath)
+        .catch((value) => value);
+
+      expect(error, failingCase.name).toBeInstanceOf(ProjectDataAccessError);
+      expect(error, failingCase.name).toMatchObject({ projectId: fixture.project.id, phase: 'resolve' });
+    }
+  });
+
+  it('rejects non-string Workset names and member paths without probing', async () => {
+    const fixture = await createStoreFixture();
+    const gateway = new ProjectDataGateway({ createCli: () => ({ getContext: async () => context(fixture.projectPath, 'nearest') }) as any });
+
+    const blankName = await gateway.resolveWorksetStore(fixture.project, '   ', fixture.storePath).catch((value) => value);
+    const nonStringPath = await gateway.resolveWorksetStore(fixture.project, 'team', 42 as unknown as string).catch((value) => value);
+
+    expect(blankName).toBeInstanceOf(ProjectDataAccessError);
+    expect(nonStringPath).toBeInstanceOf(ProjectDataAccessError);
   });
 });
 
@@ -1496,6 +1788,116 @@ describe('ProjectDataGateway unified Project Sidebar data', () => {
       specs: [{ id: 'shared-spec', requirementCount: 2 }],
     }]);
     expect(contexts).toEqual([undefined, { storeId: 'referenced-store' }]);
+  });
+
+  it('resolves every Sidebar reader through an explicit validated Store selector', async () => {
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'openspec-sidebar-explicit-store-'));
+    temporaryDirectories.push(base);
+    const projectRoot = path.join(base, 'project-root');
+    const storeRoot = path.join(base, 'store-root');
+    await fs.mkdir(path.join(projectRoot, 'openspec'), { recursive: true });
+    await fs.mkdir(path.join(storeRoot, 'openspec'), { recursive: true });
+    const project = await createProjectContext('Project', projectRoot);
+    const canonicalStoreRoot = await fs.realpath(storeRoot);
+    const contexts: unknown[] = [];
+    const listScopes: unknown[] = [];
+    const contentRoots: string[] = [];
+    const gateway = new ProjectDataGateway({
+      createCli: () => ({
+        getContext: async (scope) => {
+          contexts.push(scope);
+          return scope?.storeId
+            ? { root: { path: storeRoot, source: 'store', store_id: scope.storeId } }
+            : context(projectRoot, 'nearest');
+        },
+        listChanges: async (scope) => {
+          listScopes.push(scope);
+          return scope?.storeId
+            ? [{ name: 'store-change', lifecycleStatus: 'planning' }] as any
+            : [{ name: 'project-change', lifecycleStatus: 'planning' }] as any;
+        },
+        listSpecs: async (scope) => {
+          listScopes.push(scope);
+          return scope?.storeId
+            ? [{ id: 'store-spec', requirementCount: 2 }]
+            : [{ id: 'project-spec', requirementCount: 1 }];
+        },
+        listWorksets: async () => ({
+          worksets: [{
+            name: 'team',
+            members: [{ name: 'current', path: projectRoot }],
+          }],
+        }),
+        listStores: async () => ({ stores: [{ id: 'team-store', root: storeRoot }] }),
+      }),
+      createContentAccess: (openspecPath) => {
+        contentRoots.push(openspecPath);
+        return { listArchivedChanges: async () => [] };
+      },
+      readGitMetadata: async () => ({}),
+    });
+
+    const storeBound = await gateway.loadProjectSidebarData(project, 'team-store');
+    const selectorFree = await gateway.loadProjectSidebarData(project);
+
+    expect(storeBound.binding).toEqual({
+      projectId: project.id,
+      commandCwd: project.projectPath,
+      rootPath: canonicalStoreRoot,
+      rootSource: 'store',
+      storeId: 'team-store',
+    });
+    expect(storeBound.changes.map((change) => change.name)).toEqual(['store-change']);
+    expect(storeBound.projectSpecs).toEqual([{ id: 'store-spec', requirementCount: 2 }]);
+    expect(storeBound.worksetNavigation).toEqual({ project, worksets: expect.any(Array) });
+    expect(contexts[0]).toEqual({ storeId: 'team-store' });
+    expect(listScopes[0]).toEqual({ storeId: 'team-store' });
+    expect(listScopes[1]).toEqual({ storeId: 'team-store' });
+    expect(contentRoots[0]).toBe(path.join(canonicalStoreRoot, 'openspec'));
+
+    expect(selectorFree.binding).toMatchObject({
+      rootPath: await fs.realpath(projectRoot),
+      rootSource: 'nearest',
+    });
+    expect(selectorFree.binding.storeId).toBeUndefined();
+    expect(selectorFree.changes.map((change) => change.name)).toEqual(['project-change']);
+    expect(contexts[1]).toBeUndefined();
+    expect(listScopes[2]).toBeUndefined();
+    expect(listScopes[3]).toBeUndefined();
+  });
+
+  it('reports whether an explicit Store selector drove the Sidebar binding', async () => {
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'openspec-sidebar-explicit-flag-'));
+    temporaryDirectories.push(base);
+    const projectRoot = path.join(base, 'project-root');
+    const declaredStoreRoot = path.join(base, 'declared-store-root');
+    const selectedStoreRoot = path.join(base, 'selected-store-root');
+    await fs.mkdir(path.join(projectRoot, 'openspec'), { recursive: true });
+    await fs.mkdir(path.join(declaredStoreRoot, 'openspec'), { recursive: true });
+    await fs.mkdir(path.join(selectedStoreRoot, 'openspec'), { recursive: true });
+    const project = await createProjectContext('Project', projectRoot);
+    const gateway = new ProjectDataGateway({
+      createCli: () => ({
+        // The selector-free root IS a Store root (CLI root.store_id is set):
+        // its binding carries a storeId without any explicit selector.
+        getContext: async (scope) => (scope?.storeId
+          ? { root: { path: selectedStoreRoot, source: 'store', store_id: scope.storeId } }
+          : { root: { path: declaredStoreRoot, source: 'store', store_id: 'declared-store' } }),
+        listChanges: async () => [],
+        listSpecs: async () => [],
+        listWorksets: async () => ({ worksets: [] }),
+        listStores: async () => ({ stores: [] }),
+      }),
+      createContentAccess: () => ({ listArchivedChanges: async () => [] }),
+    });
+
+    const selectorFree = await gateway.loadProjectSidebarData(project);
+    const explicit = await gateway.loadProjectSidebarData(project, 'team-store');
+
+    expect(selectorFree.binding.storeId).toBe('declared-store');
+    expect(selectorFree.explicitStoreSelector).toBe(false);
+    expect(explicit.binding.storeId).toBe('team-store');
+    expect(explicit.explicitStoreSelector).toBe(true);
   });
 
   it('accepts official context members and keeps Store Specs out of Project metrics', async () => {
