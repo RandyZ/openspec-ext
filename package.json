@@ -2,7 +2,7 @@
   "name": "openspec-workflow",
   "displayName": "OpenSpec",
   "description": "Project-first OpenSpec dashboard for changes, specs, stores, worksets, and safe workflow actions",
-  "version": "0.3.0",
+  "version": "0.2.1",
   "publisher": "randysss",
   "license": "MIT",
   "engines": {
