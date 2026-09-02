@@ -11,10 +11,11 @@ OpenSpec 将 change 规划与执行带回编辑器：集中查看需要关注的
 ### 核心能力
 
 - **项目优先侧栏**：固定提供 Changes、Specs、Worksets、Dashboard 四个入口，清晰表达 active、focus 和不可用状态。
+- **Stores 与工作集**：将已注册 Store 用作规划根，并直接在侧栏中浏览、查看、创建和打开可信的多文件夹工作集。
 - **推荐动作**：紧凑的、由 resolver 驱动的动作栏按 Needs Attention、Ready to Verify、Recommended 优先级展示最多三条下一步动作。
 - **Change 详情**：提供 Proposal、Specs、Design、Tasks、Verify & Archive 标签页、Markdown 渲染、任务进度和工作流控制。
 - **安全路由**：Review 和 Verify 会进入对应详情页或交互式终端；高影响归档动作始终保留确认保护。
-- **CLI 集成**：支持 OpenSpec CLI 的 list、status、new、archive，并提供重试、超时和 `openspec.cliPath` 兜底。
+- **CLI 集成**：支持 OpenSpec CLI 的 list、status、new、archive、Store 和 Workset 流程，并提供重试、超时和 `openspec.cliPath` 兜底。
 - **编辑器原生体验**：复用 VS Code 主题 token 和 Codicon，支持键盘操作，并适配窄侧栏布局。
 
 ## 截图
@@ -50,6 +51,19 @@ OpenSpec 将 change 规划与执行带回编辑器：集中查看需要关注的
 6. 在 `Verify & Archive` 标签页中打开交互式 VS Code 终端执行 `/opsx-verify` 或 `/opsx-archive`，这样 Agent 中途反问时可以继续输入。
 
 `Review & Archive` 是详情页的主动作，会启动交互式 `/opsx-archive <change>` 会话。`Archive Now` 是次要的、执行前需要确认的 direct CLI 动作，只有当前 binding 的 resolver 判定必需 artifact 和任务全部完成时才可用。Dashboard 的 Verify/Archive 入口只打开这个详情页，不会直接归档。
+
+### Stores 与工作集
+
+Store 和 Workset 控件需要 OpenSpec CLI 1.5.0 或更高版本。**Store** 是 changes 和 specs 的可写规划根；可从 OpenSpec Root 控件选择或创建，扩展只会在 CLI 验证 binding 后切换数据。
+
+**工作集（Workset）** 是保存在本机的具名多文件夹工作区。打开 **Worksets** 后可以：
+
+1. 浏览包含当前项目的工作集，并在不启动新编辑器窗口的情况下查看成员详情。
+2. 将侧栏切换到另一个项目成员，或把经过验证的 Store 成员设为规划根。
+3. 使用已保存的 opener 打开完整工作集，或使用不会修改已保存设置的一次性 opener。
+4. 用当前项目和原生文件夹选择器选中的其他目录创建工作集。
+
+打开完整工作集会切换编辑器 workspace；选择项目成员只会切换 OpenSpec 侧栏中展示的项目。Store 成员不会被当作项目目标。
 
 ### 命令
 

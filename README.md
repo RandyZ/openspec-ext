@@ -11,10 +11,11 @@ OpenSpec brings change planning and execution into the editor. Review what needs
 ### Highlights
 
 - **Project-first sidebar**: Fixed Changes, Specs, Worksets, and Dashboard entry points, with clear active, focus, and unavailable states.
+- **Stores and Worksets**: Use registered Stores as planning roots, then browse, inspect, create, and open trusted multi-folder Worksets without leaving the sidebar.
 - **Recommended actions**: A compact, resolver-backed action rail surfaces up to three next steps by priority: Needs Attention, Ready to Verify, then Recommended.
 - **Change detail**: Proposal, Specs, Design, Tasks, and Verify & Archive tabs with markdown rendering, task progress, and workflow controls.
 - **Safe workflow routing**: Review and verify actions open the appropriate detail or interactive terminal flow; high-impact archive actions stay confirmation-protected.
-- **CLI integration**: OpenSpec CLI list, status, new, and archive flows with retry, timeout, and `openspec.cliPath` fallback.
+- **CLI integration**: OpenSpec CLI list, status, new, archive, Store, and Workset flows with retry, timeout, and `openspec.cliPath` fallback.
 - **Editor-native**: Uses VS Code theme tokens, Codicons, keyboard-accessible controls, and narrow-sidebar-friendly layouts.
 
 ## Screenshots
@@ -50,6 +51,19 @@ If Cursor or VS Code cannot see the CLI that works in your terminal, set `opensp
 6. Use the `Verify & Archive` tab to open an interactive VS Code terminal for `/opsx-verify` or `/opsx-archive`, so Agent follow-up questions remain interactive.
 
 `Review & Archive` is the primary Detail action and starts the interactive `/opsx-archive <change>` session. `Archive Now` is a secondary, confirmation-protected direct CLI action enabled only when the bound resolver reports all required artifacts and tasks complete. Dashboard Verify/Archive actions open this Detail surface; they never archive directly.
+
+### Stores and Worksets
+
+Store and Workset controls are available with OpenSpec CLI 1.5.0 or newer. A **Store** is a writable planning root for changes and specs. Select or create one from the OpenSpec Root controls; the extension switches data only after the CLI validates the binding.
+
+A **Workset** is a machine-local, named multi-folder workspace. Open **Worksets** to:
+
+1. Browse Worksets that contain the current project and inspect their members without launching another editor window.
+2. Switch the sidebar to another project member, or use a validated Store member as the planning root.
+3. Open the complete Workset with its saved opener or a one-time opener override that does not modify the saved setting.
+4. Create a Workset from the current project plus folders selected with the native folder picker.
+
+Opening a complete Workset changes the editor workspace; selecting a project member changes only the project shown in the OpenSpec sidebar. Store members are never treated as project targets.
 
 ### Commands
 
