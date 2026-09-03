@@ -44,26 +44,35 @@ OpenSpec 将 change 规划与执行带回编辑器：集中查看需要关注的
 ### 快速开始
 
 1. 打开包含 `openspec/config.yaml` 的工作区。
-2. 打开命令面板（macOS: `Cmd+Shift+P`；Windows/Linux: `Ctrl+Shift+P`）。
-3. 执行 **OpenSpec: Open Dashboard**。
-4. 选择一个 change，查看 Proposal、Specs、Design、Tasks、Verify & Archive 标签页。
-5. 使用 action bar 或 change card 的快捷操作复制/填充 `/opsx:continue`、`/opsx:ff`、`/opsx:apply` 命令。
-6. 在 `Verify & Archive` 标签页中打开交互式 VS Code 终端执行 `/opsx-verify` 或 `/opsx-archive`，这样 Agent 中途反问时可以继续输入。
+2. 执行 **OpenSpec: Open Dashboard**。
+3. 检查当前 **Root**，然后选择 **New Change**。
+4. 使用 **Continue** 或 **Fast-forward** 生成 planning artifacts。
+5. 检查 **Proposal**、**Specs**、**Design** 和 **Tasks**，然后选择 **Apply**。
+6. 在 **Verify & Archive** 中先运行 **Run Verify**，再按需要使用 **Review & Archive**。
 
-`Review & Archive` 是详情页的主动作，会启动交互式 `/opsx-archive <change>` 会话。`Archive Now` 是次要的、执行前需要确认的 direct CLI 动作，只有当前 binding 的 resolver 判定必需 artifact 和任务全部完成时才可用。Dashboard 的 Verify/Archive 入口只打开这个详情页，不会直接归档。
+**Review & Archive** 是推荐的 Agent-assisted 路径。**Archive Now** 是需显式确认后执行的直接 CLI 归档方式，仅在 workflow 完成时可用。
 
-### Stores 与工作集
+### Store 与 Workset
 
-Store 和 Workset 控件需要 OpenSpec CLI 1.5.0 或更高版本。**Store** 是 changes 和 specs 的可写规划根；可从 OpenSpec Root 控件选择或创建，扩展只会在 CLI 验证 binding 后切换数据。
+**Store** 是负责 Changes 和 Specs 的可写 planning **Root**。通过 Root 控件选择或创建 Store；扩展仅在 CLI 验证通过后切换 binding。Git 操作仍由用户负责。
 
-**工作集（Workset）** 是保存在本机的具名多文件夹工作区。打开 **Worksets** 后可以：
+**Workset** 是保存在本机的具名文件夹组。你可以查看其中的 Projects 和 Stores、切换侧栏 Project 或 planning Root、打开全部成员组成的完整 workspace，以及创建新组。
 
-1. 浏览包含当前项目的工作集，并在不启动新编辑器窗口的情况下查看成员详情。
-2. 将侧栏切换到另一个项目成员，或把经过验证的 Store 成员设为规划根。
-3. 使用已保存的 opener 打开完整工作集，或使用不会修改已保存设置的一次性 opener。
-4. 用当前项目和原生文件夹选择器选中的其他目录创建工作集。
+<img src="docs/images/openspec-worksets-list.png" alt="包含当前 OpenSpec Project 的 Worksets 列表" width="430" />
 
-打开完整工作集会切换编辑器 workspace；选择项目成员只会切换 OpenSpec 侧栏中展示的项目。Store 成员不会被当作项目目标。
+点击列表行只会打开详情，不会新开窗口。Project 成员用于切换侧栏，Store 成员会成为 planning Root，**Open all** 会打开完整 workspace。
+
+<img src="docs/images/openspec-workset-detail.png" alt="Workset 详情中的 Store 与 Project 成员角色" width="430" />
+
+**Create Workset** 以当前 Project 为基础，并通过原生文件夹选择器添加成员；一次性 opener override 不会修改已保存的 opener。
+
+<img src="docs/images/openspec-workset-create.png" alt="包含成员和首选 opener 的 Create Workset 表单" width="430" />
+
+### 完整使用指南
+
+- [简体中文使用指南](https://github.com/RandyZ/openspec-ext/blob/main/docs/USER_GUIDE.zh-CN.md)
+- [插件接口](https://github.com/RandyZ/openspec-ext/blob/main/docs/USER_GUIDE.zh-CN.md#plugin-interface)
+- [English user guide](https://github.com/RandyZ/openspec-ext/blob/main/docs/USER_GUIDE.md)
 
 ### 命令
 
