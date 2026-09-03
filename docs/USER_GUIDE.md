@@ -26,9 +26,9 @@ The extension activates for workspace folders containing `openspec/config.yaml`.
 
 1. Check the Root control before creating anything. It decides where the Change and Specs are read and written.
 2. Select **New Change**, enter a kebab-case name, and create the Change skeleton.
-3. Use **Continue** to create the next artifact or **Fast-forward** to create all remaining planning artifacts through the selected Agent adapter or clipboard mode.
+3. In the default Clipboard mode, select **Copy Continue planning** for the next artifact or **Copy FF** for the remaining planning artifacts. Both actions only copy the command; paste it to your Agent. After you configure an adapter launch mode, the buttons use Open, Launch, or Run variants to pass the action directly to that adapter.
 4. Open the Change and review Proposal, Specs, Design, and Tasks.
-5. Select **Apply** when the Change is ready for implementation.
+5. In the default Clipboard mode, select **Copy Apply**, then paste the command to your Agent. With an adapter launch mode configured, the corresponding action launches or runs through that adapter.
 6. Open **Verify & Archive** and select **Run Verify** to start the interactive terminal.
 7. Use **Review & Archive** for the normal Agent-assisted archive path. Use **Archive Now** only when you intentionally want the confirmation-protected direct CLI path.
 
@@ -60,10 +60,10 @@ The extension activates for workspace folders containing `openspec/config.yaml`.
 | UI action | Underlying action | Where it runs | Result |
 |---|---|---|---|
 | New Change | `openspec new change <name>` | Extension CLI invocation | Creates a Change skeleton in the selected Root |
-| Continue | `/opsx:continue <change>` (Clipboard, Copilot, Claude Code) or `/opsx-continue <change>` (Cursor, OpenCode) | Agent adapter or clipboard | Creates the next required artifact |
-| Fast-forward | `/opsx:ff <change>` (Clipboard, Copilot, Claude Code) or `/opsx-ff <change>` (Cursor, OpenCode) | Agent adapter or clipboard | Creates the remaining planning artifacts |
-| Apply | `/opsx:apply <change>` (Clipboard, Copilot, Claude Code) or `/opsx-apply <change>` (Cursor, OpenCode) | Agent adapter or clipboard | Implements the planned tasks |
-| Verify | `/opsx-verify <change>` | Interactive Cursor Agent CLI (`agent`) | Checks implementation against artifacts |
+| Copy Continue planning (default) | `/opsx:continue <change>` (Clipboard, Copilot, Claude Code) or `/opsx-continue <change>` (Cursor, OpenCode) | Clipboard by default; configured Agent adapter after launch mode setup | Copies the next-artifact command by default; a configured adapter can launch or run it |
+| Copy FF (default) | `/opsx:ff <change>` (Clipboard, Copilot, Claude Code) or `/opsx-ff <change>` (Cursor, OpenCode) | Clipboard by default; configured Agent adapter after launch mode setup | Copies the remaining-artifacts command by default; a configured adapter can launch or run it |
+| Copy Apply (default) | `/opsx:apply <change>` (Clipboard, Copilot, Claude Code) or `/opsx-apply <change>` (Cursor, OpenCode) | Clipboard by default; configured Agent adapter after launch mode setup | Copies the implementation command by default; a configured adapter can launch or run it |
+| Run Verify | `/opsx-verify <change>` | Interactive Cursor Agent CLI (`agent`) | Checks implementation against artifacts |
 | Review & Archive | `/opsx-archive <change>` | Interactive Cursor Agent CLI (`agent`) | Reviews and archives interactively |
 | Archive Now | Direct archive CLI | Extension after confirmation | Archives only when required artifacts and tasks are complete |
 
@@ -72,7 +72,7 @@ Clipboard, Copilot, and Claude Code use the `/opsx:<action>` form for Continue, 
 <a id="stores-and-worksets"></a>
 ## Stores and Worksets
 
-Store and Workset controls require an OpenSpec CLI version that reports those capabilities to the extension. See the official [Stores and Worksets guide](https://github.com/Fission-AI/OpenSpec/blob/main/docs/stores-beta/user-guide.md) for CLI-level behavior.
+Stores and Worksets require OpenSpec CLI 1.5.0 or newer. See the official [Stores and Worksets guide](https://github.com/Fission-AI/OpenSpec/blob/main/docs/stores-beta/user-guide.md) for CLI-level behavior.
 
 ### Use a Store as the planning Root
 
