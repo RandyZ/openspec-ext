@@ -58,7 +58,7 @@ The default `clipboard` launch mode only copies workflow commands. Set `openspec
 
 Stores and Worksets require OpenSpec CLI 1.5.0 or newer.
 
-A **Store** is a writable planning **Root** for Changes and Specs. Use the Root controls to select or create one; the extension switches the binding only after CLI validation. Git operations remain the user's responsibility.
+A **Store** is a writable planning **Root** for Changes and Specs. Use the Root controls to select or create one; the extension switches the binding only after CLI validation. Store Git operations remain your responsibility.
 
 A **Workset** is a machine-local named group of folders. From **Worksets**, you can view Projects and Stores, switch the sidebar Project or planning Root, open every member as a complete workspace, and create a group.
 
