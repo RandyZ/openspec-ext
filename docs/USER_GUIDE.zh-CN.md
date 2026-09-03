@@ -83,7 +83,7 @@ Store 是一个独立的 OpenSpec 规划仓库。它可以管理 Change 和 Spec
 3. 等待插件完成绑定验证和重新加载。
 4. 创建 Change 或执行 Change 操作前，确认 Root 指示器显示的是目标 Store。
 
-OpenSpec 不会替你对 Store 执行 clone、pull、push，不会处理凭据，也不会解决 Store Git 历史的合并冲突。请像管理其他仓库一样，使用 Git 管理 Store 仓库。
+OpenSpec 不会替你对 Store 执行 clone、pull、push，不会处理凭据，也不会合并 Store 的 Git 历史。请像管理其他仓库一样，使用 Git 管理 Store 仓库。
 
 ### 浏览 Workset
 
