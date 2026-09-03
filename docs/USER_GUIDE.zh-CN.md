@@ -26,9 +26,9 @@
 
 1. 创建任何内容前，先检查 Root 控件。它决定从哪里读取 Change 和 Specs，以及将它们写入哪里。
 2. 选择 **New Change**，输入一个 kebab-case 名称，然后创建 Change 骨架。
-3. 使用 **Continue** 创建下一个工件，或使用 **Fast-forward** 通过所选 Agent 适配器或剪贴板模式创建其余所有规划工件。
+3. 在默认 Clipboard 模式下，选择 **Copy Continue planning** 创建下一个工件，或选择 **Copy FF** 创建其余规划工件。两者都只会复制命令；请将命令粘贴给 Agent。配置适配器启动模式后，按钮会使用 Open、Launch 或 Run 变体，将操作直接交给相应适配器。
 4. 打开该 Change，检查 Proposal、Specs、Design 和 Tasks。
-5. 当 Change 可以开始实现时，选择 **Apply**。
+5. 在默认 Clipboard 模式下，选择 **Copy Apply**，然后将命令粘贴给 Agent。配置适配器启动模式后，对应操作会通过该适配器启动或运行。
 6. 打开 **Verify & Archive**，选择 **Run Verify** 启动交互式终端。
 7. 正常情况下使用 **Review & Archive**，通过 Agent 辅助完成归档。只有当你明确希望使用需确认后执行的直接 CLI 归档方式时，才使用 **Archive Now**。
 
@@ -60,9 +60,9 @@
 | UI 操作 | 底层操作 | 执行位置 | 结果 |
 |---|---|---|---|
 | **New Change** | `openspec new change <name>` | 插件调用 CLI | 在所选 Root 中创建 Change 骨架 |
-| **Continue** | `/opsx:continue <change>`（Clipboard、Copilot、Claude Code）或 `/opsx-continue <change>`（Cursor、OpenCode） | Agent 适配器或剪贴板 | 创建下一个必需工件 |
-| **Fast-forward** | `/opsx:ff <change>`（Clipboard、Copilot、Claude Code）或 `/opsx-ff <change>`（Cursor、OpenCode） | Agent 适配器或剪贴板 | 创建其余规划工件 |
-| **Apply** | `/opsx:apply <change>`（Clipboard、Copilot、Claude Code）或 `/opsx-apply <change>`（Cursor、OpenCode） | Agent 适配器或剪贴板 | 实现规划中的任务 |
+| **Copy Continue planning**（默认） | `/opsx:continue <change>`（Clipboard、Copilot、Claude Code）或 `/opsx-continue <change>`（Cursor、OpenCode） | 默认使用 Clipboard；配置启动模式后使用 Agent 适配器 | 默认复制用于创建下一个工件的命令；配置的适配器可启动或运行该命令 |
+| **Copy FF**（默认） | `/opsx:ff <change>`（Clipboard、Copilot、Claude Code）或 `/opsx-ff <change>`（Cursor、OpenCode） | 默认使用 Clipboard；配置启动模式后使用 Agent 适配器 | 默认复制用于创建其余规划工件的命令；配置的适配器可启动或运行该命令 |
+| **Copy Apply**（默认） | `/opsx:apply <change>`（Clipboard、Copilot、Claude Code）或 `/opsx-apply <change>`（Cursor、OpenCode） | 默认使用 Clipboard；配置启动模式后使用 Agent 适配器 | 默认复制实现命令；配置的适配器可启动或运行该命令 |
 | **Run Verify** | `/opsx-verify <change>` | 交互式 Cursor Agent CLI (`agent`) | 对照工件检查实现 |
 | **Review & Archive** | `/opsx-archive <change>` | 交互式 Cursor Agent CLI (`agent`) | 以交互方式审查并归档 |
 | **Archive Now** | 直接归档 CLI | 插件在确认后执行 | 仅当必需工件和任务完成时归档 |
@@ -72,7 +72,7 @@ Continue、Fast-forward 和 Apply 在 Clipboard、Copilot、Claude Code 中使�
 <a id="stores-and-worksets"></a>
 ## Store 和 Workset
 
-Store 和 Workset 控件要求 OpenSpec CLI 向插件报告相应能力。CLI 层面的行为请参阅官方 [Stores and Worksets 指南](https://github.com/Fission-AI/OpenSpec/blob/main/docs/stores-beta/user-guide.md)。
+Store 与 Workset 需要 OpenSpec CLI 1.5.0 或更高版本。CLI 层面的行为请参阅官方 [Stores and Worksets 指南](https://github.com/Fission-AI/OpenSpec/blob/main/docs/stores-beta/user-guide.md)。
 
 ### 将 Store 用作规划 Root
 
