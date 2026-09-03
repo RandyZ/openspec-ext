@@ -1,6 +1,6 @@
 # Marketplace User Guide and Workset Screenshots Design
 
-**Date:** 2026-09-03  
+**Date:** 2026-09-03
 **Status:** Implemented and verified
 
 ## Goal

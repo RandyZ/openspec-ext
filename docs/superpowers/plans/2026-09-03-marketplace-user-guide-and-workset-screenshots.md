@@ -754,7 +754,7 @@ Run:
 
 ```bash
 rtk unzip -l openspec-workflow-0.2.1.vsix | \
-  rg 'extension/(README.md|README.zh-CN.md|docs/images/openspec-(dashboard|change-detail|worksets-list|workset-detail|workset-create)\.png)'
+  rg 'extension/(readme.md|README.zh-CN.md|docs/images/openspec-(dashboard|change-detail|worksets-list|workset-detail|workset-create)\.png)'
 
 rtk zsh -c 'unzip -p openspec-workflow-0.2.1.vsix extension/readme.md | \
   rg -q '"'"'USER_GUIDE.md#plugin-interface'"'"' && \
