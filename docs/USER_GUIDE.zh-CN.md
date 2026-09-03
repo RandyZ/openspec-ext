@@ -13,7 +13,7 @@
 ## 安装并初始化
 
 1. 安装 OpenSpec CLI，并确认在编辑器打开的终端中可以正常运行 `openspec --version`。
-2. 在用于管理本地 Change 和 Spec 的仓库中运行 `openspec init`。
+2. 在用于管理本地 Changes 和 Specs 的仓库中运行 `openspec init`。
 3. 使用 VS Code 或 Cursor 打开该仓库。
 4. 安装并启用 OpenSpec 插件。
 5. 从命令面板运行 **OpenSpec: Open Dashboard**。
@@ -24,7 +24,7 @@
 
 ## 完成你的第一个 Change
 
-1. 创建任何内容前，先检查 Root 控件。它决定从哪里读取 Change 和 Spec，以及将它们写入哪里。
+1. 创建任何内容前，先检查 Root 控件。它决定从哪里读取 Change 和 Specs，以及将它们写入哪里。
 2. 选择 **New Change**，输入一个 kebab-case 名称，然后创建 Change 骨架。
 3. 使用 **Continue** 创建下一个工件，或使用 **Fast-forward** 通过所选 Agent 适配器或剪贴板模式创建其余所有规划工件。
 4. 打开该 Change，检查 Proposal、Specs、Design 和 Tasks。
@@ -67,7 +67,7 @@
 | **Review & Archive** | `/opsx-archive <change>` | 交互式 Cursor Agent CLI (`agent`) | 以交互方式审查并归档 |
 | **Archive Now** | 直接归档 CLI | 插件在确认后执行 | 仅当必需工件和任务完成时归档 |
 
-Continue、Fast-forward 和 Apply 在 Clipboard、Copilot、Claude Code 中使用 `/opsx:<action>` 形式，在 Cursor 和 OpenCode 中使用 `/opsx-<action>`。剪贴板模式只复制命令，不会运行 Agent。Verify 和 Review & Archive 始终通过交互式 Cursor Agent CLI (`agent`) 运行，而不使用所选 adapter，以便你可以看到并回答 Agent 的问题。
+Continue、Fast-forward 和 Apply 在 Clipboard、Copilot、Claude Code 中使用 `/opsx:<action>` 形式，在 Cursor 和 OpenCode 中使用 `/opsx-<action>`。剪贴板模式只复制命令，不会运行 Agent。Verify 和 Review & Archive 始终通过交互式 Cursor Agent CLI (`agent`) 运行，而不使用所选适配器，以便你可以看到并回答 Agent 的问题。
 
 <a id="stores-and-worksets"></a>
 ## Store 和 Workset
