@@ -46,7 +46,7 @@ If Cursor or VS Code cannot see the CLI that works in your terminal, set `opensp
 1. Open a workspace that contains `openspec/config.yaml`.
 2. Run **OpenSpec: Open Dashboard**.
 3. Check the active **Root**, then select **New Change**.
-4. By default, select **Copy Continue** or **Copy Fast-forward**, then paste the copied command into your Agent to generate the planning artifacts.
+4. By default, select **Copy Continue planning** or **Copy FF**, then paste the copied command into your Agent to generate the planning artifacts.
 5. Review **Proposal**, **Specs**, **Design**, and **Tasks**, then select **Copy Apply** and paste the copied command into your Agent.
 6. In **Verify & Archive**, run **Run Verify** first, then use **Review & Archive** as needed.
 

@@ -46,7 +46,7 @@ OpenSpec 将 change 规划与执行带回编辑器：集中查看需要关注的
 1. 打开包含 `openspec/config.yaml` 的工作区。
 2. 执行 **OpenSpec: Open Dashboard**。
 3. 检查当前 **Root**，然后选择 **New Change**。
-4. 默认选择 **Copy Continue** 或 **Copy Fast-forward**，再将复制的命令粘贴给 Agent，以生成 planning artifacts。
+4. 默认选择 **Copy Continue planning** 或 **Copy FF**，再将复制的命令粘贴给 Agent，以生成 planning artifacts。
 5. 检查 **Proposal**、**Specs**、**Design** 和 **Tasks**，然后选择 **Copy Apply**，并将复制的命令粘贴给 Agent。
 6. 在 **Verify & Archive** 中先运行 **Run Verify**，再按需要使用 **Review & Archive**。
 
