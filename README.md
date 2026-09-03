@@ -46,13 +46,17 @@ If Cursor or VS Code cannot see the CLI that works in your terminal, set `opensp
 1. Open a workspace that contains `openspec/config.yaml`.
 2. Run **OpenSpec: Open Dashboard**.
 3. Check the active **Root**, then select **New Change**.
-4. Use **Continue** or **Fast-forward** to generate the planning artifacts.
-5. Review **Proposal**, **Specs**, **Design**, and **Tasks**, then select **Apply**.
+4. By default, select **Copy Continue** or **Copy Fast-forward**, then paste the copied command into your Agent to generate the planning artifacts.
+5. Review **Proposal**, **Specs**, **Design**, and **Tasks**, then select **Copy Apply** and paste the copied command into your Agent.
 6. In **Verify & Archive**, run **Run Verify** first, then use **Review & Archive** as needed.
+
+The default `clipboard` launch mode only copies workflow commands. Set `openspec.workflowLaunchMode` to `adapter` when you want actions to open, launch, or run through the configured adapter.
 
 **Review & Archive** is the recommended Agent-assisted path. **Archive Now** is a direct CLI path that requires explicit confirmation and is available only when the workflow is complete.
 
 ### Stores and Worksets
+
+Stores and Worksets require OpenSpec CLI 1.5.0 or newer.
 
 A **Store** is a writable planning **Root** for Changes and Specs. Use the Root controls to select or create one; the extension switches the binding only after CLI validation. Git operations remain the user's responsibility.
 

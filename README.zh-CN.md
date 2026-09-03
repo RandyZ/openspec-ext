@@ -46,13 +46,17 @@ OpenSpec 将 change 规划与执行带回编辑器：集中查看需要关注的
 1. 打开包含 `openspec/config.yaml` 的工作区。
 2. 执行 **OpenSpec: Open Dashboard**。
 3. 检查当前 **Root**，然后选择 **New Change**。
-4. 使用 **Continue** 或 **Fast-forward** 生成 planning artifacts。
-5. 检查 **Proposal**、**Specs**、**Design** 和 **Tasks**，然后选择 **Apply**。
+4. 默认选择 **Copy Continue** 或 **Copy Fast-forward**，再将复制的命令粘贴给 Agent，以生成 planning artifacts。
+5. 检查 **Proposal**、**Specs**、**Design** 和 **Tasks**，然后选择 **Copy Apply**，并将复制的命令粘贴给 Agent。
 6. 在 **Verify & Archive** 中先运行 **Run Verify**，再按需要使用 **Review & Archive**。
 
-**Review & Archive** 是推荐的 Agent-assisted 路径。**Archive Now** 是需显式确认后执行的直接 CLI 归档方式，仅在 workflow 完成时可用。
+默认的 `clipboard` 启动模式只复制 workflow 命令；将 `openspec.workflowLaunchMode` 配置为 `adapter` 后，相应动作才会通过 adapter 打开、启动或运行。
+
+**Review & Archive** 是推荐的 Agent 辅助路径。**Archive Now** 是需显式确认后执行的直接 CLI 归档方式，仅在 workflow 完成时可用。
 
 ### Store 与 Workset
+
+Store 与 Workset 需要 OpenSpec CLI 1.5.0 或更高版本。
 
 **Store** 是负责 Changes 和 Specs 的可写 planning **Root**。通过 Root 控件选择或创建 Store；扩展仅在 CLI 验证通过后切换 binding。Git 操作仍由用户负责。
 
@@ -64,7 +68,7 @@ OpenSpec 将 change 规划与执行带回编辑器：集中查看需要关注的
 
 <img src="docs/images/openspec-workset-detail.png" alt="Workset 详情中的 Store 与 Project 成员角色" width="430" />
 
-**Create Workset** 以当前 Project 为基础，并通过原生文件夹选择器添加成员；一次性 opener override 不会修改已保存的 opener。
+**Create Workset** 以当前 Project 为基础，并通过原生文件夹选择器添加成员；临时指定其他打开工具不会修改已保存的默认打开方式。
 
 <img src="docs/images/openspec-workset-create.png" alt="包含成员和首选 opener 的 Create Workset 表单" width="430" />
 
