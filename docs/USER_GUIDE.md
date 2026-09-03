@@ -18,7 +18,7 @@ This guide explains how the OpenSpec extension UI works with OpenSpec. For the f
 4. Install and enable the OpenSpec extension.
 5. Run **OpenSpec: Open Dashboard** from the Command Palette.
 
-The extension activates for workspace folders containing `openspec/config.yaml`. If the editor cannot find a CLI that works in your shell, set `openspec.cliPath` to the executable's absolute path.
+The extension activates for workspace folders containing `openspec/config.yaml`. If the editor cannot find a CLI that works in your shell, set `openspec.cliPath` to the executable's absolute path. To use Verify and Review & Archive, also ensure the Cursor Agent CLI `agent` executable is available.
 
 ![OpenSpec project Dashboard](images/openspec-dashboard.png)
 
@@ -26,7 +26,7 @@ The extension activates for workspace folders containing `openspec/config.yaml`.
 
 1. Check the Root control before creating anything. It decides where the Change and Specs are read and written.
 2. Select **New Change**, enter a kebab-case name, and create the Change skeleton.
-3. Use **Continue** to create the next artifact or **Fast-forward** to create all remaining planning artifacts through the selected Agent adapter.
+3. Use **Continue** to create the next artifact or **Fast-forward** to create all remaining planning artifacts through the selected Agent adapter or clipboard mode.
 4. Open the Change and review Proposal, Specs, Design, and Tasks.
 5. Select **Apply** when the Change is ready for implementation.
 6. Open **Verify & Archive** and run **Verify** in the interactive terminal.
@@ -60,14 +60,14 @@ The extension activates for workspace folders containing `openspec/config.yaml`.
 | UI action | Underlying action | Where it runs | Result |
 |---|---|---|---|
 | New Change | `openspec new change <name>` | Extension CLI invocation | Creates a Change skeleton in the selected Root |
-| Continue | `/opsx:continue <change>` | Agent adapter or clipboard | Creates the next required artifact |
-| Fast-forward | `/opsx:ff <change>` | Agent adapter or clipboard | Creates the remaining planning artifacts |
-| Apply | `/opsx:apply <change>` | Agent adapter or clipboard | Implements the planned tasks |
-| Verify | `/opsx:verify <change>` | Interactive VS Code terminal | Checks implementation against artifacts |
-| Review & Archive | `/opsx:archive <change>` | Interactive VS Code terminal | Reviews and archives interactively |
+| Continue | `/opsx:continue <change>` (Clipboard, Copilot, Claude Code) or `/opsx-continue <change>` (Cursor, OpenCode) | Agent adapter or clipboard | Creates the next required artifact |
+| Fast-forward | `/opsx:ff <change>` (Clipboard, Copilot, Claude Code) or `/opsx-ff <change>` (Cursor, OpenCode) | Agent adapter or clipboard | Creates the remaining planning artifacts |
+| Apply | `/opsx:apply <change>` (Clipboard, Copilot, Claude Code) or `/opsx-apply <change>` (Cursor, OpenCode) | Agent adapter or clipboard | Implements the planned tasks |
+| Verify | `/opsx-verify <change>` | Interactive Cursor Agent CLI (`agent`) | Checks implementation against artifacts |
+| Review & Archive | `/opsx-archive <change>` | Interactive Cursor Agent CLI (`agent`) | Reviews and archives interactively |
 | Archive Now | Direct archive CLI | Extension after confirmation | Archives only when required artifacts and tasks are complete |
 
-Clipboard mode copies the command; it does not run an Agent. OpenCode adapters translate `/opsx:<action>` into their supported `/opsx-<action>` form. Verify and Review & Archive stay interactive so Agent questions are visible and answerable.
+Clipboard, Copilot, and Claude Code use the `/opsx:<action>` form for Continue, Fast-forward, and Apply; Cursor and OpenCode use `/opsx-<action>`. Clipboard mode only copies the command and does not run an Agent. Verify and Review & Archive always run through the interactive Cursor Agent CLI (`agent`), not the selected adapter, so Agent questions are visible and answerable.
 
 <a id="stores-and-worksets"></a>
 ## Stores and Worksets
@@ -79,7 +79,7 @@ Store and Workset controls require an OpenSpec CLI version that reports those ca
 A Store is a standalone OpenSpec planning repository. It can own Changes and Specs while implementation remains in separate Project repositories.
 
 1. Open the Root control.
-2. Select a registered Store, or use the Store setup/register actions first.
+2. Select a registered Store, or use **Create Store** or **Register Store** first.
 3. Wait for the extension to validate and reload the binding.
 4. Confirm the Root indicator names the intended Store before creating or running a Change action.
 
@@ -91,7 +91,7 @@ A Workset is a machine-local named group of folders. It helps you see and open r
 
 ![Worksets list](images/openspec-worksets-list.png)
 
-1. Open **Worksets** from the OpenSpec sidebar.
+1. Select **Browse Workset Projects** from the OpenSpec sidebar.
 2. Select a row to inspect its members. Selecting the row does not open another editor window.
 3. In detail, select a Project member to change the Project shown in the sidebar.
 4. Select a validated Store member to use it as the planning Root.
@@ -102,10 +102,10 @@ A Workset is a machine-local named group of folders. It helps you see and open r
 
 ### Create a Workset
 
-1. Open **Worksets** and select **Create Workset**.
+1. Select **Browse Workset Projects** from the OpenSpec sidebar, then select **Create Workset**.
 2. Enter a unique name.
 3. Add folders with the native folder picker.
-4. Move the intended Primary member to the first position.
+4. Select **Make primary** for the intended Primary member.
 5. Optionally enter a preferred opener id.
 6. Select **Create** and wait for the fresh Workset detail state.
 
