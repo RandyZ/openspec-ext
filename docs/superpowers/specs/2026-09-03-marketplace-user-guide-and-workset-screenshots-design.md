@@ -15,7 +15,8 @@ The documentation must explain how the extension UI works with OpenSpec rather t
 - The Marketplace content is extracted from `README.md` above the first standalone `---` line.
 - Two public screenshots exist: Dashboard overview and Change detail.
 - Worksets and Stores are described in text but have no public screenshots.
-- Archived visual acceptance evidence contains local project names and filesystem paths, so it must not be reused for Marketplace publication.
+- Archived real-Host evidence contains local project names and filesystem paths, so it must not be reused for Marketplace publication.
+- Repeated attempts to automate a fresh Extension Development Host were blocked by macOS multi-display/Space window rehydration. The user approved a source-equivalent headless Webview fallback on 2026-09-03.
 - No task-oriented guide currently connects setup, UI actions, Agent commands, Store selection, and Workset navigation.
 
 ## Chosen Approach
@@ -146,12 +147,12 @@ Do not expose `/Users/...`, usernames, private repository names, tokens, remote 
 
 ### Visual Constraints
 
-- Capture from a real Extension Development Host.
+- Render the current production Webview source through the existing Vite entry point in headless Chromium, using the same Host message contract and VS Code theme variables. This user-approved fallback replaces the real Extension Development Host requirement for these three Marketplace images only.
 - Use a 430 px sidebar width.
 - Use the settled dark theme state after transitions finish.
 - Use the English locale for Marketplace screenshots.
 - Keep text readable at the rendered README width.
-- Verify no horizontal overflow or clipped primary actions.
+- Wait at least 600 ms after applying the theme or changing scenes, then verify no horizontal overflow, transition-state colors, or clipped primary actions.
 - Use Chinese and high-contrast captures only as QA evidence unless a later release has a specific localization marketing need.
 
 The Workset detail screenshot carries the Store explanation, so a sixth Store-only screenshot is intentionally omitted.
@@ -179,7 +180,7 @@ Implementation is complete only when all of the following are true:
 5. The Marketplace README extraction contains the intended quick start, Store/Workset section, screenshots, and absolute guide link.
 6. A locally packaged VSIX contains the extracted English Marketplace README, the Chinese README, and all five images.
 7. The packaged Marketplace README renders every image and its complete-guide URLs target the canonical repository paths. Live `blob/main` reachability is checked after merge rather than treated as a pre-merge gate.
-8. The three new screenshots satisfy the capture fixture, privacy, width, theme, readability, and overflow constraints.
+8. The three new screenshots are generated from the current Webview source and satisfy the capture fixture, Host-message equivalence, privacy, width, settled-theme, readability, and overflow constraints.
 9. `git diff --check` is clean.
 
 ## Non-Goals
@@ -188,4 +189,4 @@ Implementation is complete only when all of the following are true:
 - Building a documentation website or adding a documentation framework.
 - Adding screenshots for every theme, locale, tab, command, or settings field.
 - Changing Store, Workset, workflow, adapter, or packaging behavior.
-- Automating screenshot generation in this change.
+- Committing or maintaining screenshot-generation automation; a temporary headless harness may be used to produce the approved static assets.

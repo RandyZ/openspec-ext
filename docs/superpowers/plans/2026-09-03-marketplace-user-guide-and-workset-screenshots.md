@@ -4,7 +4,7 @@
 
 **Goal:** Add three privacy-safe Store/Workset screenshots and a progressive bilingual guide that teaches new users the complete extension workflow while letting experienced OpenSpec users jump directly to plugin behavior.
 
-**Architecture:** Keep the Marketplace README as the short entry point and host the detailed English and Chinese guides in `docs/`. Reuse the existing two screenshots plus three new real Extension Development Host captures across both layers. Keep the implementation documentation-only: no extension source changes, new dependencies, screenshot automation, or packaging-rule changes.
+**Architecture:** Keep the Marketplace README as the short entry point and host the detailed English and Chinese guides in `docs/`. Reuse the existing two screenshots plus three source-equivalent headless Webview captures across both layers. Keep the implementation documentation-only: no extension source changes, new dependencies, committed screenshot automation, or packaging-rule changes.
 
 **Tech Stack:** Markdown, OpenSpec CLI 1.8.x, VS Code Extension Development Host, PNG screenshots, existing README extraction script, pnpm, vsce, zip inspection
 
@@ -35,84 +35,85 @@ Do not modify `.vscodeignore`: the detailed guides stay on GitHub, while the exi
 - Reference: `openspec/changes/archive/2026-09-02-add-worksets-list-detail-create-flow/assets/worksets-list-detail-high-fidelity.png`
 - Reference: `openspec/changes/archive/2026-09-02-add-worksets-list-detail-create-flow/assets/workset-create-high-fidelity.png`
 
-- [ ] **Step 1: Prove the public fixture identifiers are unused**
+The user approved a source-equivalent headless fallback after repeated macOS multi-display/Space failures prevented reliable Extension Development Host capture. Use the current Vite Webview entry point, production React components, the real Host message shape, and VS Code theme variables. Do not mutate the machine-local Store/Workset registry.
+
+- [ ] **Step 1: Run the screenshot acceptance check and see it fail**
 
 Run:
 
 ```bash
-rtk zsh -c 'source ~/.zshrc && \
-  ! openspec store list --json | rg -q '"'"'"id"[[:space:]]*:[[:space:]]*"team-plans"'"'"' && \
-  ! openspec workset list --json | rg -q '"'"'"name"[[:space:]]*:[[:space:]]*"checkout-suite"'"'"''
+rtk zsh -c 'test -f docs/images/openspec-worksets-list.png && \
+  test -f docs/images/openspec-workset-detail.png && \
+  test -f docs/images/openspec-workset-create.png'
 ```
 
-Expected: exit 0. If either identifier already exists, stop and choose new public names in both the fixture and documentation before mutating OpenSpec's machine-local registry.
+Expected: FAIL because the three public assets do not exist yet.
 
-- [ ] **Step 2: Create the disposable Store and two Project folders**
+- [ ] **Step 2: Prepare the temporary source-equivalent harness**
 
-Run this only after confirming the two exact temporary paths do not exist:
+Reuse the already validated temporary CDP harness under `/tmp/opsx-a1/` as a starting point. Copy it to a new exact temporary directory, then modify only the copy:
 
 ```bash
-rtk zsh -c 'source ~/.zshrc && \
-  demo_root=/tmp/openspec-ext-marketplace-demo-20260903 && \
-  profile_root=/tmp/openspec-ext-marketplace-vscode-20260903 && \
-  test ! -e "$demo_root" && test ! -e "$profile_root" && \
-  mkdir -p "$demo_root/checkout-api" "$demo_root/checkout-web" && \
-  openspec init "$demo_root/checkout-api" --tools none && \
-  openspec init "$demo_root/checkout-web" --tools none && \
-  openspec store setup team-plans \
-    --path "$demo_root/team-plans" \
-    --no-init-git \
-    --json'
+rtk zsh -c 'test -f /tmp/opsx-a1/cdp.mjs && \
+  test -f /tmp/opsx-a1/run.mjs && \
+  test ! -e /tmp/openspec-ext-marketplace-headless-20260903 && \
+  cp -R /tmp/opsx-a1 /tmp/openspec-ext-marketplace-headless-20260903'
 ```
 
-Expected: both Project folders contain `openspec/config.yaml`; the final JSON reports Store id `team-plans` rooted below `/tmp/openspec-ext-marketplace-demo-20260903`.
+The copied harness must:
 
-- [ ] **Step 3: Build and launch the real Extension Development Host**
+- load `http://localhost:5173/src/webview/index.html?lang=en`;
+- install `acquireVsCodeApi` before the application mounts;
+- use a 430 CSS px viewport at device scale factor 2;
+- inject a trusted `setContext` message whose Project is `checkout-api`;
+- inject one Workset named `checkout-suite`, with `vscode` opener and these members in order:
+  - Project `checkout-api` at `/workspace/checkout-api`;
+  - Project `checkout-web` at `/workspace/checkout-web`;
+  - Store `team-plans` at `/workspace/team-plans`, `storeId: team-plans`;
+- set the active validated binding to Store `team-plans`, so detail renders **Current root**;
+- enter the real list/detail/create scenes by clicking the production controls;
+- after entering create, post `worksetMembersPicked` for `/workspace/team-plans` and `/workspace/checkout-web`, then set the real name input to `checkout-suite` and opener input to `vscode` using native input setters plus bubbling `input` events;
+- apply the documented dark VS Code variables and wait at least 600 ms after every theme or scene change;
+- capture from x=0 through the bottom of the Workset surface plus 20 px, avoiding the unused 1200 px viewport tail;
+- write list/detail/create PNGs under the temporary harness `shots/` directory;
+- report `documentElement.scrollWidth === documentElement.clientWidth === 430` and zero non-ellipsis horizontal overflowers for every scene;
+- always terminate its headless Chrome child.
 
-Run:
+Do not add the temporary harness to Git.
+
+- [ ] **Step 3: Run the current Webview and capture the three scenes**
+
+Start the existing Vite Webview server:
 
 ```bash
-rtk pnpm run build
-rtk zsh -c 'source ~/.zshrc && code \
-  --locale=en \
-  --user-data-dir=/tmp/openspec-ext-marketplace-vscode-20260903 \
-  --extensionDevelopmentPath=/Users/randy/workspace/projects/github/openspec-ext \
-  /tmp/openspec-ext-marketplace-demo-20260903/checkout-api'
+rtk pnpm run dev:webview
 ```
 
-Expected: build exits 0; a new Extension Development Host opens the `checkout-api` Project and the OpenSpec sidebar activates.
+Keep that process running only while the harness executes. In another terminal run:
 
-- [ ] **Step 4: Capture the Create Workset state before submitting it**
+```bash
+rtk node /tmp/openspec-ext-marketplace-headless-20260903/run-marketplace.mjs
+```
 
-In the Extension Development Host:
+Expected: the report confirms the production app mounted, the Worksets list/detail/create scenes rendered, each scene settled for at least 600 ms, viewport width is 430 CSS px, and all overflow audits pass.
 
-1. Select the default dark theme and wait at least 600 ms after the theme settles.
-2. Resize the OpenSpec sidebar content to exactly 430 px wide.
-3. Open **Worksets**, then select **Create Workset**.
-4. Enter `checkout-suite` as the Workset name.
-5. Use **Add folders** to add:
-   - `/tmp/openspec-ext-marketplace-demo-20260903/team-plans`
-   - `/tmp/openspec-ext-marketplace-demo-20260903/checkout-web`
-6. Keep `checkout-api` as the Primary member.
-7. Enter `vscode` as the preferred opener id.
-8. Verify the keyboard focus order reaches Workset name, Add folders, opener, Create, and Cancel.
-9. Capture only the settled 430 px OpenSpec sidebar content and save it as `docs/images/openspec-workset-create.png`.
+- [ ] **Step 4: Export deterministic 430 px assets**
 
-Expected: the image contains `checkout-suite`, `checkout-api`, `team-plans`, `checkout-web`, `vscode`, Create, and Cancel; it contains no username, `/Users/` path, private repository name, credential, remote URL, notification, or unrelated editor content.
+The CDP captures are 860 physical pixels wide because the device scale factor is 2. Copy them to their final filenames, then use deterministic resampling only:
 
-- [ ] **Step 5: Create the Workset and capture detail and list states**
+```bash
+rtk cp /tmp/openspec-ext-marketplace-headless-20260903/shots/marketplace-list.png docs/images/openspec-worksets-list.png
+rtk cp /tmp/openspec-ext-marketplace-headless-20260903/shots/marketplace-detail.png docs/images/openspec-workset-detail.png
+rtk cp /tmp/openspec-ext-marketplace-headless-20260903/shots/marketplace-create.png docs/images/openspec-workset-create.png
 
-Continue in the same Development Host:
+rtk sips --resampleWidth 430 docs/images/openspec-worksets-list.png
+rtk sips --resampleWidth 430 docs/images/openspec-workset-detail.png
+rtk sips --resampleWidth 430 docs/images/openspec-workset-create.png
+```
 
-1. Select **Create** and wait for the fresh Workset detail state.
-2. Confirm the detail contains one Store member (`team-plans`) and two Project members (`checkout-api`, `checkout-web`).
-3. Select `team-plans` with **Use as planning root**, wait for the validated **Current root** state, then wait another 600 ms for transitions.
-4. Capture the settled 430 px content as `docs/images/openspec-workset-detail.png`.
-5. Select **Back to Worksets**, wait 600 ms, and capture the list as `docs/images/openspec-worksets-list.png`.
+Expected: only scale changes; text, layout, theme colors, and component pixels remain source-rendered.
 
-Expected: detail shows Store/Project role text, **Current root**, **Open all**, and the one-time opener control. List shows `checkout-suite`, three members, and `vscode`. Clicking a list row is used only to open detail; do not invoke **Open all** during screenshot capture.
-
-- [ ] **Step 6: Verify dimensions, readability, and privacy**
+- [ ] **Step 5: Verify dimensions, content, readability, and privacy**
 
 Run:
 
@@ -128,30 +129,28 @@ rtk sips -g pixelWidth -g pixelHeight \
   docs/images/openspec-workset-create.png
 ```
 
-Expected: all three files are PNG images and each reports `pixelWidth: 430`. Open each image at its native size and verify readable text, no horizontal clipping, no transition-state colors, and no private data.
+Expected: all three files are PNG images with `pixelWidth: 430`. Visual inspection confirms:
 
-- [ ] **Step 7: Remove only the disposable registry records and folders**
+- list contains `checkout-suite`, `3 members`, and `vscode`;
+- detail contains `checkout-suite`, `checkout-api`, `checkout-web`, `team-plans`, **Current root**, **Open all**, and the one-time opener action;
+- create contains `checkout-suite`, all three members, `vscode`, Create, and Cancel;
+- all text is readable, controls are not clipped, and settled buttons use their final theme colors;
+- no image contains a username, `/Users/`, private repository name, credential, remote URL, notification, or unrelated editor content.
 
-Close the Extension Development Host first. Then run:
+- [ ] **Step 6: Stop and remove only the temporary harness**
+
+Stop the Vite process started in Step 3. Confirm no headless Chrome process still uses the temporary profile. Then validate the exact temporary path and remove it:
 
 ```bash
-rtk zsh -c 'source ~/.zshrc && \
-  openspec workset remove checkout-suite --yes --json && \
-  openspec store unregister team-plans --json && \
-  demo_root=/tmp/openspec-ext-marketplace-demo-20260903 && \
-  profile_root=/tmp/openspec-ext-marketplace-vscode-20260903 && \
-  test "$demo_root" = /tmp/openspec-ext-marketplace-demo-20260903 && \
-  test "$profile_root" = /tmp/openspec-ext-marketplace-vscode-20260903 && \
-  test -d "$demo_root" && test ! -L "$demo_root" && \
-  test -d "$profile_root" && test ! -L "$profile_root" && \
-  rm -rf -- "$demo_root" "$profile_root" && \
-  ! openspec store list --json | rg -q '"'"'"id"[[:space:]]*:[[:space:]]*"team-plans"'"'"' && \
-  ! openspec workset list --json | rg -q '"'"'"name"[[:space:]]*:[[:space:]]*"checkout-suite"'"'"''
+rtk zsh -c 'headless_root=/tmp/openspec-ext-marketplace-headless-20260903 && \
+  test "$headless_root" = /tmp/openspec-ext-marketplace-headless-20260903 && \
+  test -d "$headless_root" && test ! -L "$headless_root" && \
+  rm -rf -- "$headless_root"'
 ```
 
-Expected: the Workset and Store fixture records are absent; only the two explicitly validated `/tmp` trees are removed. Existing Store and Workset records remain untouched.
+Expected: the temporary harness and Chrome child are absent. OpenSpec Store/Workset registry state is unchanged because this fallback never invokes mutation commands.
 
-- [ ] **Step 8: Commit the screenshots**
+- [ ] **Step 7: Commit the screenshots**
 
 ```bash
 rtk git add \
