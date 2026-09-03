@@ -1,7 +1,7 @@
 # Marketplace User Guide and Workset Screenshots Design
 
 **Date:** 2026-09-03  
-**Status:** Approved for implementation planning
+**Status:** Implemented and verified
 
 ## Goal
 
@@ -11,13 +11,13 @@ The documentation must explain how the extension UI works with OpenSpec rather t
 
 ## Current State
 
-- The English and Chinese READMEs contain feature descriptions and a short quick start.
-- The Marketplace content is extracted from `README.md` above the first standalone `---` line.
-- Two public screenshots exist: Dashboard overview and Change detail.
-- Worksets and Stores are described in text but have no public screenshots.
+- The English and Chinese READMEs contain the verified quick start, Store/Workset overview, screenshots, and complete-guide links.
+- The Marketplace content is extracted from `README.md` above the first standalone `---` line and is packaged as `extension/readme.md`.
+- Five public screenshots exist: Dashboard overview, Change detail, Worksets list, Workset detail, and Workset creation.
+- The three Store/Workset screenshots use public fixture data and expose no private paths or repository names.
 - Archived real-Host evidence contains local project names and filesystem paths, so it must not be reused for Marketplace publication.
 - Repeated attempts to automate a fresh Extension Development Host were blocked by macOS multi-display/Space window rehydration. The user approved a source-equivalent headless Webview fallback on 2026-09-03.
-- No task-oriented guide currently connects setup, UI actions, Agent commands, Store selection, and Workset navigation.
+- The bilingual task-oriented guides connect setup, UI actions, Agent commands, Store selection, and Workset navigation.
 
 ## Chosen Approach
 
@@ -92,18 +92,18 @@ The guide must distinguish terminal CLI commands from Agent slash commands.
 | UI action | Underlying action | Execution surface | Documented result |
 |---|---|---|---|
 | New Change | `openspec new change <name>` | Extension invokes CLI | Creates the Change skeleton in the selected root |
-| Continue | `/opsx:continue <change>` | Selected Agent adapter or clipboard | Creates the next required artifact |
-| Fast-forward | `/opsx:ff <change>` | Selected Agent adapter or clipboard | Creates the remaining planning artifacts |
-| Apply | `/opsx:apply <change>` | Selected Agent adapter or clipboard | Implements the planned tasks |
-| Verify | `/opsx:verify <change>` | Interactive VS Code terminal | Checks implementation against artifacts |
-| Review & Archive | `/opsx:archive <change>` | Interactive VS Code terminal | Lets the Agent review and archive interactively |
+| Copy Continue planning (default) | `/opsx:continue <change>` (Clipboard, Copilot, Claude Code) or `/opsx-continue <change>` (Cursor, OpenCode) | Clipboard by default; configured Agent adapter after launch mode setup | Copies the next-artifact command by default; a configured adapter can open, launch, or run it |
+| Copy FF (default) | `/opsx:ff <change>` (Clipboard, Copilot, Claude Code) or `/opsx-ff <change>` (Cursor, OpenCode) | Clipboard by default; configured Agent adapter after launch mode setup | Copies the remaining-artifacts command by default; a configured adapter can open, launch, or run it |
+| Copy Apply (default) | `/opsx:apply <change>` (Clipboard, Copilot, Claude Code) or `/opsx-apply <change>` (Cursor, OpenCode) | Clipboard by default; configured Agent adapter after launch mode setup | Copies the implementation command by default; a configured adapter can open, launch, or run it |
+| Run Verify | `/opsx-verify <change>` | Interactive Cursor Agent CLI (`agent`) | Checks implementation against artifacts |
+| Review & Archive | `/opsx-archive <change>` | Interactive Cursor Agent CLI (`agent`) | Lets the Agent review and archive interactively |
 | Archive Now | Direct archive CLI | Extension after confirmation | Archives only when required artifacts and tasks are complete |
 
-The guide must mention that OpenCode adapters translate colon-form slash commands to their supported hyphen form. It must not imply that every UI action executes directly or that clipboard mode automatically runs an Agent.
+The default Clipboard mode only copies commands; actions open, launch, or run only after an adapter launch mode is configured. Clipboard, Copilot, and Claude Code use the `/opsx:<action>` form for Continue, Fast-forward, and Apply, while Cursor and OpenCode use `/opsx-<action>`. Run Verify and Review & Archive always use the interactive Cursor Agent CLI (`agent`), independent of the selected adapter.
 
 ## Store and Workset Semantics
 
-The documentation must preserve these boundaries:
+The documentation requires OpenSpec CLI 1.5.0 or newer for Store and Workset controls and must preserve these boundaries:
 
 - A **Store** is a planning root for Changes and Specs.
 - Store Git clone, pull, push, credentials, and conflict handling remain the user's responsibility.
@@ -122,7 +122,7 @@ Reuse the two existing images:
 1. `docs/images/openspec-dashboard.png`
 2. `docs/images/openspec-change-detail.png`
 
-Add three screenshots:
+The implementation adds three screenshots:
 
 3. `docs/images/openspec-worksets-list.png`
    - Shows trusted Worksets containing the current Project.
@@ -159,7 +159,7 @@ The Workset detail screenshot carries the Store explanation, so a sixth Store-on
 
 ## Files and Packaging
 
-Expected implementation scope:
+Implemented scope:
 
 - Update `README.md`.
 - Update `README.zh-CN.md`.
@@ -178,7 +178,7 @@ Implementation is complete only when all of the following are true:
 3. Every documented action matches the current extension behavior and execution surface.
 4. Every image path and guide link resolves from the repository README.
 5. The Marketplace README extraction contains the intended quick start, Store/Workset section, screenshots, and absolute guide link.
-6. A locally packaged VSIX contains the extracted English Marketplace README, the Chinese README, and all five images.
+6. A locally packaged VSIX contains the extracted English Marketplace README at `extension/readme.md`, the Chinese README at `extension/README.zh-CN.md`, and all five images.
 7. The packaged Marketplace README renders every image and its complete-guide URLs target the canonical repository paths. Live `blob/main` reachability is checked after merge rather than treated as a pre-merge gate.
 8. The three new screenshots are generated from the current Webview source and satisfy the capture fixture, Host-message equivalence, privacy, width, settled-theme, readability, and overflow constraints.
 9. `git diff --check` is clean.
