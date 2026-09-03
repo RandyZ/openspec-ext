@@ -26,11 +26,11 @@
 
 1. 创建任何内容前，先检查 Root 控件。它决定从哪里读取 Change 和 Spec，以及将它们写入哪里。
 2. 选择 **New Change**，输入一个 kebab-case 名称，然后创建 Change 骨架。
-3. 使用 **Continue** 创建下一个工件，或使用 **Fast-forward** 通过所选 Agent adapter 或剪贴板模式创建其余所有规划工件。
+3. 使用 **Continue** 创建下一个工件，或使用 **Fast-forward** 通过所选 Agent 适配器或剪贴板模式创建其余所有规划工件。
 4. 打开该 Change，检查 Proposal、Specs、Design 和 Tasks。
 5. 当 Change 可以开始实现时，选择 **Apply**。
 6. 打开 **Verify & Archive**，选择 **Run Verify** 启动交互式终端。
-7. 正常情况下使用 **Review & Archive**，通过 Agent 辅助完成归档。只有当你明确希望使用受确认保护的直接 CLI 路径时，才使用 **Archive Now**。
+7. 正常情况下使用 **Review & Archive**，通过 Agent 辅助完成归档。只有当你明确希望使用需确认后执行的直接 CLI 归档方式时，才使用 **Archive Now**。
 
 ![OpenSpec Change 详情](images/openspec-change-detail.png)
 
@@ -49,7 +49,7 @@
 
 | 界面区域 | 用途 |
 |---|---|
-| OpenSpec Root 控件 | 选择拥有 Change 和 Spec 的本地 Project Root 或已注册 Store |
+| OpenSpec Root 控件 | 选择管理 Changes 和 Specs 的本地 Project Root 或已注册 Store |
 | Project 导航 | 选择侧边栏当前显示的 Project |
 | Dashboard | 按生命周期筛选 Change，并提供建议的下一步操作 |
 | Change 详情 | 查看 Proposal、Specs、Design、Tasks 和 Verify & Archive |
@@ -60,9 +60,9 @@
 | UI 操作 | 底层操作 | 执行位置 | 结果 |
 |---|---|---|---|
 | **New Change** | `openspec new change <name>` | 插件调用 CLI | 在所选 Root 中创建 Change 骨架 |
-| **Continue** | `/opsx:continue <change>`（Clipboard、Copilot、Claude Code）或 `/opsx-continue <change>`（Cursor、OpenCode） | Agent adapter 或剪贴板 | 创建下一个必需工件 |
-| **Fast-forward** | `/opsx:ff <change>`（Clipboard、Copilot、Claude Code）或 `/opsx-ff <change>`（Cursor、OpenCode） | Agent adapter 或剪贴板 | 创建其余规划工件 |
-| **Apply** | `/opsx:apply <change>`（Clipboard、Copilot、Claude Code）或 `/opsx-apply <change>`（Cursor、OpenCode） | Agent adapter 或剪贴板 | 实现规划中的任务 |
+| **Continue** | `/opsx:continue <change>`（Clipboard、Copilot、Claude Code）或 `/opsx-continue <change>`（Cursor、OpenCode） | Agent 适配器或剪贴板 | 创建下一个必需工件 |
+| **Fast-forward** | `/opsx:ff <change>`（Clipboard、Copilot、Claude Code）或 `/opsx-ff <change>`（Cursor、OpenCode） | Agent 适配器或剪贴板 | 创建其余规划工件 |
+| **Apply** | `/opsx:apply <change>`（Clipboard、Copilot、Claude Code）或 `/opsx-apply <change>`（Cursor、OpenCode） | Agent 适配器或剪贴板 | 实现规划中的任务 |
 | **Run Verify** | `/opsx-verify <change>` | 交互式 Cursor Agent CLI (`agent`) | 对照工件检查实现 |
 | **Review & Archive** | `/opsx-archive <change>` | 交互式 Cursor Agent CLI (`agent`) | 以交互方式审查并归档 |
 | **Archive Now** | 直接归档 CLI | 插件在确认后执行 | 仅当必需工件和任务完成时归档 |
@@ -76,7 +76,7 @@ Store 和 Workset 控件要求 OpenSpec CLI 向插件报告相应能力。CLI �
 
 ### 将 Store 用作规划 Root
 
-Store 是一个独立的 OpenSpec 规划仓库。它可以管理 Change 和 Spec，而实现代码仍保留在各个 Project 仓库中。
+Store 是一个独立的 OpenSpec 规划仓库。它可以管理 Changes 和 Specs，而实现代码仍保留在各个 Project 仓库中。
 
 1. 打开 Root 控件。
 2. 选择一个已注册的 Store，或先使用 **Create Store** 或 **Register Store**。
@@ -105,7 +105,7 @@ Workset 是由若干文件夹组成、仅保存在本机的命名分组。它能
 1. 在 OpenSpec 侧边栏中选择 **Browse Workset Projects**，然后选择 **Create Workset**。
 2. 输入一个唯一名称。
 3. 使用系统文件夹选择器添加文件夹。
-4. 对预期的 Primary 成员选择 **Make primary**。
+4. 在希望设为 Primary 的成员上选择 **Make primary**。
 5. 根据需要输入首选 opener id。
 6. 选择 **Create Workset**，等待新的 Workset 详情视图加载完成。
 
@@ -115,7 +115,7 @@ Workset 是由若干文件夹组成、仅保存在本机的命名分组。它能
 
 `checkout-suite` 包含：
 
-- `team-plans` — Store，也是共享 Change 和 Spec 的规划 Root。
+- `team-plans` — Store，也是共享 Changes 和 Specs 的规划 Root。
 - `checkout-api` — 包含 API 实现的 Project。
 - `checkout-web` — 包含 Web 实现的 Project。
 
@@ -123,7 +123,7 @@ Workset 是由若干文件夹组成、仅保存在本机的命名分组。它能
 
 ### 需要牢记的边界
 
-- Store 是规划 Root；Store member 不是 Project target。
+- Store 是规划 Root；Store 成员不能作为 Project 切换目标。
 - Workset 只保存在本机，不会通过仓库共享。
 - Workset 不会授予 Agent 权限，也不会自动将所有成员加入 Agent 上下文。
 - 切换 Project 只会改变侧边栏数据；**Open all** 会改变编辑器工作区。
