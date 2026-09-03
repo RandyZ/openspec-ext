@@ -29,7 +29,7 @@ The extension activates for workspace folders containing `openspec/config.yaml`.
 3. Use **Continue** to create the next artifact or **Fast-forward** to create all remaining planning artifacts through the selected Agent adapter or clipboard mode.
 4. Open the Change and review Proposal, Specs, Design, and Tasks.
 5. Select **Apply** when the Change is ready for implementation.
-6. Open **Verify & Archive** and run **Verify** in the interactive terminal.
+6. Open **Verify & Archive** and select **Run Verify** to start the interactive terminal.
 7. Use **Review & Archive** for the normal Agent-assisted archive path. Use **Archive Now** only when you intentionally want the confirmation-protected direct CLI path.
 
 ![OpenSpec Change detail](images/openspec-change-detail.png)
@@ -96,7 +96,7 @@ A Workset is a machine-local named group of folders. It helps you see and open r
 3. In detail, select a Project member to change the Project shown in the sidebar.
 4. Select a validated Store member to use it as the planning Root.
 5. Select **Open all** to open the complete Workset in its saved opener.
-6. Use the custom opener id only for a one-time override; it does not change the saved opener.
+6. Select **Open with another tool**, enter the **Custom opener id**, then select **Open with this tool**. This one-time override does not change the saved opener.
 
 ![Workset detail with Store and Project members](images/openspec-workset-detail.png)
 
@@ -107,7 +107,7 @@ A Workset is a machine-local named group of folders. It helps you see and open r
 3. Add folders with the native folder picker.
 4. Select **Make primary** for the intended Primary member.
 5. Optionally enter a preferred opener id.
-6. Select **Create** and wait for the fresh Workset detail state.
+6. Select **Create Workset** and wait for the new Workset detail view to load.
 
 ![Create Workset form](images/openspec-workset-create.png)
 
