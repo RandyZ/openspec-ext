@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.1] - 2026-09-02
+## [0.2.1] - 2026-09-04
 
 ### Added
 
@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Windows OpenSpec launcher resolution now passes arguments without shell expansion, including values containing `%VAR%` patterns.
+
+### Documentation
+
+- Add bilingual user guides with a direct plugin-interface entry point, plus public Workset list, detail, and creation screenshots in the Marketplace READMEs.
 
 ## [0.2.0] - 2026-08-26
 
