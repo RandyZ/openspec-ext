@@ -30,6 +30,8 @@ export interface HeaderProps {
   onOpenWorksets?: () => void;
   onOpenDashboard?: () => void;
   worksetCount?: number;
+  /** Host capability fact; `false` explains the disabled tab with the upgrade copy. */
+  worksetsCapabilityAvailable?: boolean;
   activeProjectTab?: 'changes' | 'specs' | 'worksets';
 }
 
@@ -51,13 +53,23 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenWorksets,
   onOpenDashboard,
   worksetCount,
+  worksetsCapabilityAvailable,
   activeProjectTab,
 }) => {
   const showSelector = scope && scopes.length > 1 && onSelectScope;
   const projectScopes = scopes.filter((s) => s.source === 'local' || s.source === 'declared');
   const storeScopes = scopes.filter((s) => s.source === 'store');
   const storeFeaturesAvailable = scope?.capabilities?.stores === true;
-  const worksetsAvailable = Boolean(onOpenWorksets && worksetCount !== undefined && worksetCount > 0);
+  // The tab's availability is decided upstream (navigation + Workset capability,
+  // never the workset count — zero worksets is the first-creation case). Here
+  // it only reflects whether an open handler was provided.
+  const worksetsAvailable = Boolean(onOpenWorksets);
+  // Disabled reason copy: a runtime without the Workset capability gets the
+  // existing upgrade explanation; a missing trusted navigation keeps the
+  // membership-unavailable explanation.
+  const worksetsDisabledCopy = worksetsCapabilityAvailable === false
+    ? t('scope.featureGated.upgradeNotice')
+    : t('projectSidebar.worksetsUnavailable');
   const worksetsAccessibleName = `${t('projectSidebar.worksets')}${worksetCount !== undefined ? ` (${worksetCount})` : ''}`;
   const dashboardAccessibleName = `${t('projectSidebar.dashboard')} · ${t('action.openInEditor')}`;
   const worksetsUnavailableId = 'project-worksets-unavailable';
@@ -212,7 +224,7 @@ export const Header: React.FC<HeaderProps> = ({
                 aria-label={worksetsAccessibleName}
                 title={worksetsAvailable
                   ? t('projectSidebar.worksets')
-                  : t('projectSidebar.worksetsUnavailable')}
+                  : worksetsDisabledCopy}
                 className="group min-w-0 overflow-hidden rounded border px-2 py-2 text-left text-xs hover:brightness-110 focus:outline-none focus-visible:ring-1 disabled:cursor-not-allowed disabled:opacity-60"
                 style={{
                   borderColor: 'var(--vscode-panel-border)',
@@ -235,7 +247,7 @@ export const Header: React.FC<HeaderProps> = ({
                     >
                       {worksetsAvailable
                         ? t('projectSidebar.cardWorksetsSupporting')
-                        : t('projectSidebar.worksetsUnavailable')}
+                        : worksetsDisabledCopy}
                     </span>
                   </span>
                 </span>

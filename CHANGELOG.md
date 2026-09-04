@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-09-02
+
+### Added
+
+- Workset list, detail, and creation flows for saved multi-folder workspaces that contain the current project.
+- Project switching from Workset members, with a validated path back to the original project.
+- Whole-Workset opening through the saved opener, plus an optional one-time opener override that does not change the saved Workset.
+- Trusted Store members in Workset detail, clearly separated from project members and available as validated planning-root targets.
+
+### Changed
+
+- Store and Workset actions now preserve the current project, planning root, watcher, and visible data until fresh CLI validation succeeds.
+- Workset creation uses the official selector-free OpenSpec CLI flow and includes the current project as a required member.
+
+### Fixed
+
+- Windows OpenSpec launcher resolution now passes arguments without shell expansion, including values containing `%VAR%` patterns.
+
 ## [0.2.0] - 2026-08-26
 
 ### Added
@@ -94,7 +112,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Workspace and bundled path resolution for extension resources.
 
-[Unreleased]: https://github.com/RandyZ/openspec-ext/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/RandyZ/openspec-ext/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/RandyZ/openspec-ext/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/RandyZ/openspec-ext/compare/v0.1.4...v0.2.0
 [0.1.4]: https://github.com/RandyZ/openspec-ext/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/RandyZ/openspec-ext/compare/v0.1.2...v0.1.3

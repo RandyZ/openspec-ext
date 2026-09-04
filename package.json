@@ -1,8 +1,8 @@
 {
   "name": "openspec-workflow",
   "displayName": "OpenSpec",
-  "description": "Project-first OpenSpec dashboard for changes, specs, worksets, and safe workflow actions",
-  "version": "0.2.0",
+  "description": "Project-first OpenSpec dashboard for changes, specs, stores, worksets, and safe workflow actions",
+  "version": "0.2.1",
   "publisher": "randysss",
   "license": "MIT",
   "engines": {
@@ -16,7 +16,9 @@
     "spec-driven",
     "workflow",
     "dashboard",
-    "task management"
+    "task management",
+    "worksets",
+    "stores"
   ],
   "repository": {
     "type": "git",

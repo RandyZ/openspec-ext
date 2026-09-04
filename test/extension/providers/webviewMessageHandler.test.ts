@@ -1804,6 +1804,28 @@ describe('handleWebviewMessage toggleTask', () => {
     expect(dataManager.refresh).not.toHaveBeenCalled();
   });
 
+  it('openWorkset forwards a one-time opener tool as an explicit, trimmed override', async () => {
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      openWorkset: vi.fn().mockResolvedValue(undefined),
+      selectScope: vi.fn(),
+      refresh: vi.fn(),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      { type: 'openWorkset', name: 'platform', tool: ' cursor ' },
+      webview as any,
+      dataManager as any,
+    );
+
+    expect(dataManager.openWorkset).toHaveBeenCalledTimes(1);
+    expect(dataManager.openWorkset).toHaveBeenCalledWith('platform', 'cursor');
+    expect(dataManager.selectScope).not.toHaveBeenCalled();
+    expect(dataManager.refresh).not.toHaveBeenCalled();
+    expect(webview.postMessage).not.toHaveBeenCalled();
+  });
+
   it('reports whole-Workset open failures as recoverable webview errors', async () => {
     const dataManager = {
       getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),

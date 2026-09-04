@@ -36,13 +36,16 @@ function collectElements(node: React.ReactNode, predicate: (element: React.React
   ];
 }
 
-function createProjectHeader(overrides: Partial<HeaderProps> = {}) {
+// Direct-call rendering returns `ReactNode | Promise<ReactNode>` under React 19
+// types; Header renders synchronously, so a precise element return type keeps
+// every collector call site free of tsc debt.
+function createProjectHeader(overrides: Partial<HeaderProps> = {}): React.ReactElement {
   return Header({
     onRefresh: vi.fn(),
     loading: false,
     project: { id: '/projects/current', label: 'Current Project', projectPath: '/projects/current' },
     ...overrides,
-  });
+  }) as React.ReactElement;
 }
 
 describe('Project-first Header', () => {
@@ -144,10 +147,11 @@ describe('Project-first Header', () => {
 
   it('gives unavailable Worksets a complete reason and prevents navigation', () => {
     const onOpenWorksets = vi.fn();
+    // No onOpenWorksets handler: upstream (navigation + capability) decided the
+    // surface is unavailable, so the tab must stay disabled and inert.
     const header = createProjectHeader({
       onOpenChanges: vi.fn(),
       onOpenSpecs: vi.fn(),
-      onOpenWorksets,
       onOpenDashboard: vi.fn(),
       worksetCount: 0,
       activeProjectTab: 'changes',
@@ -170,10 +174,9 @@ describe('Project-first Header', () => {
     expect(onOpenWorksets).not.toHaveBeenCalled();
   });
 
-  it('fails closed when Workset membership count is unavailable', () => {
-    const onOpenWorksets = vi.fn();
+  it('explains a capability-gated Worksets tab with the upgrade notice', () => {
     const header = createProjectHeader({
-      onOpenWorksets,
+      worksetsCapabilityAvailable: false,
     });
     const worksets = collectProjectActionButtons(header).find(
       (button) => button.props['data-project-action'] === 'worksets',
@@ -181,14 +184,33 @@ describe('Project-first Header', () => {
 
     expect(worksets?.props.disabled).toBe(true);
     expect(worksets?.props['aria-describedby']).toBeDefined();
-    expect(worksets?.props.title).toContain('No trusted Workset membership available');
+    expect(worksets?.props.title).toContain('Stores and worksets require OpenSpec 1.5.0 or newer.');
     const reason = collectElements(header, (element) => (
       (element.props as { id?: string }).id === worksets?.props['aria-describedby']
     ));
     expect(reason).toHaveLength(1);
-    expect(reason[0].props.children).toContain('No trusted Workset membership available');
+    expect((reason[0]?.props as { children?: string } | undefined)?.children)
+      .toContain('Stores and worksets require OpenSpec 1.5.0 or newer.');
+  });
+
+  it('keeps Worksets available for zero worksets when an open handler exists', () => {
+    // Zero worksets is the first-creation case, never an unavailable state:
+    // the count must not gate the tab, only the upstream-provided handler does.
+    const onOpenWorksets = vi.fn();
+    const header = createProjectHeader({
+      onOpenWorksets,
+      worksetCount: 0,
+      worksetsCapabilityAvailable: true,
+    });
+    const worksets = collectProjectActionButtons(header).find(
+      (button) => button.props['data-project-action'] === 'worksets',
+    );
+
+    expect(worksets?.props.disabled).toBe(false);
+    expect(worksets?.props['aria-describedby']).toBeUndefined();
+    expect(worksets?.props.title).toContain('Browse Workset Projects');
     worksets?.props.onClick?.();
-    expect(onOpenWorksets).not.toHaveBeenCalled();
+    expect(onOpenWorksets).toHaveBeenCalledTimes(1);
   });
 
   it('opens Dashboard in its Editor route without changing the selected local view', () => {
@@ -275,6 +297,10 @@ describe('Project-first Header', () => {
     expect(html).toContain('浏览本地 Changes');
     expect(html).toContain('浏览本地 Specs');
     expect(html).toContain('在编辑器中打开项目 Dashboard');
+    // The Worksets launcher keeps its browsing-for-current-Project accessible
+    // name in zh-cn too (short visible label, descriptive accessible name).
+    expect(html).toContain('浏览 Workset 项目');
     expect(html).not.toContain('aria-label="Project navigation"');
+    expect(html).not.toContain('Browse Workset Projects');
   });
 });

@@ -1,4 +1,6 @@
 import { spawn } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { logger } from '../utils/logger';
 import { t } from '../../i18n';
@@ -15,7 +17,7 @@ import {
   OpenSpecStoreListResult,
   OpenSpecWorksetListResult,
 } from './types';
-import { OpenSpecCliResolver, OpenSpecCliResolutionError } from './openspecCliResolver';
+import { OpenSpecCliResolver, OpenSpecCliResolutionError, type ResolvedOpenSpecRuntime } from './openspecCliResolver';
 import type { OpenSpecScope } from './openspecScope';
 import {
   buildCliActivationDiagnostic,
@@ -33,9 +35,54 @@ import {
 
 const MINIMUM_OPENSPEC_VERSION = '1.0.0';
 
+/**
+ * Launcher extensions CreateProcess can execute with `shell: false` on Windows.
+ * npm global directories also emit an extension-less bash shim and a `.ps1`
+ * launcher alongside `openspec.cmd`; neither can be spawned without a shell.
+ */
+const WINDOWS_SPAWNABLE_EXTENSIONS = ['.exe', '.cmd', '.bat'];
+
 export interface ScopeOption {
   /** When set, root-resolving commands append `--store <storeId>`. */
   storeId?: string;
+}
+
+/** Shell-free spawn target for the Windows non-local-source branch. */
+interface WindowsSpawnTarget {
+  command: string;
+  argsPrefix: string[];
+}
+
+/**
+ * Extract the Node.js entry script from an npm-style cmd-shim (`.cmd`/`.bat`).
+ *
+ * npm launchers end with an invocation line like
+ * `node "%~dp0\node_modules\<pkg>\bin\entry.js" %*` — older shims inline `node`
+ * or `"%~dp0\node.exe"` as the interpreter, npm >= 9 shims use a `"%_prog%"`
+ * variable that resolves to one of those. The entry is the quoted
+ * `%~dp0`-rooted token ending in .js/.mjs/.cjs on a line that forwards
+ * arguments via `%*`. Returns the entry path relative to the shim directory
+ * (to be joined with the shim's own directory), or undefined when no known
+ * invocation shape matches — callers must fail closed in that case rather
+ * than hand the launcher to cmd.exe, whose parsing would corrupt verbatim
+ * arguments (notably `%VAR%` sequences, which cannot be escaped at all).
+ *
+ * Known limitation (accepted): any line echoing a quoted `%~dp0`-rooted .js
+ * path together with `%*` matches, not only the real invocation line. Real
+ * npm cmd-shims never emit such decoy lines, and a decoy would still resolve
+ * inside the shim's own package directory.
+ */
+export function parseWindowsCmdShimEntry(content: string): string | undefined {
+  for (const line of content.split(/\r?\n/)) {
+    if (!line.includes('%*')) continue;
+    const tokenPattern = /"(?:%~dp0|%dp0%)(?:[\\/])([^"]+?)"/gi;
+    let match: RegExpExecArray | null;
+    while ((match = tokenPattern.exec(line)) !== null) {
+      const relative = match[1];
+      if (/\.(?:js|mjs|cjs)$/i.test(relative)) return relative;
+    }
+  }
+  return undefined;
 }
 
 export class OpenSpecCliService {
@@ -43,6 +90,8 @@ export class OpenSpecCliService {
   private resolver: OpenSpecCliResolver;
   private cliActivationDiagnostic: CliActivationDiagnostic | null = null;
   private shownCliDiagnosticKeys = new Set<string>();
+  /** Resolved shell-free spawn targets for Windows launcher commands. */
+  private windowsSpawnTargets = new Map<string, WindowsSpawnTarget>();
 
   constructor(workspaceRoot: string, resolver?: OpenSpecCliResolver) {
     this.workspaceRoot = workspaceRoot;
@@ -528,14 +577,14 @@ export class OpenSpecCliService {
    * Execute an OpenSpec CLI command expecting JSON output.
    * Resolves the runtime, prepends argsPrefix, runs with retry logic, and parses the result as JSON.
    */
-  async runJson(args: string[]): Promise<unknown> {
-    const output = await this.execOpenSpec(args);
+  async runJson(args: string[], options: { retries?: number } = {}): Promise<unknown> {
+    const output = await this.execOpenSpec(args, options.retries ?? 3);
     return JSON.parse(output);
   }
 
   /** Execute a command whose stdout is intentionally ordinary text. */
-  async runCommand(args: string[]): Promise<string> {
-    return await this.execOpenSpec(args);
+  async runCommand(args: string[], options: { retries?: number } = {}): Promise<string> {
+    return await this.execOpenSpec(args, options.retries ?? 3);
   }
 
   /**
@@ -609,18 +658,32 @@ export class OpenSpecCliService {
    */
   private async execOpenSpecOnce(args: string[], timeoutMs: number): Promise<string> {
     const runtime = await this.resolver.resolveRuntime();
-    const fullArgs = [...runtime.argsPrefix, ...args];
     const isLocalSource = runtime.source === 'localSource';
+    // Windows + non-local-source: never route through cmd.exe. Shell parsing would
+    // corrupt arguments that must reach the CLI verbatim — a workset member path
+    // like C:\work\%USERNAME%\repo must not be %-expanded, and `%VAR%` cannot be
+    // escaped under `cmd /c` at all. .cmd/.bat launchers are instead resolved to
+    // their underlying `node <entry.js>` invocation, and every case spawns
+    // shell-free so all argv elements (spaces, metacharacters, `%VAR%`, unicode)
+    // pass through byte-identical. Unresolvable launchers fail closed.
+    const windowsShellFree = !isLocalSource && process.platform === 'win32';
+
+    // Non-Windows and local-source modes stay byte-identical (no transformation).
+    let command = runtime.command;
+    let fullArgs = [...runtime.argsPrefix, ...args];
+
+    if (windowsShellFree) {
+      const target = await this.resolveWindowsSpawnTarget(runtime);
+      command = target.command;
+      fullArgs = [...target.argsPrefix, ...runtime.argsPrefix, ...args];
+    }
 
     return new Promise((resolve, reject) => {
-      const proc = spawn(runtime.command, fullArgs, {
+      const proc = spawn(command, fullArgs, {
         cwd: this.workspaceRoot,
         env: runtime.env,
-        // Windows: npm global installs `openspec.cmd`; `spawn` without shell often fails with
-        // ENOENT in Electron/Cursor when PATH is resolved differently than in a terminal.
-        // For local source mode (node + bin/openspec.js), never use shell.
-        shell: !isLocalSource && process.platform === 'win32',
-        windowsHide: !isLocalSource && process.platform === 'win32',
+        shell: false,
+        windowsHide: windowsShellFree,
       });
 
       let stdout = '';
@@ -650,6 +713,7 @@ export class OpenSpecCliService {
       proc.on('error', (error) => {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
           this.resolver.clearCache();
+          this.windowsSpawnTargets.clear();
         }
         reject(new Error(`Failed to spawn openspec: ${error.message}`));
       });
@@ -661,6 +725,157 @@ export class OpenSpecCliService {
 
       proc.on('close', () => {
         clearTimeout(timeout);
+      });
+    });
+  }
+
+  /**
+   * Resolve how to spawn the resolved CLI command on Windows without cmd.exe.
+   *
+   * Fail-closed preference order (no silent fallback to shell parsing):
+   * 1. `.cmd`/`.bat` launcher → read the npm-style shim and resolve it to
+   *    `<node> <shim-dir-resolved entry.js>`; unresolvable shims throw.
+   * 2. `.exe` (or extensionless fallback) → spawn directly; Windows
+   *    CreateProcess resolves PATH itself and performs no shell parsing.
+   * A bare extensionless command is first located via `where.exe`, because a
+   * shell would match it against PATHEXT (finding e.g. `openspec.cmd`) while
+   * CreateProcess only probes `<name>.exe`. Only `.exe`/`.cmd`/`.bat` hits are
+   * accepted — npm global directories also list an extension-less bash shim
+   * and a `.ps1` launcher, which CreateProcess cannot execute without a
+   * shell — and resolution fails closed when no where.exe line qualifies.
+   * PowerShell launchers cannot be spawned without a shell and are rejected
+   * explicitly.
+   *
+   * `path.*` calls are host-native — identical to `path.win32` on Windows
+   * hosts — so extension/path handling uses real Windows semantics wherever
+   * this branch can execute.
+   */
+  private async resolveWindowsSpawnTarget(runtime: ResolvedOpenSpecRuntime): Promise<WindowsSpawnTarget> {
+    const cacheKey = runtime.command;
+    const cached = this.windowsSpawnTargets.get(cacheKey);
+    if (cached) return cached;
+
+    let command = runtime.command;
+    if (path.extname(command) === '') {
+      const located = await this.whereFirstSpawnableMatch(command);
+      if (!located) {
+        throw new OpenSpecCliResolutionError(
+          `No spawnable OpenSpec CLI launcher (${WINDOWS_SPAWNABLE_EXTENSIONS.join('/')}) was found on PATH for "${runtime.command}". npm installs also emit extension-less and PowerShell launchers, which cannot be spawned without a shell. Point openspec.cliPath at the .cmd launcher or a direct executable.`,
+          [...runtime.diagnostics]
+        );
+      }
+      command = located;
+    }
+
+    const ext = path.extname(command).toLowerCase();
+    let target: WindowsSpawnTarget;
+    if (ext === '.cmd' || ext === '.bat') {
+      target = await this.resolveWindowsShimTarget(command, runtime);
+    } else if (ext === '.ps1') {
+      throw new OpenSpecCliResolutionError(
+        `OpenSpec CLI PowerShell launchers cannot be spawned without a shell: ${command}. Point openspec.cliPath at the .cmd launcher or a direct executable.`,
+        [...runtime.diagnostics]
+      );
+    } else {
+      target = { command, argsPrefix: [] };
+    }
+
+    this.windowsSpawnTargets.set(cacheKey, target);
+    return target;
+  }
+
+  /** Read an npm-style .cmd/.bat launcher and resolve its node invocation. */
+  private async resolveWindowsShimTarget(
+    shimPath: string,
+    runtime: ResolvedOpenSpecRuntime
+  ): Promise<WindowsSpawnTarget> {
+    const diagnostics = [...runtime.diagnostics];
+
+    let content: string;
+    try {
+      content = await fs.promises.readFile(shimPath, 'utf8');
+    } catch (error) {
+      throw new OpenSpecCliResolutionError(
+        `OpenSpec CLI launcher could not be read: ${shimPath} (${(error as Error).message})`,
+        diagnostics
+      );
+    }
+
+    const entryRelative = parseWindowsCmdShimEntry(content);
+    if (!entryRelative) {
+      throw new OpenSpecCliResolutionError(
+        `OpenSpec CLI launcher could not be resolved to a Node.js invocation (unsupported .cmd/.bat format): ${shimPath}`,
+        diagnostics
+      );
+    }
+
+    const shimDir = path.dirname(shimPath);
+    const nodeCommand = this.resolveWindowsNodeCommand(shimDir);
+    return {
+      command: nodeCommand,
+      argsPrefix: [path.join(shimDir, entryRelative)],
+    };
+  }
+
+  /**
+   * Locate the node executable the shim itself would have invoked: npm shims
+   * prefer a `node.exe` bundled next to them, and that direct `.exe` path is
+   * safe to spawn. Otherwise the bare command `node` is returned — CreateProcess
+   * then resolves `node.exe` via PATH with correct Unicode semantics.
+   * `where.exe` is deliberately NOT consulted here: its first hit may be a
+   * `node.cmd`/`node.bat` wrapper (unspawnable with shell:false), and its pipe
+   * output is OEM-codepage decoded, so non-ASCII install paths (e.g. zh-cn
+   * usernames) mojibake into ENOENT at spawn time.
+   */
+  private resolveWindowsNodeCommand(shimDir: string): string {
+    const bundled = path.join(shimDir, 'node.exe');
+    if (fs.existsSync(bundled)) return bundled;
+    return 'node';
+  }
+
+  /**
+   * First `where.exe <name>` hit (PATH + PATHEXT resolution) whose extension
+   * CreateProcess can execute without a shell (`.exe`/`.cmd`/`.bat`), or
+   * undefined when the lookup fails or offers no spawnable line. Skipped
+   * entries include npm's extension-less bash shim and `.ps1` launchers.
+   */
+  private whereFirstSpawnableMatch(name: string): Promise<string | undefined> {
+    return new Promise((resolve) => {
+      let stdout = '';
+      let settled = false;
+      let timeout: NodeJS.Timeout | undefined;
+      const finish = (value: string | undefined) => {
+        if (settled) return;
+        settled = true;
+        if (timeout) clearTimeout(timeout);
+        resolve(value);
+      };
+      // Match resolver/main-spawn semantics: probe PATH from the workspace
+      // root, not the extension-host process cwd.
+      const proc = spawn('where.exe', [name], {
+        shell: false,
+        windowsHide: true,
+        cwd: this.workspaceRoot,
+      });
+      timeout = setTimeout(() => {
+        proc.kill();
+        finish(undefined);
+      }, 5000);
+      proc.stdout?.on('data', (data) => {
+        stdout += data.toString();
+      });
+      proc.on('error', () => finish(undefined));
+      proc.on('close', (code) => {
+        if (code !== 0) {
+          finish(undefined);
+          return;
+        }
+        const first = stdout
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .find((line) => WINDOWS_SPAWNABLE_EXTENSIONS.includes(path.win32.extname(line).toLowerCase()));
+        finish(first);
       });
     });
   }

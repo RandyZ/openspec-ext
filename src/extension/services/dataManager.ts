@@ -335,8 +335,42 @@ export class DataManager {
     return executor;
   }
 
-  async openWorkset(name: string): Promise<void> {
-    await this.cliService.runCommand(['workset', 'open', name]);
+  async openWorkset(name: string, tool?: string): Promise<void> {
+    // One-time tool override: appended only when non-empty after trim. The saved
+    // Workset tool is never mutated by an override. Ordinary open output stays
+    // on the plain runner — it must never pass JSON parsing.
+    const trimmedTool = tool?.trim();
+    const args = trimmedTool
+      ? ['workset', 'open', name, '--tool', trimmedTool]
+      : ['workset', 'open', name];
+    await this.cliService.runCommand(args);
+  }
+
+  /**
+   * Create a Workset through the official JSON CLI command. Members are passed
+   * verbatim in input order as repeated --member flags (the first entry is the
+   * primary member); the service never reorders or dedupes them. The optional
+   * tool is a one-time value for this invocation only. Workset argv never
+   * includes --store: Workset mutation is independent from the current root.
+   *
+   * Input validation boundary: this layer performs no payload validation — an
+   * empty `members` array is passed through verbatim (zero --member flags) and
+   * non-string entries are not checked. Payload validation is the caller's
+   * responsibility (the webview host-side guard).
+   */
+  async createWorkset(name: string, members: string[], tool?: string): Promise<unknown> {
+    const args: string[] = ['workset', 'create', name];
+    for (const member of members) {
+      args.push('--member', member);
+    }
+    const trimmedTool = tool?.trim();
+    if (trimmedTool) {
+      args.push('--tool', trimmedTool);
+    }
+    args.push('--json');
+    // Mutation command: deterministic failures (e.g. duplicate Workset name)
+    // must surface immediately instead of burning the default retry backoff.
+    return await this.cliService.runJson(args, { retries: 1 });
   }
 
   /**

@@ -1788,6 +1788,165 @@ describe('DataManager workset data contract', () => {
   });
 });
 
+describe('DataManager workset create and open commands', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // Minimal fixture: openWorkset/createWorkset only touch this.cliService, so a
+  // manager with mocked runCommand/runJson runners is sufficient for argv checks.
+  function createManagerWithWorksetRunners() {
+    const manager = new DataManager('/tmp/openspec-ext-test-workspace');
+    const runCommand = vi.fn().mockResolvedValue('Opened platform\n');
+    const runJson = vi.fn().mockResolvedValue({ workset: { name: 'platform' } });
+
+    Object.assign(manager as any, {
+      cliService: {
+        getCliActivationDiagnostic: vi.fn().mockReturnValue(null),
+        runCommand,
+        runJson,
+      },
+    });
+
+    return { manager, runCommand, runJson };
+  }
+
+  it('openWorkset appends the one-time --tool override and keeps using the plain runner', async () => {
+    const { manager, runCommand, runJson } = createManagerWithWorksetRunners();
+
+    await manager.openWorkset('platform', 'cursor');
+
+    expect(runCommand).toHaveBeenCalledWith(['workset', 'open', 'platform', '--tool', 'cursor']);
+    // Ordinary open output must never pass JSON parsing.
+    expect(runJson).not.toHaveBeenCalled();
+    // And the plain argv must not be JSON-shaped.
+    expect(runCommand.mock.calls[0][0]).not.toContain('--json');
+  });
+
+  it('openWorkset treats a whitespace-only tool override as absent', async () => {
+    const { manager, runCommand } = createManagerWithWorksetRunners();
+
+    await manager.openWorkset('platform', '   ');
+
+    expect(runCommand).toHaveBeenCalledWith(['workset', 'open', 'platform']);
+  });
+
+  it('createWorkset without a tool repeats --member in input order and ends with --json', async () => {
+    const { manager, runCommand, runJson } = createManagerWithWorksetRunners();
+
+    await manager.createWorkset('platform', ['/work/primary', '/stores/team-plans']);
+
+    expect(runJson).toHaveBeenCalledWith([
+      'workset',
+      'create',
+      'platform',
+      '--member',
+      '/work/primary',
+      '--member',
+      '/stores/team-plans',
+      '--json',
+    ], { retries: 1 });
+    // Creation is the JSON runner path; the plain runner must stay untouched.
+    expect(runCommand).not.toHaveBeenCalled();
+  });
+
+  it('createWorkset with a preferred tool appends --tool before --json', async () => {
+    const { manager, runJson } = createManagerWithWorksetRunners();
+
+    await manager.createWorkset('platform', ['/work/primary'], 'cursor');
+
+    expect(runJson).toHaveBeenCalledWith([
+      'workset',
+      'create',
+      'platform',
+      '--member',
+      '/work/primary',
+      '--tool',
+      'cursor',
+      '--json',
+    ], { retries: 1 });
+  });
+
+  it('createWorkset treats a whitespace-only tool as absent', async () => {
+    const { manager, runJson } = createManagerWithWorksetRunners();
+
+    await manager.createWorkset('platform', ['/work/primary'], '   ');
+
+    expect(runJson).toHaveBeenCalledWith([
+      'workset',
+      'create',
+      'platform',
+      '--member',
+      '/work/primary',
+      '--json',
+    ], { retries: 1 });
+    expect(runJson.mock.calls[0][0]).not.toContain('--tool');
+  });
+
+  it('createWorkset never reorders or dedupes members (primary is array-order only)', async () => {
+    const { manager, runJson } = createManagerWithWorksetRunners();
+
+    await manager.createWorkset('platform', ['/work/second', '/work/primary', '/work/second']);
+
+    expect(runJson).toHaveBeenCalledWith([
+      'workset',
+      'create',
+      'platform',
+      '--member',
+      '/work/second',
+      '--member',
+      '/work/primary',
+      '--member',
+      '/work/second',
+      '--json',
+    ], { retries: 1 });
+  });
+
+  it('createWorkset forwards an empty members array verbatim (zero --member flags)', async () => {
+    const { manager, runJson } = createManagerWithWorksetRunners();
+
+    await manager.createWorkset('platform', []);
+
+    // Contract documentation, not endorsement: this layer performs no payload
+    // validation — an empty array is passed through with no --member flags and
+    // non-string entries are not checked. Host-side payload guards own that
+    // validation.
+    expect(runJson).toHaveBeenCalledWith(['workset', 'create', 'platform', '--json'], { retries: 1 });
+  });
+
+  it('createWorkset runs the mutation without retry backoff', async () => {
+    const { manager, runCommand, runJson } = createManagerWithWorksetRunners();
+
+    await manager.createWorkset('platform', ['/work/primary']);
+
+    // Deterministic failures (e.g. duplicate Workset name) must surface
+    // immediately instead of burning the default 3-attempt exponential backoff.
+    expect(runJson.mock.calls[0][1]).toEqual({ retries: 1 });
+    expect(runCommand).not.toHaveBeenCalled();
+  });
+
+  it('propagates CLI rejections from createWorkset without swallowing them', async () => {
+    const { manager, runJson } = createManagerWithWorksetRunners();
+    runJson.mockRejectedValue(new Error('workset create failed'));
+
+    await expect(manager.createWorkset('platform', ['/work/primary'])).rejects.toThrow('workset create failed');
+  });
+
+  it('never includes --store in any workset create or open argv', async () => {
+    const { manager, runCommand, runJson } = createManagerWithWorksetRunners();
+
+    await manager.openWorkset('platform');
+    await manager.openWorkset('platform', 'cursor');
+    await manager.createWorkset('platform', ['/work/primary'], 'cursor');
+
+    const allArgv = [...runCommand.mock.calls, ...runJson.mock.calls].map(([args]) => args as string[]);
+    expect(allArgv).toHaveLength(3);
+    for (const argv of allArgv) {
+      expect(argv).not.toContain('--store');
+    }
+  });
+});
+
 describe('DataManager declared project-root scopes', () => {
   beforeEach(() => {
     vi.clearAllMocks();

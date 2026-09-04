@@ -99,6 +99,16 @@ export interface ProjectWorksetNavigationData {
   readonly worksets: readonly WorksetNavigationEntry[];
 }
 
+/**
+ * Fresh-validated Workset Planning Store identity. `storeId` is the id from a
+ * freshly read official Store inventory; `canonicalRoot` is the canonicalized
+ * registered root of that Store member. Webview-submitted ids are never trusted.
+ */
+export interface WorksetStoreResolution {
+  readonly storeId: string;
+  readonly canonicalRoot: string;
+}
+
 export interface ProjectContext {
   readonly id: string;
   readonly label: string;
@@ -171,11 +181,25 @@ export interface ProjectReferencedStoreSpecsData {
 export interface ProjectSidebarWorkspaceData {
   readonly project: ProjectContext;
   readonly binding: OpenSpecRootBinding;
+  /**
+   * True only when an explicit Planning Store selector drove this binding.
+   * A selector-free default binding may still carry `binding.storeId` when the
+   * CLI's `root.store_id` is set (the project default root IS a Store root);
+   * the webview must gate selector-dependent recovery on this flag, never on
+   * `binding.storeId`.
+   */
+  readonly explicitStoreSelector?: boolean;
   readonly changes: readonly ChangeInfo[];
   readonly archivedChanges?: readonly ArchivedChangeInfo[];
   readonly projectSpecs?: readonly SpecInfo[];
   readonly referencedStoreSpecs?: readonly ReferencedStoreSpecGroup[];
   readonly worksetNavigation?: ProjectWorksetNavigationData;
+  /**
+   * Host-resolved Workset capability fact (from DataManager.getCapabilities()).
+   * `true`/`false` gate Workset creation affordances; `undefined` only appears
+   * in legacy cached payloads and is treated as available by the webview.
+   */
+  readonly worksetCapabilityAvailable?: boolean;
 }
 
 export interface ArtifactStatus {

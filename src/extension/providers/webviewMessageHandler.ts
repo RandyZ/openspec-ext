@@ -1364,7 +1364,16 @@ export async function handleWebviewMessage(
 
     case 'openWorkset': {
       try {
-        await dataManager.openWorkset(message.name);
+        // One-time opener override: forwarded as an explicit trimmed tool id;
+        // absent/blank values fall back to the saved/default Workset tool.
+        const tool = typeof message.tool === 'string' && message.tool.trim()
+          ? message.tool.trim()
+          : undefined;
+        if (tool) {
+          await dataManager.openWorkset(message.name, tool);
+        } else {
+          await dataManager.openWorkset(message.name);
+        }
       } catch (error) {
         logger.error('openWorkset message failed', error as Error);
         postError(error, t('worksetsPage.openFailed', { name: message.name }));

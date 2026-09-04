@@ -23,6 +23,7 @@ import {
   type WorksetGitMetadata,
   type WorksetNavigationEntry,
   type WorksetNavigationMember,
+  type WorksetStoreResolution,
 } from './types';
 
 type ProjectCli = Pick<OpenSpecCliService, 'getContext'> &
@@ -34,17 +35,22 @@ type BoundReaders = {
   readonly cli: ProjectCli;
   readonly contentAccess: BoundContentAccess;
   readonly scope?: ScopeOption;
+  /** True only when an explicit Store selector was actually passed for this binding. */
+  readonly explicitStoreSelector: boolean;
 };
 
 type BoundContentAccess = Pick<FileManagerService, 'listArchivedChanges'>
   & Partial<Pick<FileManagerService, 'readArtifact'>>;
 
-function safeReferencedStoreSpecsError(storeId: string): string {
-  const safeStoreId = storeId
+function safeToken(value: string): string {
+  return value
     .replace(/[\r\n\t]/g, ' ')
     .replace(/[^a-zA-Z0-9._:@-]/g, '_')
     .slice(0, 80);
-  return `Unable to load Specs for referenced Store "${safeStoreId}".`;
+}
+
+function safeReferencedStoreSpecsError(storeId: string): string {
+  return `Unable to load Specs for referenced Store "${safeToken(storeId)}".`;
 }
 
 export interface ProjectDataGatewayOptions {
@@ -106,18 +112,23 @@ export class ProjectDataGateway {
   private readonly readGitMetadata: (projectPath: string) => Promise<WorksetGitMetadata>;
 
   async loadWorksetNavigation(project: ProjectContext): Promise<ProjectWorksetNavigationData> {
-    const empty: ProjectWorksetNavigationData = { project, worksets: [] };
-    return this.loadWorksetNavigationFromCli(project, this.createCli(project.projectPath), empty);
+    return this.loadWorksetNavigationFromCli(project, this.createCli(project.projectPath));
   }
 
   private async loadWorksetNavigationFromCli(
     project: ProjectContext,
     cli: ProjectCli,
-    empty: ProjectWorksetNavigationData = { project, worksets: [] },
   ): Promise<ProjectWorksetNavigationData> {
     const currentPath = await this.canonicalizeMemberPath(project.projectPath);
-    if (!currentPath) return empty;
-
+    if (!currentPath) return { project, worksets: [] };
+    // The navigation's Project identity must be canonical: the webview locks
+    // the current Project member in the creation form by this path, and the
+    // folder picker returns canonical paths — a non-canonical alias here would
+    // show two rows for one folder and break current-member detection.
+    const canonicalProject: ProjectContext = project.projectPath === currentPath && project.id === currentPath
+      ? project
+      : { ...project, id: currentPath, projectPath: currentPath };
+    const empty: ProjectWorksetNavigationData = { project: canonicalProject, worksets: [] };
     if (!cli.listWorksets) return empty;
 
     let worksetPayload: unknown;
@@ -159,7 +170,7 @@ export class ProjectDataGateway {
       });
     }
 
-    return { project, worksets };
+    return { project: canonicalProject, worksets };
   }
 
   /**
@@ -178,6 +189,88 @@ export class ProjectDataGateway {
     const workset = navigation.worksets.find((candidate) => candidate.name === worksetName);
     const member = workset?.members.find((candidate) => candidate.path === canonicalMemberPath);
     return member?.role === 'project' && member.selectable ? member.project : undefined;
+  }
+
+  /**
+   * Re-read official Workset and Store inventories before accepting a Planning
+   * root selection. The Webview-submitted Workset name and member path are
+   * hints only: the member must still be a registered Store member of the named
+   * Workset in fresh inventories, canonicalized before comparison. Store ids
+   * supplied by the Webview are never trusted and no path is guessed; every
+   * rejection fails closed with a resolve-phase ProjectDataAccessError.
+   */
+  async resolveWorksetStore(
+    project: ProjectContext,
+    worksetName: string,
+    memberPath: string
+  ): Promise<WorksetStoreResolution> {
+    if (typeof worksetName !== 'string' || !worksetName.trim()) {
+      throw this.resolveError(project, 'Workset name is required to select a Planning Store member');
+    }
+    if (typeof memberPath !== 'string') {
+      throw this.resolveError(project, 'Workset Store member path must be a string');
+    }
+    const canonicalMemberPath = await this.canonicalizeMemberPath(memberPath);
+    if (!canonicalMemberPath) {
+      throw this.resolveError(project, 'Workset Store member path cannot be canonicalized');
+    }
+
+    const cli = this.createCli(project.projectPath);
+    const storeRoots = await this.loadCanonicalStoreRoots(cli);
+    if (!storeRoots) {
+      throw this.resolveError(project, 'Planning Store inventory is unavailable');
+    }
+    const storeId = storeRoots.get(canonicalMemberPath);
+    if (!storeId) {
+      throw this.resolveError(
+        project,
+        `Workset member is not a registered Planning Store: ${safeToken(memberPath)}`
+      );
+    }
+
+    if (!cli.listWorksets) {
+      throw this.resolveError(project, 'Workset inventory is unavailable');
+    }
+    let worksetPayload: unknown;
+    try {
+      worksetPayload = await cli.listWorksets();
+    } catch (cause) {
+      throw new ProjectDataAccessError(
+        'Workset inventory is unavailable',
+        project.id,
+        'resolve',
+        undefined,
+        cause
+      );
+    }
+    const rawWorksets = this.asArray(worksetPayload, 'worksets');
+    let memberConfirmed = false;
+    for (const rawWorkset of rawWorksets) {
+      if (!rawWorkset || typeof rawWorkset !== 'object') continue;
+      const worksetRecord = rawWorkset as Record<string, unknown>;
+      if (worksetRecord.name !== worksetName) continue;
+      const rawMembers = Array.isArray(worksetRecord.members) ? worksetRecord.members : [];
+      for (const rawMember of rawMembers) {
+        if (!rawMember || typeof rawMember !== 'object') continue;
+        const memberRecord = rawMember as Record<string, unknown>;
+        const rawMemberPath = typeof memberRecord.path === 'string' ? memberRecord.path.trim() : '';
+        if (!rawMemberPath) continue;
+        const canonicalPath = await this.canonicalizeMemberPath(rawMemberPath);
+        if (canonicalPath === canonicalMemberPath) {
+          memberConfirmed = true;
+          break;
+        }
+      }
+      break;
+    }
+    if (!memberConfirmed) {
+      throw this.resolveError(
+        project,
+        `Workset ${safeToken(worksetName)} does not include the submitted Planning Store member`
+      );
+    }
+
+    return { storeId, canonicalRoot: canonicalMemberPath };
   }
 
   private async loadCanonicalStoreRoots(cli: ProjectCli): Promise<Map<string, string> | undefined> {
@@ -370,10 +463,13 @@ export class ProjectDataGateway {
     }
   }
 
-  async loadProjectSidebarData(project: ProjectContext): Promise<ProjectSidebarWorkspaceData> {
+  async loadProjectSidebarData(
+    project: ProjectContext,
+    explicitStoreId?: string
+  ): Promise<ProjectSidebarWorkspaceData> {
     let binding: OpenSpecRootBinding | undefined;
     try {
-      const readers = await this.bind(project);
+      const readers = await this.bind(project, explicitStoreId);
       binding = readers.binding;
       if (!readers.cli.listChanges || !readers.cli.listSpecs) {
         throw new Error('Bound CLI does not support Project Sidebar data');
@@ -390,6 +486,7 @@ export class ProjectDataGateway {
       return {
         project,
         binding,
+        explicitStoreSelector: readers.explicitStoreSelector,
         changes: await this.enrichChangesWithProposalWhy(
           this.bindWorkflowSnapshots(rawChanges, binding),
           readers.contentAccess
@@ -477,11 +574,19 @@ export class ProjectDataGateway {
   private async resolveBindingContext(
     project: ProjectContext,
     explicitStoreId?: string
-  ): Promise<{ binding: OpenSpecRootBinding; context: OpenSpecContextResult }> {
+  ): Promise<{
+    binding: OpenSpecRootBinding;
+    context: OpenSpecContextResult;
+    explicitStoreSelector: boolean;
+  }> {
     if (explicitStoreId !== undefined && typeof explicitStoreId !== 'string') {
       throw this.resolveError(project, 'Explicit Store selector must be a string');
     }
     const storeId = explicitStoreId?.trim() ? explicitStoreId : undefined;
+    // Authoritative "explicit selector active" fact: a binding may carry a
+    // storeId inherited from the CLI's root.store_id (the project default root
+    // IS a Store root) without any explicit selector having been passed.
+    const explicitStoreSelector = storeId !== undefined;
     const scope: ScopeOption | undefined = storeId ? { storeId } : undefined;
     let context: OpenSpecContextResult;
 
@@ -561,7 +666,7 @@ export class ProjectDataGateway {
       throw this.resolveError(project, 'OpenSpec content path escapes the resolved root', binding);
     }
 
-    return { binding, context };
+    return { binding, context, explicitStoreSelector };
   }
 
   private async bind(project: ProjectContext, explicitStoreId?: string): Promise<BoundReaders> {
@@ -570,7 +675,14 @@ export class ProjectDataGateway {
     const scope = binding.storeId ? { storeId: binding.storeId } : undefined;
     const cli = this.createCli(binding.commandCwd);
     const contentAccess = this.createContentAccess(path.join(binding.rootPath, 'openspec'));
-    return { binding, context: resolved.context, cli, contentAccess, scope };
+    return {
+      binding,
+      context: resolved.context,
+      cli,
+      contentAccess,
+      scope,
+      explicitStoreSelector: resolved.explicitStoreSelector,
+    };
   }
 
   private async enrichChangesWithProposalWhy(

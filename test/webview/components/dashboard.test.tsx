@@ -6,9 +6,16 @@ import { AppProvider, appReducer, type AppState } from '../../../src/webview/con
 import {
   Dashboard,
   createScopeSelectHandler,
+  createWorksetPickerHandlers,
+  getWorksetPickerActiveStoreId,
+  getWorksetPickerExplicitStoreSelector,
+  getWorksetCreateAvailable,
+  getWorksetsTabAvailable,
   returnToCurrentProject,
   selectProjectFirstTab,
   sendProjectSidebarSpecDetail,
+  toWorksetCreateResultState,
+  toWorksetPickedMembersState,
   getDashboardActionScopeId,
   getDashboardPriorityChanges,
   requestInitialDashboardData,
@@ -667,6 +674,37 @@ describe('project page contract', () => {
     expect(html).toContain('data-project-action="dashboard"');
   });
 
+  it('enables the Worksets tab for zero worksets when the Workset capability is available', () => {
+    const html = renderProjectSidebar({
+      ...projectSidebarData,
+      worksetNavigation: { project: projectContext, worksets: [] },
+      worksetCapabilityAvailable: true,
+    });
+
+    expect(html).toContain('data-project-action="worksets"');
+    // The disabled attribute must be absent (Tailwind disabled: classes always exist).
+    expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*data-project-action="worksets"/);
+    expect(html).toContain('Browse Workset Projects');
+    expect(html).not.toContain('No trusted Workset membership available');
+  });
+
+  it('keeps the Worksets tab disabled with the upgrade explanation when the capability is unavailable', () => {
+    const html = renderProjectSidebar({
+      ...projectSidebarData,
+      worksetNavigation: projectWorksetNavigation,
+      worksetCapabilityAvailable: false,
+    });
+
+    expect(html).toContain('data-project-action="worksets"');
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*data-project-action="worksets"/);
+    expect(html).toContain('Stores and worksets require OpenSpec 1.5.0 or newer.');
+    // Changes/Specs stay fully usable next to the disabled Worksets tab.
+    expect(html).toContain('data-project-action="changes"');
+    expect(html).toContain('data-project-action="specs"');
+    expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*data-project-action="changes"/);
+    expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*data-project-action="specs"/);
+  });
+
   it('changes only local Project-first tab state without posting an Explorer request', () => {
     const setTab = vi.fn();
     const postMessage = vi.fn();
@@ -719,6 +757,146 @@ describe('project page contract', () => {
 
     expect(events).toEqual(['changes', 'host']);
     expect(postMessage).toHaveBeenCalledWith(sendMessage.selectCurrentProject());
+  });
+
+  it('builds single-purpose Workset picker handlers that post exactly one message each', () => {
+    const postMessage = vi.fn();
+    const handlers = createWorksetPickerHandlers(postMessage);
+
+    handlers.onSelectProject('planning', '/projects/other');
+    expect(postMessage).toHaveBeenCalledTimes(1);
+    expect(postMessage).toHaveBeenCalledWith({
+      type: 'selectWorksetProject',
+      worksetName: 'planning',
+      memberPath: '/projects/other',
+    });
+
+    postMessage.mockClear();
+    handlers.onSelectWorksetStore('planning', '/stores/team-plans');
+    expect(postMessage).toHaveBeenCalledTimes(1);
+    expect(postMessage).toHaveBeenCalledWith({
+      type: 'selectWorksetStore',
+      worksetName: 'planning',
+      memberPath: '/stores/team-plans',
+    });
+
+    postMessage.mockClear();
+    handlers.onSelectProjectDefaultRoot();
+    expect(postMessage).toHaveBeenCalledTimes(1);
+    expect(postMessage).toHaveBeenCalledWith({ type: 'selectProjectDefaultRoot' });
+
+    postMessage.mockClear();
+    handlers.onOpenWorkset('planning');
+    expect(postMessage).toHaveBeenCalledTimes(1);
+    expect(postMessage).toHaveBeenCalledWith({ type: 'openWorkset', name: 'planning' });
+
+    postMessage.mockClear();
+    handlers.onOpenWorkset('planning', 'cursor');
+    expect(postMessage).toHaveBeenCalledTimes(1);
+    expect(postMessage).toHaveBeenCalledWith({ type: 'openWorkset', name: 'planning', tool: 'cursor' });
+  });
+
+  it('derives the active Planning Store id only from the trusted binding', () => {
+    expect(getWorksetPickerActiveStoreId(undefined)).toBeUndefined();
+    expect(getWorksetPickerActiveStoreId(projectSidebarData)).toBeUndefined();
+    expect(getWorksetPickerActiveStoreId({
+      ...projectSidebarData,
+      binding: {
+        ...projectBinding,
+        rootPath: '/stores/team-plans',
+        rootSource: 'store',
+        storeId: 'team-plans',
+      },
+    })).toBe('team-plans');
+  });
+
+  it('derives the explicit-selector fact only from the Host-returned sidebar flag', () => {
+    // The webview never infers the selector from binding.storeId: a
+    // selector-free default binding may legitimately carry a CLI-declared
+    // store id, and only the Host flag marks an explicit selector as active.
+    expect(getWorksetPickerExplicitStoreSelector(undefined)).toBe(false);
+    expect(getWorksetPickerExplicitStoreSelector(null)).toBe(false);
+    expect(getWorksetPickerExplicitStoreSelector(projectSidebarData)).toBe(false);
+    expect(getWorksetPickerExplicitStoreSelector({
+      ...projectSidebarData,
+      binding: { ...projectBinding, storeId: 'cli-declared-store' },
+    })).toBe(false);
+    expect(getWorksetPickerExplicitStoreSelector({
+      ...projectSidebarData,
+      explicitStoreSelector: true,
+    })).toBe(true);
+  });
+
+  it('derives the Worksets tab availability from navigation and capability, never from the count', () => {
+    expect(getWorksetsTabAvailable(undefined)).toBe(false);
+    expect(getWorksetsTabAvailable(null)).toBe(false);
+    // No trusted navigation: unavailable regardless of the flag.
+    expect(getWorksetsTabAvailable({ ...projectSidebarData, worksetCapabilityAvailable: true })).toBe(false);
+    // Capability available: zero worksets still enables the first-creation tab.
+    expect(getWorksetsTabAvailable({
+      ...projectSidebarData,
+      worksetNavigation: { project: projectContext, worksets: [] },
+      worksetCapabilityAvailable: true,
+    })).toBe(true);
+    expect(getWorksetsTabAvailable({
+      ...projectSidebarData,
+      worksetNavigation: projectWorksetNavigation,
+      worksetCapabilityAvailable: true,
+    })).toBe(true);
+    // Legacy payloads without the flag keep the tab available.
+    expect(getWorksetsTabAvailable({
+      ...projectSidebarData,
+      worksetNavigation: projectWorksetNavigation,
+    })).toBe(true);
+    // Capability explicitly unavailable: disabled even with navigation.
+    expect(getWorksetsTabAvailable({
+      ...projectSidebarData,
+      worksetNavigation: projectWorksetNavigation,
+      worksetCapabilityAvailable: false,
+    })).toBe(false);
+  });
+
+  it('derives the picker create availability only from the Host capability flag', () => {
+    expect(getWorksetCreateAvailable(undefined)).toBe(false);
+    expect(getWorksetCreateAvailable(projectSidebarData)).toBe(true);
+    expect(getWorksetCreateAvailable({
+      ...projectSidebarData,
+      worksetCapabilityAvailable: true,
+    })).toBe(true);
+    expect(getWorksetCreateAvailable({
+      ...projectSidebarData,
+      worksetCapabilityAvailable: false,
+    })).toBe(false);
+  });
+
+  it('normalizes untrusted worksetMembersPicked payloads into picker-response state', () => {
+    expect(toWorksetPickedMembersState({ paths: ['/repos/docs'], droppedPaths: ['/repos/gone'] })).toEqual({
+      paths: ['/repos/docs'],
+      droppedPaths: ['/repos/gone'],
+    });
+    // Non-array paths degrade to an empty add; empty dropped lists are omitted.
+    expect(toWorksetPickedMembersState({ paths: 'nope' })).toEqual({ paths: [] });
+    expect(toWorksetPickedMembersState({ paths: [], droppedPaths: [] })).toEqual({ paths: [] });
+    // Malformed dropped values never reach the picker state.
+    expect(toWorksetPickedMembersState({ paths: ['/repos/docs'], droppedPaths: [42, ''] })).toEqual({
+      paths: ['/repos/docs'],
+    });
+  });
+
+  it('normalizes untrusted worksetCreateResult payloads into picker-response state', () => {
+    expect(toWorksetCreateResultState({ success: true, name: 'feature' })).toEqual({
+      success: true,
+      name: 'feature',
+    });
+    expect(toWorksetCreateResultState({ success: 'yes', name: 7, message: 42 })).toEqual({
+      success: false,
+      name: '',
+    });
+    expect(toWorksetCreateResultState({ success: false, name: 'feature', message: 'duplicate' })).toEqual({
+      success: false,
+      name: 'feature',
+      message: 'duplicate',
+    });
   });
 
   it('does not forward a legacy selected Store scope from Project-first actions', () => {

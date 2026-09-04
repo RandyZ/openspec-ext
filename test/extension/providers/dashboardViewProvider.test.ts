@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as vscode from 'vscode';
+import * as fsPromises from 'fs/promises';
 import { DashboardViewProvider } from '@extension/providers/dashboardViewProvider';
 import { ChangeDetailPanelManager } from '@extension/providers/changeDetailPanelManager';
+import { logger } from '@extension/utils/logger';
 import type {
   ExtensionMessage,
   ProjectChangesExplorerData,
@@ -11,6 +13,15 @@ import type {
 import type { OpenSpecRootBinding, ProjectContext } from '@extension/services/types';
 
 const adapterFillChat = vi.hoisted(() => vi.fn());
+
+// realpath is the Host's canonicalization step for Workset member paths. The
+// fake fixture paths do not exist on disk, so the identity implementation is
+// mocked in; per-test `mockImplementationOnce` chains simulate symlink
+// resolution and unresolvable folders.
+vi.mock('fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs/promises')>();
+  return { ...actual, realpath: vi.fn(async (value: unknown) => value) };
+});
 
 vi.mock('@extension/adapters', () => ({
   getCurrentAdapter: vi.fn(async () => ({
@@ -58,6 +69,7 @@ vi.mock('vscode', () => {
       createWebviewPanel: vi.fn(),
       showInputBox: vi.fn(async () => 'project-change'),
       showInformationMessage: vi.fn(),
+      showOpenDialog: vi.fn(),
     },
     ViewColumn: {
       One: 1,
@@ -677,6 +689,15 @@ describe('DashboardViewProvider', () => {
     return {
       onRefresh: vi.fn(() => ({ dispose: vi.fn() })),
       getCliDiagnostic: vi.fn().mockReturnValue(null),
+      // Runtime default: the resolved CLI supports Worksets. Tests exercising
+      // the unavailable-capability paths override this with worksets: false.
+      getCapabilities: vi.fn().mockReturnValue({
+        stores: true,
+        context: true,
+        doctor: true,
+        worksets: true,
+        diagnostics: [],
+      }),
       ...overrides,
     };
   }
@@ -704,6 +725,33 @@ describe('DashboardViewProvider', () => {
       lastModified: '2026-08-19T00:00:00.000Z',
       status: 'draft' as const,
       lifecycleStatus,
+    };
+  }
+
+  function makeNavigationPayload(
+    fixture: ReturnType<typeof makeProjectFixture>,
+    worksetNames: string[],
+  ) {
+    return {
+      project: fixture.project,
+      binding: fixture.binding,
+      changes: [makeProjectChange('project-change')],
+      archivedChanges: [],
+      projectSpecs: [],
+      referencedStoreSpecs: [],
+      worksetNavigation: {
+        project: fixture.project,
+        worksets: worksetNames.map((name) => ({
+          name,
+          members: [{
+            name: fixture.project.label,
+            path: fixture.project.projectPath,
+            role: 'project' as const,
+            selectable: true,
+            project: fixture.project,
+          }],
+        })),
+      },
     };
   }
 
@@ -1056,6 +1104,2272 @@ describe('DashboardViewProvider', () => {
       type: 'setContext',
       view: 'sidebar',
       data: expect.objectContaining({ project: current.project, binding: current.binding }),
+    }));
+  });
+
+  it('activates an explicitly selected Workset Store only after full validation', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const storeBinding: OpenSpecRootBinding = {
+      projectId: fixture.project.id,
+      commandCwd: fixture.project.projectPath,
+      rootPath: '/stores/team-store',
+      rootSource: 'store',
+      storeId: 'team-store',
+    };
+    const payloadFor = (binding: OpenSpecRootBinding) => ({
+      project: fixture.project,
+      binding,
+      changes: [makeProjectChange(binding.storeId ? 'store-change' : 'project-change')],
+      archivedChanges: [],
+      projectSpecs: [],
+      referencedStoreSpecs: [],
+    });
+    const gateway = {
+      loadProjectSidebarData: vi.fn(async (_project: ProjectContext, storeId?: string) => (
+        storeId ? payloadFor(storeBinding) : payloadFor(fixture.binding)
+      )),
+      resolveWorksetStore: vi.fn().mockResolvedValue({
+        storeId: 'team-store',
+        canonicalRoot: '/stores/team-store',
+      }),
+    };
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(makeDataManager(), gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    expect(gateway.loadProjectSidebarData).toHaveBeenLastCalledWith(fixture.project, undefined);
+    postMessage.mockClear();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+
+    await handler?.({ type: 'selectWorksetStore', worksetName: 'team', memberPath: '/stores/team-store' });
+    await vi.runAllTimersAsync();
+
+    expect(gateway.resolveWorksetStore).toHaveBeenCalledWith(fixture.project, 'team', '/stores/team-store');
+    expect(gateway.loadProjectSidebarData).toHaveBeenLastCalledWith(fixture.project, 'team-store');
+    const storeMessage = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'setContext' && message.view === 'sidebar')
+      .at(-1);
+    expect(storeMessage).toEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        binding: storeBinding,
+        changes: [makeProjectChange('store-change')],
+        cache: { source: 'fresh', stale: false },
+      }),
+    }));
+
+    // The accepted selector keeps driving later reloads of the same Project.
+    postMessage.mockClear();
+    await handler?.({ type: 'getProjectSidebarData' });
+    await vi.runAllTimersAsync();
+    expect(gateway.loadProjectSidebarData).toHaveBeenLastCalledWith(fixture.project, 'team-store');
+  });
+
+  it('rejects a forged or stale Workset Store request without publishing or activating a selector', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const gateway = {
+      loadProjectSidebarData: vi.fn().mockResolvedValue({
+        project: fixture.project,
+        binding: fixture.binding,
+        changes: [makeProjectChange('project-change')],
+        archivedChanges: [],
+        projectSpecs: [],
+        referencedStoreSpecs: [],
+      }),
+      resolveWorksetStore: vi.fn().mockRejectedValue({
+        name: 'ProjectDataAccessError',
+        phase: 'resolve',
+        message: 'Workset member is not a registered Planning Store',
+      }),
+    };
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(makeDataManager(), gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const initialLoadCalls = gateway.loadProjectSidebarData.mock.calls.length;
+    postMessage.mockClear();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+
+    await handler?.({ type: 'selectWorksetStore', worksetName: 'team', memberPath: '/forged/store' });
+    await vi.runAllTimersAsync();
+
+    expect(gateway.resolveWorksetStore).toHaveBeenCalledTimes(1);
+    expect(gateway.loadProjectSidebarData).toHaveBeenCalledTimes(initialLoadCalls);
+    expect(postMessage.mock.calls.some(([message]) => message.type === 'setContext')).toBe(false);
+
+    // No selector was activated: the next plain reload stays selector-free.
+    await handler?.({ type: 'getProjectSidebarData' });
+    await vi.runAllTimersAsync();
+    expect(gateway.loadProjectSidebarData).toHaveBeenLastCalledWith(fixture.project, undefined);
+  });
+
+  it('discards a Store selection whose resolved binding misses the validated Store context', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const mismatchedBinding: OpenSpecRootBinding = {
+      projectId: fixture.project.id,
+      commandCwd: fixture.project.projectPath,
+      rootPath: '/stores/other-root',
+      rootSource: 'store',
+      storeId: 'team-store',
+    };
+    const gateway = {
+      loadProjectSidebarData: vi.fn(async (_project: ProjectContext, storeId?: string) => ({
+        project: fixture.project,
+        binding: storeId ? mismatchedBinding : fixture.binding,
+        changes: [],
+        archivedChanges: [],
+        projectSpecs: [],
+        referencedStoreSpecs: [],
+      })),
+      resolveWorksetStore: vi.fn().mockResolvedValue({
+        storeId: 'team-store',
+        canonicalRoot: '/stores/team-store',
+      }),
+    };
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(makeDataManager(), gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    postMessage.mockClear();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+
+    await handler?.({ type: 'selectWorksetStore', worksetName: 'team', memberPath: '/stores/team-store' });
+    await vi.runAllTimersAsync();
+
+    expect(gateway.loadProjectSidebarData).toHaveBeenLastCalledWith(fixture.project, 'team-store');
+    expect(postMessage.mock.calls.some(([message]) => (
+      message.type === 'setContext' && message.data?.binding?.rootPath === '/stores/other-root'
+    ))).toBe(false);
+
+    // The selector never became active because the canonical root mismatched.
+    await handler?.({ type: 'getProjectSidebarData' });
+    await vi.runAllTimersAsync();
+    expect(gateway.loadProjectSidebarData).toHaveBeenLastCalledWith(fixture.project, undefined);
+  });
+
+  it('keeps the previous Project snapshot when a Store selection load fails', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const initialPayload = {
+      project: fixture.project,
+      binding: fixture.binding,
+      changes: [makeProjectChange('project-change')],
+      archivedChanges: [],
+      projectSpecs: [],
+      referencedStoreSpecs: [],
+    };
+    const gateway = {
+      loadProjectSidebarData: vi.fn(async (_project: ProjectContext, storeId?: string) => {
+        if (storeId) throw new Error('store context unavailable');
+        return initialPayload;
+      }),
+      resolveWorksetStore: vi.fn().mockResolvedValue({
+        storeId: 'team-store',
+        canonicalRoot: '/stores/team-store',
+      }),
+    };
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(makeDataManager(), gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const acceptedMessages = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'setContext');
+    expect(acceptedMessages.length).toBeGreaterThan(0);
+    postMessage.mockClear();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+
+    await handler?.({ type: 'selectWorksetStore', worksetName: 'team', memberPath: '/stores/team-store' });
+    await vi.runAllTimersAsync();
+
+    expect(gateway.loadProjectSidebarData).toHaveBeenLastCalledWith(fixture.project, 'team-store');
+    expect(postMessage.mock.calls.some(([message]) => message.type === 'setContext')).toBe(false);
+    expect((provider as any).cachedProjectSidebarData.changes).toEqual(initialPayload.changes);
+    expect((provider as any).currentProjectBinding).toEqual(fixture.binding);
+
+    await handler?.({ type: 'getProjectSidebarData' });
+    await vi.runAllTimersAsync();
+    expect(gateway.loadProjectSidebarData).toHaveBeenLastCalledWith(fixture.project, undefined);
+  });
+
+  it('posts exactly one recoverable error when a Workset Store selection is rejected', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const initialPayload = {
+      project: fixture.project,
+      binding: fixture.binding,
+      changes: [makeProjectChange('project-change')],
+      archivedChanges: [],
+      projectSpecs: [],
+      referencedStoreSpecs: [],
+    };
+    const gateway = {
+      loadProjectSidebarData: vi.fn().mockResolvedValue(initialPayload),
+      resolveWorksetStore: vi.fn().mockRejectedValue({
+        name: 'ProjectDataAccessError',
+        phase: 'resolve',
+        message: 'Workset member is not a registered Planning Store',
+      }),
+    };
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(makeDataManager(), gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    postMessage.mockClear();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+
+    await handler?.({ type: 'selectWorksetStore', worksetName: 'team', memberPath: '/forged/store' });
+    await vi.runAllTimersAsync();
+
+    const errorMessages = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'error');
+    expect(errorMessages).toHaveLength(1);
+    expect(errorMessages[0].message).toContain('not a registered Planning Store');
+    // Fail-closed: no snapshot publish, and the previous state is preserved.
+    expect(postMessage.mock.calls.some(([message]) => message.type === 'setContext')).toBe(false);
+    expect((provider as any).explicitProjectStoreId).toBeUndefined();
+    expect((provider as any).currentProjectBinding).toEqual(fixture.binding);
+    expect((provider as any).cachedProjectSidebarData.changes).toEqual(initialPayload.changes);
+  });
+
+  it('posts exactly one recoverable error when an accepted Store selection load fails', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const initialPayload = {
+      project: fixture.project,
+      binding: fixture.binding,
+      changes: [makeProjectChange('project-change')],
+      archivedChanges: [],
+      projectSpecs: [],
+      referencedStoreSpecs: [],
+    };
+    const gateway = {
+      loadProjectSidebarData: vi.fn()
+        .mockResolvedValueOnce(initialPayload)
+        .mockImplementation(async (_project: ProjectContext, storeId?: string) => {
+          if (storeId) throw new Error('store context unavailable');
+          return initialPayload;
+        }),
+      resolveWorksetStore: vi.fn().mockResolvedValue({
+        storeId: 'team-store',
+        canonicalRoot: '/stores/team-store',
+      }),
+    };
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(makeDataManager(), gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    postMessage.mockClear();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+
+    await handler?.({ type: 'selectWorksetStore', worksetName: 'team', memberPath: '/stores/team-store' });
+    await vi.runAllTimersAsync();
+
+    const errorMessages = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'error');
+    expect(errorMessages).toHaveLength(1);
+    expect(errorMessages[0].message).toContain('store context unavailable');
+    expect(postMessage.mock.calls.some(([message]) => message.type === 'setContext')).toBe(false);
+    expect((provider as any).explicitProjectStoreId).toBeUndefined();
+    expect((provider as any).currentProjectBinding).toEqual(fixture.binding);
+  });
+
+  it('posts exactly one recoverable error when the default-root restore fails', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const storePayload = {
+      project: fixture.project,
+      binding: {
+        projectId: fixture.project.id,
+        commandCwd: fixture.project.projectPath,
+        rootPath: '/stores/team-store',
+        rootSource: 'store',
+        storeId: 'team-store',
+      } satisfies OpenSpecRootBinding,
+      changes: [makeProjectChange('store-change')],
+      archivedChanges: [],
+      projectSpecs: [],
+      referencedStoreSpecs: [],
+    };
+    const gateway = {
+      loadProjectSidebarData: vi.fn()
+        .mockResolvedValueOnce({
+          project: fixture.project,
+          binding: fixture.binding,
+          changes: [makeProjectChange('project-change')],
+          archivedChanges: [],
+          projectSpecs: [],
+          referencedStoreSpecs: [],
+        })
+        .mockImplementation(async (_project: ProjectContext, storeId?: string) => {
+          if (storeId) return storePayload;
+          throw new Error('project default root unavailable');
+        }),
+      resolveWorksetStore: vi.fn().mockResolvedValue({
+        storeId: 'team-store',
+        canonicalRoot: '/stores/team-store',
+      }),
+    };
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(makeDataManager(), gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+    await handler?.({ type: 'selectWorksetStore', worksetName: 'team', memberPath: '/stores/team-store' });
+    await vi.runAllTimersAsync();
+    postMessage.mockClear();
+
+    await handler?.({ type: 'selectProjectDefaultRoot' });
+    await vi.runAllTimersAsync();
+
+    const errorMessages = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'error');
+    expect(errorMessages).toHaveLength(1);
+    expect(errorMessages[0].message).toContain('project default root unavailable');
+    expect(postMessage.mock.calls.some(([message]) => message.type === 'setContext')).toBe(false);
+    expect((provider as any).explicitProjectStoreId).toBe('team-store');
+  });
+
+  it('logs expected-versus-actual context when the acceptance gate drops a refresh', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const mismatchedBinding: OpenSpecRootBinding = {
+      projectId: fixture.project.id,
+      commandCwd: fixture.project.projectPath,
+      rootPath: '/stores/other-root',
+      rootSource: 'store',
+      storeId: 'team-store',
+    };
+    const gateway = {
+      loadProjectSidebarData: vi.fn(async (_project: ProjectContext, storeId?: string) => ({
+        project: fixture.project,
+        binding: storeId ? mismatchedBinding : fixture.binding,
+        changes: [],
+        archivedChanges: [],
+        projectSpecs: [],
+        referencedStoreSpecs: [],
+      })),
+      resolveWorksetStore: vi.fn().mockResolvedValue({
+        storeId: 'team-store',
+        canonicalRoot: '/stores/team-store',
+      }),
+    };
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(makeDataManager(), gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    vi.mocked(logger.warn).mockClear();
+    postMessage.mockClear();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+
+    await handler?.({ type: 'selectWorksetStore', worksetName: 'team', memberPath: '/stores/team-store' });
+    await vi.runAllTimersAsync();
+
+    expect(postMessage.mock.calls.some(([message]) => message.type === 'setContext' && message.data?.binding?.rootPath === '/stores/other-root')).toBe(false);
+    const gateWarnings = vi.mocked(logger.warn).mock.calls
+      .map(([message]) => String(message))
+      .filter((message) => message.includes('acceptance gate'));
+    expect(gateWarnings).toHaveLength(1);
+    // The warning carries enough context to diagnose the permanently-dropped
+    // refresh: the validated expectation and the mismatching actual values.
+    expect(gateWarnings[0]).toContain('/stores/team-store');
+    expect(gateWarnings[0]).toContain('/stores/other-root');
+    expect(gateWarnings[0]).toContain('team-store');
+  });
+
+  it('discards a Store selection response superseded by a newer request generation', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const storeBinding: OpenSpecRootBinding = {
+      projectId: fixture.project.id,
+      commandCwd: fixture.project.projectPath,
+      rootPath: '/stores/team-store',
+      rootSource: 'store',
+      storeId: 'team-store',
+    };
+    const resolvers: Array<(value: unknown) => void> = [];
+    const gateway = {
+      loadProjectSidebarData: vi.fn((_project: ProjectContext, storeId?: string) => (
+        storeId
+          ? new Promise((resolve) => resolvers.push(resolve))
+          : Promise.resolve({
+            project: fixture.project,
+            binding: fixture.binding,
+            changes: [makeProjectChange('project-change')],
+            archivedChanges: [],
+            projectSpecs: [],
+            referencedStoreSpecs: [],
+          })
+      )),
+      resolveWorksetStore: vi.fn().mockResolvedValue({
+        storeId: 'team-store',
+        canonicalRoot: '/stores/team-store',
+      }),
+    };
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(makeDataManager(), gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    postMessage.mockClear();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+
+    const staleSelection = handler?.({ type: 'selectWorksetStore', worksetName: 'team', memberPath: '/stores/team-store' });
+    for (let tick = 0; tick < 10; tick += 1) {
+      await Promise.resolve();
+    }
+    expect(resolvers).toHaveLength(1);
+    await handler?.({ type: 'getProjectSidebarData' });
+    await vi.runAllTimersAsync();
+    resolvers[0]?.({
+      project: fixture.project,
+      binding: storeBinding,
+      changes: [makeProjectChange('store-change')],
+      archivedChanges: [],
+      projectSpecs: [],
+      referencedStoreSpecs: [],
+    });
+    await staleSelection;
+    await Promise.resolve();
+
+    expect(postMessage.mock.calls.some(([message]) => (
+      message.type === 'setContext' && message.data?.binding?.storeId === 'team-store'
+    ))).toBe(false);
+    expect((provider as any).currentProjectBinding).toEqual(fixture.binding);
+
+    // The superseded selection never committed its selector.
+    await handler?.({ type: 'getProjectSidebarData' });
+    await vi.runAllTimersAsync();
+    expect(gateway.loadProjectSidebarData).toHaveBeenLastCalledWith(fixture.project, undefined);
+  });
+
+  it('restores the Project default Planning root only after a selector-free binding resolves', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const storeBinding: OpenSpecRootBinding = {
+      projectId: fixture.project.id,
+      commandCwd: fixture.project.projectPath,
+      rootPath: '/stores/team-store',
+      rootSource: 'store',
+      storeId: 'team-store',
+    };
+    const payloadFor = (binding: OpenSpecRootBinding) => ({
+      project: fixture.project,
+      binding,
+      changes: [makeProjectChange(binding.storeId ? 'store-change' : 'project-change')],
+      archivedChanges: [],
+      projectSpecs: [],
+      referencedStoreSpecs: [],
+    });
+    const gateway = {
+      loadProjectSidebarData: vi.fn(async (_project: ProjectContext, storeId?: string) => (
+        storeId ? payloadFor(storeBinding) : payloadFor(fixture.binding)
+      )),
+      resolveWorksetStore: vi.fn().mockResolvedValue({
+        storeId: 'team-store',
+        canonicalRoot: '/stores/team-store',
+      }),
+    };
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(makeDataManager(), gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+
+    await handler?.({ type: 'selectWorksetStore', worksetName: 'team', memberPath: '/stores/team-store' });
+    await vi.runAllTimersAsync();
+    expect(gateway.loadProjectSidebarData).toHaveBeenLastCalledWith(fixture.project, 'team-store');
+    postMessage.mockClear();
+
+    await handler?.({ type: 'selectProjectDefaultRoot' });
+    await vi.runAllTimersAsync();
+
+    expect(gateway.loadProjectSidebarData).toHaveBeenLastCalledWith(fixture.project, undefined);
+    const restoredMessage = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'setContext' && message.view === 'sidebar')
+      .at(-1);
+    expect(restoredMessage).toEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        binding: fixture.binding,
+        changes: [makeProjectChange('project-change')],
+        cache: { source: 'fresh', stale: false },
+      }),
+    }));
+
+    // The selector stays cleared for later reloads.
+    await handler?.({ type: 'getProjectSidebarData' });
+    await vi.runAllTimersAsync();
+    expect(gateway.loadProjectSidebarData).toHaveBeenLastCalledWith(fixture.project, undefined);
+
+    // Without an active selector the restore action is a fail-closed no-op.
+    const loadCallsBeforeNoop = gateway.loadProjectSidebarData.mock.calls.length;
+    postMessage.mockClear();
+    await handler?.({ type: 'selectProjectDefaultRoot' });
+    await vi.runAllTimersAsync();
+    expect(gateway.loadProjectSidebarData).toHaveBeenCalledTimes(loadCallsBeforeNoop);
+    expect(postMessage.mock.calls.some(([message]) => message.type === 'setContext')).toBe(false);
+  });
+
+  it('publishes whether an explicit Store selector drove the accepted snapshot', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const storeBinding: OpenSpecRootBinding = {
+      projectId: fixture.project.id,
+      commandCwd: fixture.project.projectPath,
+      rootPath: '/stores/team-store',
+      rootSource: 'store',
+      storeId: 'team-store',
+    };
+    const payloadFor = (binding: OpenSpecRootBinding, explicitStoreSelector: boolean) => ({
+      project: fixture.project,
+      binding,
+      explicitStoreSelector,
+      changes: [makeProjectChange(binding.storeId ? 'store-change' : 'project-change')],
+      archivedChanges: [],
+      projectSpecs: [],
+      referencedStoreSpecs: [],
+    });
+    const gateway = {
+      loadProjectSidebarData: vi.fn(async (_project: ProjectContext, storeId?: string) => (
+        storeId ? payloadFor(storeBinding, true) : payloadFor(fixture.binding, false)
+      )),
+      resolveWorksetStore: vi.fn().mockResolvedValue({
+        storeId: 'team-store',
+        canonicalRoot: '/stores/team-store',
+      }),
+    };
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(makeDataManager(), gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+
+    await handler?.({ type: 'selectWorksetStore', worksetName: 'team', memberPath: '/stores/team-store' });
+    await vi.runAllTimersAsync();
+    expect(postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'setContext' && message.view === 'sidebar')
+      .at(-1))
+      .toEqual(expect.objectContaining({
+        data: expect.objectContaining({ explicitStoreSelector: true }),
+      }));
+
+    // The selector keeps marking later selector-driven reloads as explicit.
+    postMessage.mockClear();
+    await handler?.({ type: 'getProjectSidebarData' });
+    await vi.runAllTimersAsync();
+    expect(postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'setContext' && message.view === 'sidebar')
+      .at(-1))
+      .toEqual(expect.objectContaining({
+        data: expect.objectContaining({ explicitStoreSelector: true }),
+      }));
+
+    // Returning to the Project default root clears the flag.
+    postMessage.mockClear();
+    await handler?.({ type: 'selectProjectDefaultRoot' });
+    await vi.runAllTimersAsync();
+    expect(postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'setContext' && message.view === 'sidebar')
+      .at(-1))
+      .toEqual(expect.objectContaining({
+        data: expect.objectContaining({ explicitStoreSelector: false }),
+      }));
+  });
+
+  it('treats a CLI-declared default Store root as selector-free in the published snapshot', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    // The project default root IS a Store root: the selector-free binding
+    // carries a storeId from the CLI's root.store_id, but no explicit selector
+    // is active, so the published flag must stay false.
+    const declaredStoreBinding: OpenSpecRootBinding = {
+      projectId: fixture.project.id,
+      commandCwd: fixture.project.projectPath,
+      rootPath: '/stores/declared-store',
+      rootSource: 'store',
+      storeId: 'declared-store',
+    };
+    const gateway = {
+      loadProjectSidebarData: vi.fn(async () => ({
+        project: fixture.project,
+        binding: declaredStoreBinding,
+        explicitStoreSelector: false,
+        changes: [makeProjectChange('declared-store-change')],
+        archivedChanges: [],
+        projectSpecs: [],
+        referencedStoreSpecs: [],
+      })),
+    };
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(makeDataManager(), gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+
+    const published = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'setContext' && message.view === 'sidebar')
+      .at(-1);
+    expect(published).toEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        binding: expect.objectContaining({ storeId: 'declared-store' }),
+        explicitStoreSelector: false,
+      }),
+    }));
+  });
+
+  it('retargets the watcher to the restored binding root when the default root is itself a Store root', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const selectedStoreBinding: OpenSpecRootBinding = {
+      projectId: fixture.project.id,
+      commandCwd: fixture.project.projectPath,
+      rootPath: '/stores/team-store',
+      rootSource: 'store',
+      storeId: 'team-store',
+    };
+    // The selector-free default still resolves to a Store root via the CLI's
+    // root.store_id: the watcher must follow the restored binding root, not the
+    // Project path, or store-root edits would never auto-refresh.
+    const declaredStoreBinding: OpenSpecRootBinding = {
+      projectId: fixture.project.id,
+      commandCwd: fixture.project.projectPath,
+      rootPath: '/stores/declared-store',
+      rootSource: 'store',
+      storeId: 'declared-store',
+    };
+    const payloadFor = (binding: OpenSpecRootBinding) => ({
+      project: fixture.project,
+      binding,
+      changes: [makeProjectChange(binding.storeId ? 'store-change' : 'project-change')],
+      archivedChanges: [],
+      projectSpecs: [],
+      referencedStoreSpecs: [],
+    });
+    const gateway = {
+      loadProjectSidebarData: vi.fn(async (_project: ProjectContext, storeId?: string) => (
+        storeId ? payloadFor(selectedStoreBinding) : payloadFor(declaredStoreBinding)
+      )),
+      resolveWorksetStore: vi.fn().mockResolvedValue({
+        storeId: 'team-store',
+        canonicalRoot: '/stores/team-store',
+      }),
+    };
+    const setWatchedProjectRoot = vi.fn();
+    const dataManager = makeDataManager({ setWatchedProjectRoot });
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(dataManager, gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+
+    await handler?.({ type: 'selectWorksetStore', worksetName: 'team', memberPath: '/stores/team-store' });
+    await vi.runAllTimersAsync();
+    expect(setWatchedProjectRoot).toHaveBeenLastCalledWith('/stores/team-store');
+
+    await handler?.({ type: 'selectProjectDefaultRoot' });
+    await vi.runAllTimersAsync();
+
+    expect(setWatchedProjectRoot).toHaveBeenCalledTimes(2);
+    expect(setWatchedProjectRoot).toHaveBeenLastCalledWith('/stores/declared-store');
+    expect(setWatchedProjectRoot).not.toHaveBeenCalledWith(fixture.project.projectPath);
+  });
+
+  it('drops a Store selection whose resolve is superseded by a faster Store selection', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const bindingFor = (storeId: string): OpenSpecRootBinding => ({
+      projectId: fixture.project.id,
+      commandCwd: fixture.project.projectPath,
+      rootPath: `/stores/${storeId}`,
+      rootSource: 'store',
+      storeId,
+    });
+    const payloadFor = (storeId?: string) => ({
+      project: fixture.project,
+      binding: storeId ? bindingFor(storeId) : fixture.binding,
+      changes: [makeProjectChange(storeId ?? 'project-change')],
+      archivedChanges: [],
+      projectSpecs: [],
+      referencedStoreSpecs: [],
+    });
+    const resolveStore: Array<(value: { storeId: string; canonicalRoot: string }) => void> = [];
+    const gateway = {
+      loadProjectSidebarData: vi.fn(async (_project: ProjectContext, storeId?: string) => payloadFor(storeId)),
+      resolveWorksetStore: vi.fn(() => new Promise<{ storeId: string; canonicalRoot: string }>((resolve) => {
+        resolveStore.push(resolve);
+      })),
+    };
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(makeDataManager(), gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    postMessage.mockClear();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+
+    // Click Store A first: its fresh-inventory resolve stays pending.
+    const slowSelection = handler?.({
+      type: 'selectWorksetStore',
+      worksetName: 'team',
+      memberPath: '/stores/store-a',
+    });
+    expect(resolveStore).toHaveLength(1);
+    // Click Store B: it resolves fast and commits.
+    const fastSelection = handler?.({
+      type: 'selectWorksetStore',
+      worksetName: 'team',
+      memberPath: '/stores/store-b',
+    });
+    resolveStore[1]?.({ storeId: 'store-b', canonicalRoot: '/stores/store-b' });
+    await fastSelection;
+    await vi.runAllTimersAsync();
+
+    const loadCallsAfterB = gateway.loadProjectSidebarData.mock.calls.length;
+    const contextMessages = () => postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'setContext');
+    expect(contextMessages().at(-1)).toEqual(expect.objectContaining({
+      data: expect.objectContaining({ binding: bindingFor('store-b') }),
+    }));
+    expect((provider as any).explicitProjectStoreId).toBe('store-b');
+
+    // Store A's late resolve must be dropped: no reload, no publish, no selector flip.
+    resolveStore[0]?.({ storeId: 'store-a', canonicalRoot: '/stores/store-a' });
+    await slowSelection;
+    await vi.runAllTimersAsync();
+
+    expect(gateway.loadProjectSidebarData).toHaveBeenCalledTimes(loadCallsAfterB);
+    expect(gateway.loadProjectSidebarData.mock.calls.some(([, storeId]) => storeId === 'store-a')).toBe(false);
+    expect(contextMessages().at(-1)).toEqual(expect.objectContaining({
+      data: expect.objectContaining({ binding: bindingFor('store-b') }),
+    }));
+    expect((provider as any).explicitProjectStoreId).toBe('store-b');
+  });
+
+  it('drops a Store selection whose resolve is superseded by a return to the Project default root', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const bindingFor = (storeId: string): OpenSpecRootBinding => ({
+      projectId: fixture.project.id,
+      commandCwd: fixture.project.projectPath,
+      rootPath: `/stores/${storeId}`,
+      rootSource: 'store',
+      storeId,
+    });
+    const payloadFor = (storeId?: string) => ({
+      project: fixture.project,
+      binding: storeId ? bindingFor(storeId) : fixture.binding,
+      changes: [makeProjectChange(storeId ?? 'project-change')],
+      archivedChanges: [],
+      projectSpecs: [],
+      referencedStoreSpecs: [],
+    });
+    const resolveStore: Array<(value: { storeId: string; canonicalRoot: string }) => void> = [];
+    const gateway = {
+      loadProjectSidebarData: vi.fn(async (_project: ProjectContext, storeId?: string) => payloadFor(storeId)),
+      resolveWorksetStore: vi.fn(() => new Promise<{ storeId: string; canonicalRoot: string }>((resolve) => {
+        resolveStore.push(resolve);
+      })),
+    };
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(makeDataManager(), gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+
+    // Activate Store B first so the default-root action has a selector to clear.
+    const activateB = handler?.({
+      type: 'selectWorksetStore',
+      worksetName: 'team',
+      memberPath: '/stores/store-b',
+    });
+    resolveStore[0]?.({ storeId: 'store-b', canonicalRoot: '/stores/store-b' });
+    await activateB;
+    await vi.runAllTimersAsync();
+    expect((provider as any).explicitProjectStoreId).toBe('store-b');
+    postMessage.mockClear();
+
+    // Click Store A: its resolve stays pending while the user returns to default.
+    const slowSelection = handler?.({
+      type: 'selectWorksetStore',
+      worksetName: 'team',
+      memberPath: '/stores/store-a',
+    });
+    expect(resolveStore).toHaveLength(2);
+    await handler?.({ type: 'selectProjectDefaultRoot' });
+    await vi.runAllTimersAsync();
+
+    const loadCallsAfterDefault = gateway.loadProjectSidebarData.mock.calls.length;
+    const contextMessages = () => postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'setContext');
+    expect(contextMessages().at(-1)).toEqual(expect.objectContaining({
+      data: expect.objectContaining({ binding: fixture.binding }),
+    }));
+    expect((provider as any).explicitProjectStoreId).toBeUndefined();
+
+    // Store A's late resolve must not overturn the explicit return-to-default.
+    resolveStore[1]?.({ storeId: 'store-a', canonicalRoot: '/stores/store-a' });
+    await slowSelection;
+    await vi.runAllTimersAsync();
+
+    expect(gateway.loadProjectSidebarData).toHaveBeenCalledTimes(loadCallsAfterDefault);
+    expect(gateway.loadProjectSidebarData.mock.calls.some(([, storeId]) => storeId === 'store-a')).toBe(false);
+    expect(contextMessages().at(-1)).toEqual(expect.objectContaining({
+      data: expect.objectContaining({ binding: fixture.binding }),
+    }));
+    expect((provider as any).explicitProjectStoreId).toBeUndefined();
+
+    // The selector stays cleared for later reloads.
+    await handler?.({ type: 'getProjectSidebarData' });
+    await vi.runAllTimersAsync();
+    expect(gateway.loadProjectSidebarData).toHaveBeenLastCalledWith(fixture.project, undefined);
+  });
+
+  it('drops a Workset Project selection superseded by a newer committed request', async () => {
+    vi.useFakeTimers();
+    const current = makeProjectFixture('/planning/current');
+    const other: ProjectContext = {
+      id: '/projects/other',
+      label: 'Other Project',
+      projectPath: '/projects/other',
+    };
+    const otherBinding: OpenSpecRootBinding = {
+      projectId: other.id,
+      commandCwd: other.projectPath,
+      rootPath: '/planning/other',
+      rootSource: 'nearest',
+    };
+    const storeBinding: OpenSpecRootBinding = {
+      projectId: current.project.id,
+      commandCwd: current.project.projectPath,
+      rootPath: '/stores/team-store',
+      rootSource: 'store',
+      storeId: 'team-store',
+    };
+    const payloadFor = (project: ProjectContext, binding: OpenSpecRootBinding) => ({
+      project,
+      binding,
+      changes: [makeProjectChange(binding.storeId ?? project.label)],
+      archivedChanges: [],
+      projectSpecs: [],
+      referencedStoreSpecs: [],
+    });
+    const projectResolvers: Array<(value: ProjectContext | undefined) => void> = [];
+    const gateway = {
+      loadProjectSidebarData: vi.fn(async (project: ProjectContext, storeId?: string) => (
+        storeId ? payloadFor(project, storeBinding) : payloadFor(project, project.id === current.project.id ? current.binding : otherBinding)
+      )),
+      resolveWorksetProject: vi.fn(() => new Promise<ProjectContext | undefined>((resolve) => {
+        projectResolvers.push(resolve);
+      })),
+      resolveWorksetStore: vi.fn().mockResolvedValue({
+        storeId: 'team-store',
+        canonicalRoot: '/stores/team-store',
+      }),
+      resolveBinding: vi.fn(),
+    };
+    const setWatchedProjectRoot = vi.fn();
+    const dataManager = makeDataManager({ setWatchedProjectRoot });
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(dataManager, gateway, current);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    postMessage.mockClear();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+
+    const supersededSelection = handler?.({
+      type: 'selectWorksetProject',
+      worksetName: 'shared-workset',
+      memberPath: other.projectPath,
+    });
+    expect(projectResolvers).toHaveLength(1);
+
+    // A newer Store selection resolves fast and commits while the Project resolve pends.
+    await handler?.({ type: 'selectWorksetStore', worksetName: 'team', memberPath: '/stores/team-store' });
+    await vi.runAllTimersAsync();
+    expect((provider as any).explicitProjectStoreId).toBe('team-store');
+
+    projectResolvers[0]?.(other);
+    await supersededSelection;
+    await vi.runAllTimersAsync();
+
+    expect(gateway.resolveBinding).not.toHaveBeenCalled();
+    expect(setWatchedProjectRoot).not.toHaveBeenCalledWith(other.projectPath);
+    expect(gateway.loadProjectSidebarData.mock.calls.some(([project]) => project?.id === other.id)).toBe(false);
+    expect((provider as any).projectContext).toEqual(current.project);
+    expect((provider as any).explicitProjectStoreId).toBe('team-store');
+  });
+
+  it('retargets the watcher to the accepted Store root and back to the Project root', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const storeBinding: OpenSpecRootBinding = {
+      projectId: fixture.project.id,
+      commandCwd: fixture.project.projectPath,
+      rootPath: '/stores/team-store',
+      rootSource: 'store',
+      storeId: 'team-store',
+    };
+    const payloadFor = (binding: OpenSpecRootBinding) => ({
+      project: fixture.project,
+      binding,
+      changes: [makeProjectChange(binding.storeId ? 'store-change' : 'project-change')],
+      archivedChanges: [],
+      projectSpecs: [],
+      referencedStoreSpecs: [],
+    });
+    const gateway = {
+      loadProjectSidebarData: vi.fn(async (_project: ProjectContext, storeId?: string) => (
+        storeId ? payloadFor(storeBinding) : payloadFor(fixture.binding)
+      )),
+      resolveWorksetStore: vi.fn().mockResolvedValue({
+        storeId: 'team-store',
+        canonicalRoot: '/stores/team-store',
+      }),
+    };
+    const setWatchedProjectRoot = vi.fn();
+    const dataManager = makeDataManager({ setWatchedProjectRoot });
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(dataManager, gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    expect(setWatchedProjectRoot).not.toHaveBeenCalled();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+
+    await handler?.({ type: 'selectWorksetStore', worksetName: 'team', memberPath: '/stores/team-store' });
+    await vi.runAllTimersAsync();
+    expect(setWatchedProjectRoot).toHaveBeenCalledTimes(1);
+    expect(setWatchedProjectRoot).toHaveBeenCalledWith('/stores/team-store');
+
+    await handler?.({ type: 'selectProjectDefaultRoot' });
+    await vi.runAllTimersAsync();
+    expect(setWatchedProjectRoot).toHaveBeenCalledTimes(2);
+    expect(setWatchedProjectRoot).toHaveBeenLastCalledWith(fixture.project.projectPath);
+  });
+
+  it('keeps the watcher on the accepted binding root while an explicit Store selector stays active', async () => {
+    vi.useFakeTimers();
+    const current = makeProjectFixture();
+    const other: ProjectContext = {
+      id: '/projects/other',
+      label: 'Other Project',
+      projectPath: '/projects/other',
+    };
+    const currentStoreBinding: OpenSpecRootBinding = {
+      projectId: current.project.id,
+      commandCwd: current.project.projectPath,
+      rootPath: '/stores/team-store',
+      rootSource: 'store',
+      storeId: 'team-store',
+    };
+    const otherStoreBinding: OpenSpecRootBinding = {
+      projectId: other.id,
+      commandCwd: other.projectPath,
+      rootPath: '/stores/team-store',
+      rootSource: 'store',
+      storeId: 'team-store',
+    };
+    const payloadFor = (project: ProjectContext, binding: OpenSpecRootBinding) => ({
+      project,
+      binding,
+      changes: [makeProjectChange('member-change')],
+      archivedChanges: [],
+      projectSpecs: [],
+      referencedStoreSpecs: [],
+    });
+    const gateway = {
+      loadProjectSidebarData: vi.fn(async (project: ProjectContext, storeId?: string) => (
+        storeId
+          ? payloadFor(project, project.id === current.project.id ? currentStoreBinding : otherStoreBinding)
+          : payloadFor(project, current.binding)
+      )),
+      resolveWorksetStore: vi.fn().mockResolvedValue({
+        storeId: 'team-store',
+        canonicalRoot: '/stores/team-store',
+      }),
+      resolveWorksetProject: vi.fn().mockResolvedValue(other),
+      resolveBinding: vi.fn(async (project: ProjectContext, storeId?: string) => (
+        storeId
+          ? (project.id === current.project.id ? currentStoreBinding : otherStoreBinding)
+          : { ...current.binding, projectId: project.id, commandCwd: project.projectPath }
+      )),
+    };
+    const setWatchedProjectRoot = vi.fn();
+    const dataManager = makeDataManager({ setWatchedProjectRoot });
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(dataManager, gateway, current);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+
+    // Activate the explicit Store selector first.
+    await handler?.({ type: 'selectWorksetStore', worksetName: 'team', memberPath: '/stores/team-store' });
+    await vi.runAllTimersAsync();
+    expect((provider as any).explicitProjectStoreId).toBe('team-store');
+    expect(setWatchedProjectRoot).toHaveBeenLastCalledWith('/stores/team-store');
+    setWatchedProjectRoot.mockClear();
+
+    // A Project switch under the active selector must retarget the watcher to
+    // the accepted binding root (the store root), not the Project path.
+    await handler?.({ type: 'selectWorksetProject', worksetName: 'shared-workset', memberPath: other.projectPath });
+    await vi.runAllTimersAsync();
+    expect(setWatchedProjectRoot).toHaveBeenCalledTimes(1);
+    expect(setWatchedProjectRoot).toHaveBeenLastCalledWith(otherStoreBinding.rootPath);
+    expect(setWatchedProjectRoot).not.toHaveBeenCalledWith(other.projectPath);
+    setWatchedProjectRoot.mockClear();
+
+    // Restoring the Current Project under the same selector follows the same rule.
+    await handler?.({ type: 'selectCurrentProject' });
+    await vi.runAllTimersAsync();
+    expect(setWatchedProjectRoot).toHaveBeenCalledTimes(1);
+    expect(setWatchedProjectRoot).toHaveBeenLastCalledWith(currentStoreBinding.rootPath);
+    expect(setWatchedProjectRoot).not.toHaveBeenCalledWith(current.project.projectPath);
+  });
+
+  it('leaves the watcher target untouched when a Store selection fails to resolve', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const gateway = {
+      loadProjectSidebarData: vi.fn().mockResolvedValue({
+        project: fixture.project,
+        binding: fixture.binding,
+        changes: [makeProjectChange('project-change')],
+        archivedChanges: [],
+        projectSpecs: [],
+        referencedStoreSpecs: [],
+      }),
+      resolveWorksetStore: vi.fn().mockRejectedValue({
+        name: 'ProjectDataAccessError',
+        phase: 'resolve',
+        message: 'Workset member is not a registered Planning Store',
+      }),
+    };
+    const setWatchedProjectRoot = vi.fn();
+    const dataManager = makeDataManager({ setWatchedProjectRoot });
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(dataManager, gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+
+    await handler?.({ type: 'selectWorksetStore', worksetName: 'team', memberPath: '/forged/store' });
+    await vi.runAllTimersAsync();
+
+    expect(setWatchedProjectRoot).not.toHaveBeenCalled();
+    expect((provider as any).explicitProjectStoreId).toBeUndefined();
+  });
+
+  it('opens the native folder picker and posts canonical absolute member paths', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const gateway = {
+      loadProjectSidebarData: vi.fn().mockResolvedValue({
+        project: fixture.project,
+        binding: fixture.binding,
+        changes: [],
+        archivedChanges: [],
+        projectSpecs: [],
+        referencedStoreSpecs: [],
+      }),
+    };
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(makeDataManager(), gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+    const vscode = await import('vscode');
+    vi.mocked(vscode.window.showOpenDialog).mockResolvedValueOnce([
+      { fsPath: '/repos/docs-link' },
+      { fsPath: '/repos/other' },
+    ] as any);
+    // Cross-platform canonicalization is the Host's job: a symlinked pick must
+    // come back as its real path, and two picks resolving to the same canonical
+    // root collapse into one entry.
+    vi.mocked(fsPromises.realpath)
+      .mockImplementationOnce(async () => '/repos/docs-real')
+      .mockImplementationOnce(async () => '/repos/docs-real');
+    postMessage.mockClear();
+
+    await handler?.({ type: 'pickWorksetMembers' });
+    await vi.runAllTimersAsync();
+
+    expect(vscode.window.showOpenDialog).toHaveBeenCalledWith({
+      canSelectFolders: true,
+      canSelectMany: true,
+    });
+    expect(postMessage).toHaveBeenCalledWith({
+      type: 'worksetMembersPicked',
+      paths: ['/repos/docs-real'],
+    });
+  });
+
+  it('posts nothing when the native folder picker is dismissed', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const gateway = {
+      loadProjectSidebarData: vi.fn().mockResolvedValue({
+        project: fixture.project,
+        binding: fixture.binding,
+        changes: [],
+        archivedChanges: [],
+        projectSpecs: [],
+        referencedStoreSpecs: [],
+      }),
+    };
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(makeDataManager(), gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+    // Default showOpenDialog mock resolves undefined (dismissed picker).
+    postMessage.mockClear();
+
+    await handler?.({ type: 'pickWorksetMembers' });
+    await vi.runAllTimersAsync();
+
+    expect(postMessage).not.toHaveBeenCalled();
+  });
+
+  it('drops picked paths that cannot be canonicalized instead of posting them', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const gateway = {
+      loadProjectSidebarData: vi.fn().mockResolvedValue({
+        project: fixture.project,
+        binding: fixture.binding,
+        changes: [],
+        archivedChanges: [],
+        projectSpecs: [],
+        referencedStoreSpecs: [],
+      }),
+    };
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(makeDataManager(), gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+    const vscode = await import('vscode');
+    vi.mocked(vscode.window.showOpenDialog).mockResolvedValueOnce([
+      { fsPath: '/repos/ok' },
+      { fsPath: '/repos/gone' },
+    ] as any);
+    vi.mocked(fsPromises.realpath)
+      .mockImplementationOnce(async () => '/repos/ok')
+      .mockRejectedValueOnce(new Error('ENOENT'));
+    postMessage.mockClear();
+
+    await handler?.({ type: 'pickWorksetMembers' });
+    await vi.runAllTimersAsync();
+
+    expect(postMessage).toHaveBeenCalledTimes(1);
+    expect(postMessage).toHaveBeenCalledWith({
+      type: 'worksetMembersPicked',
+      paths: ['/repos/ok'],
+      droppedPaths: ['/repos/gone'],
+    });
+  });
+
+  it('reports Host-dropped picks recoverably even when every pick is unrealpath-able', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const gateway = {
+      loadProjectSidebarData: vi.fn().mockResolvedValue({
+        project: fixture.project,
+        binding: fixture.binding,
+        changes: [],
+        archivedChanges: [],
+        projectSpecs: [],
+        referencedStoreSpecs: [],
+      }),
+    };
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(makeDataManager(), gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+    const vscode = await import('vscode');
+    vi.mocked(vscode.window.showOpenDialog).mockResolvedValueOnce([
+      { fsPath: '/repos/gone-a' },
+      { fsPath: '/repos/gone-b' },
+    ] as any);
+    vi.mocked(fsPromises.realpath)
+      .mockRejectedValueOnce(new Error('ENOENT'))
+      .mockRejectedValueOnce(new Error('ENOENT'));
+    postMessage.mockClear();
+
+    await handler?.({ type: 'pickWorksetMembers' });
+    await vi.runAllTimersAsync();
+
+    // Empty add plus the dropped paths for a recoverable notice — no error banner.
+    expect(postMessage).toHaveBeenCalledTimes(1);
+    expect(postMessage).toHaveBeenCalledWith({
+      type: 'worksetMembersPicked',
+      paths: [],
+      droppedPaths: ['/repos/gone-a', '/repos/gone-b'],
+    });
+    expect(postMessage.mock.calls.some(([message]) => message.type === 'error')).toBe(false);
+  });
+
+  it('posts one recoverable error when the native folder picker rejects', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const gateway = {
+      loadProjectSidebarData: vi.fn().mockResolvedValue({
+        project: fixture.project,
+        binding: fixture.binding,
+        changes: [],
+        archivedChanges: [],
+        projectSpecs: [],
+        referencedStoreSpecs: [],
+      }),
+    };
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(makeDataManager(), gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+    const vscode = await import('vscode');
+    vi.mocked(vscode.window.showOpenDialog).mockRejectedValueOnce(new Error('Throwing Thenable'));
+    postMessage.mockClear();
+
+    await handler?.({ type: 'pickWorksetMembers' });
+    await vi.runAllTimersAsync();
+
+    const errorMessages = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'error');
+    expect(errorMessages).toHaveLength(1);
+    expect(typeof errorMessages[0].message).toBe('string');
+    expect(errorMessages[0].message).toBeTruthy();
+    expect(postMessage.mock.calls.some(([message]) => message.type === 'worksetMembersPicked')).toBe(false);
+  });
+
+  it('suppresses the selection error when a rejected Store resolve is superseded by a newer request', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const rejectors: Array<(error: Error) => void> = [];
+    const gateway = {
+      loadProjectSidebarData: vi.fn().mockResolvedValue({
+        project: fixture.project,
+        binding: fixture.binding,
+        changes: [makeProjectChange('project-change')],
+        archivedChanges: [],
+        projectSpecs: [],
+        referencedStoreSpecs: [],
+      }),
+      resolveWorksetStore: vi.fn(() => new Promise<never>((_, reject) => {
+        rejectors.push(reject);
+      })),
+    };
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(makeDataManager(), gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+
+    // The slow selection's resolve rejects only after a newer request committed.
+    const slowSelection = handler?.({
+      type: 'selectWorksetStore',
+      worksetName: 'team',
+      memberPath: '/stores/team-store',
+    });
+    expect(rejectors).toHaveLength(1);
+    await handler?.({ type: 'getProjectSidebarData' });
+    await vi.runAllTimersAsync();
+    postMessage.mockClear();
+
+    rejectors[0]?.(new Error('stale resolve rejection'));
+    await slowSelection;
+    await vi.runAllTimersAsync();
+
+    // The superseded rejection stays silent: no recoverable error is posted.
+    expect(postMessage.mock.calls.some(([message]) => message.type === 'error')).toBe(false);
+  });
+
+  it('rejects malformed Workset creation input before invoking the CLI', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const gateway = {
+      loadProjectSidebarData: vi.fn().mockResolvedValue(
+        makeNavigationPayload(fixture, ['planning']),
+      ),
+    };
+    const createWorkset = vi.fn();
+    const dataManager = makeDataManager({ createWorkset });
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(dataManager, gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+    postMessage.mockClear();
+
+    const malformed: Record<string, unknown>[] = [
+      { name: 42, members: ['/projects/current'] },
+      { name: '   ', members: ['/projects/current'] },
+      { name: '--store', members: ['/projects/current'] },
+      { name: 'ok', members: 'not-an-array' },
+      { name: 'ok', members: [] },
+      { name: 'ok', members: ['/projects/current', 'relative/path'] },
+      { name: 'ok', members: ['/projects/current'], tool: 7 },
+      { name: 'ok', members: ['/projects/current'], tool: '--json' },
+    ];
+    for (const message of malformed) {
+      await handler?.({ type: 'createWorkset', ...message });
+    }
+    await vi.runAllTimersAsync();
+
+    expect(createWorkset).not.toHaveBeenCalled();
+    const results = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'worksetCreateResult');
+    expect(results).toHaveLength(malformed.length);
+    expect(results.every((result) => result.success === false)).toBe(true);
+    expect(results.every((result) => typeof result.message === 'string' && result.message)).toBe(true);
+  });
+
+  it('rejects creation when a submitted member cannot be canonicalized', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const gateway = {
+      loadProjectSidebarData: vi.fn().mockResolvedValue(
+        makeNavigationPayload(fixture, ['planning']),
+      ),
+    };
+    const createWorkset = vi.fn();
+    const dataManager = makeDataManager({ createWorkset });
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(dataManager, gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+    vi.mocked(fsPromises.realpath)
+      .mockImplementationOnce(async (value: Parameters<typeof fsPromises.realpath>[0]) => String(value))
+      .mockRejectedValueOnce(new Error('ENOENT'));
+    postMessage.mockClear();
+
+    await handler?.({
+      type: 'createWorkset',
+      name: 'feature',
+      members: ['/projects/current', '/repos/gone'],
+    });
+    await vi.runAllTimersAsync();
+
+    expect(createWorkset).not.toHaveBeenCalled();
+    const results = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'worksetCreateResult');
+    expect(results).toHaveLength(1);
+    expect(results[0].success).toBe(false);
+  });
+
+  it('rejects Workset creation when the Workset capability is unavailable', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const gateway = {
+      loadProjectSidebarData: vi.fn().mockResolvedValue({
+        project: fixture.project,
+        binding: fixture.binding,
+        changes: [],
+        archivedChanges: [],
+        projectSpecs: [],
+        referencedStoreSpecs: [],
+      }),
+    };
+    const createWorkset = vi.fn();
+    const dataManager = makeDataManager({ createWorkset });
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(dataManager, gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+    postMessage.mockClear();
+
+    await handler?.({
+      type: 'createWorkset',
+      name: 'feature',
+      members: ['/projects/current'],
+    });
+    await vi.runAllTimersAsync();
+
+    expect(createWorkset).not.toHaveBeenCalled();
+    const results = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'worksetCreateResult');
+    expect(results).toHaveLength(1);
+    expect(results[0].success).toBe(false);
+    expect(results[0].message).toContain('not supported');
+  });
+
+  it('creates selector-free, reloads officially, and posts success only after the fresh snapshot contains the name', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const gateway = {
+      loadProjectSidebarData: vi.fn()
+        .mockResolvedValueOnce(makeNavigationPayload(fixture, ['planning']))
+        .mockResolvedValue(makeNavigationPayload(fixture, ['planning', 'feature'])),
+    };
+    const createWorkset = vi.fn().mockResolvedValue({ name: 'feature' });
+    const dataManager = makeDataManager({ createWorkset });
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(dataManager, gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+    postMessage.mockClear();
+
+    await handler?.({
+      type: 'createWorkset',
+      name: '  feature  ',
+      members: ['/projects/current', '/repos/docs'],
+      tool: ' cursor ',
+    });
+    await vi.runAllTimersAsync();
+
+    // Selector-free official creation: exactly the validated payload, no store
+    // selector argument ever reaches the DataManager method.
+    expect(createWorkset).toHaveBeenCalledTimes(1);
+    expect(createWorkset).toHaveBeenCalledWith('feature', ['/projects/current', '/repos/docs'], 'cursor');
+    // The official reload happened and published the fresh navigation.
+    const freshContext = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'setContext' && message.view === 'sidebar')
+      .at(-1);
+    expect(freshContext?.data?.worksetNavigation?.worksets.some((workset: { name: string }) => (
+      workset.name === 'feature'
+    ))).toBe(true);
+    // Success is posted only after that fresh snapshot contained the name.
+    const results = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'worksetCreateResult');
+    expect(results).toEqual([{ type: 'worksetCreateResult', success: true, name: 'feature' }]);
+  });
+
+  it('posts a recoverable failure and keeps the previous snapshot when the CLI rejects creation', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const initialPayload = makeNavigationPayload(fixture, ['planning']);
+    const gateway = {
+      loadProjectSidebarData: vi.fn().mockResolvedValue(initialPayload),
+    };
+    const createWorkset = vi.fn().mockRejectedValue(new Error('workset already exists'));
+    const dataManager = makeDataManager({ createWorkset });
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(dataManager, gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const initialLoadCalls = gateway.loadProjectSidebarData.mock.calls.length;
+    postMessage.mockClear();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+
+    await handler?.({
+      type: 'createWorkset',
+      name: 'feature',
+      members: ['/projects/current'],
+    });
+    await vi.runAllTimersAsync();
+
+    expect(createWorkset).toHaveBeenCalledTimes(1);
+    const results = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'worksetCreateResult');
+    expect(results).toHaveLength(1);
+    expect(results[0].success).toBe(false);
+    expect(results[0].message).toContain('workset already exists');
+    // No reload and no optimistic publish: the cached snapshot stays untouched.
+    expect(gateway.loadProjectSidebarData).toHaveBeenCalledTimes(initialLoadCalls);
+    expect((provider as any).cachedProjectSidebarData.worksetNavigation.worksets)
+      .toEqual(initialPayload.worksetNavigation.worksets);
+    expect(postMessage.mock.calls.some(([message]) => (
+      message.type === 'setContext'
+      && message.data?.worksetNavigation?.worksets.some((workset: { name: string }) => workset.name === 'feature')
+    ))).toBe(false);
+  });
+
+  it('reports failure without fabricating a detail when the refreshed snapshot lacks the created Workset', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const gateway = {
+      loadProjectSidebarData: vi.fn().mockResolvedValue(makeNavigationPayload(fixture, ['planning'])),
+    };
+    const createWorkset = vi.fn().mockResolvedValue({ name: 'feature' });
+    const dataManager = makeDataManager({ createWorkset });
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(dataManager, gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const initialLoadCalls = gateway.loadProjectSidebarData.mock.calls.length;
+    postMessage.mockClear();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+
+    await handler?.({
+      type: 'createWorkset',
+      name: 'feature',
+      members: ['/projects/current'],
+    });
+    await vi.runAllTimersAsync();
+
+    expect(createWorkset).toHaveBeenCalledTimes(1);
+    // The official reload ran, but the fresh navigation still lacks the name.
+    expect(gateway.loadProjectSidebarData.mock.calls.length).toBe(initialLoadCalls + 1);
+    const results = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'worksetCreateResult');
+    expect(results).toHaveLength(1);
+    expect(results[0].success).toBe(false);
+    expect(typeof results[0].message).toBe('string');
+    expect(results[0].message).toBeTruthy();
+    expect(postMessage.mock.calls.some(([message]) => (
+      message.type === 'worksetCreateResult' && message.success === true
+    ))).toBe(false);
+  });
+
+  it('replies to a duplicate creation submission with one recoverable in-progress result', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const gateway = {
+      loadProjectSidebarData: vi.fn()
+        .mockResolvedValueOnce(makeNavigationPayload(fixture, ['planning']))
+        .mockResolvedValue(makeNavigationPayload(fixture, ['planning', 'feature'])),
+    };
+    let resolveCreate: ((value: unknown) => void) | undefined;
+    const createWorkset = vi.fn(() => new Promise((resolve) => {
+      resolveCreate = resolve;
+    }));
+    const dataManager = makeDataManager({ createWorkset });
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(dataManager, gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+    postMessage.mockClear();
+
+    const first = handler?.({
+      type: 'createWorkset',
+      name: 'feature',
+      members: ['/projects/current'],
+    });
+    const duplicate = handler?.({
+      type: 'createWorkset',
+      name: 'feature',
+      members: ['/projects/current'],
+    });
+    await vi.runAllTimersAsync();
+    resolveCreate?.({ name: 'feature' });
+    await first;
+    await duplicate;
+    await vi.runAllTimersAsync();
+
+    // Single-flight holds: exactly one CLI create. Both requests get exactly
+    // one result each — the duplicate is a recoverable in-progress failure.
+    expect(createWorkset).toHaveBeenCalledTimes(1);
+    const results = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'worksetCreateResult');
+    expect(results).toHaveLength(2);
+    expect(results[0]).toEqual(expect.objectContaining({
+      type: 'worksetCreateResult',
+      success: false,
+      name: 'feature',
+    }));
+    expect(typeof results[0].message).toBe('string');
+    expect(results[0].message).toBeTruthy();
+    expect(results[1]).toEqual({ type: 'worksetCreateResult', success: true, name: 'feature' });
+  });
+
+  it('reports success when the create reload is superseded by a newer reload that publishes the new name', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    // Deferred loads let the test interleave reloads in a deterministic order.
+    const resolvers: Array<(value: unknown) => void> = [];
+    const gateway = {
+      loadProjectSidebarData: vi.fn(() => new Promise((resolve) => {
+        resolvers.push(resolve);
+      })),
+    };
+    const createWorkset = vi.fn().mockResolvedValue({ name: 'feature' });
+    const dataManager = makeDataManager({ createWorkset });
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(dataManager, gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+    resolvers[0]?.(makeNavigationPayload(fixture, ['planning']));
+    await vi.runAllTimersAsync();
+    postMessage.mockClear();
+
+    // Create succeeds; its official reload (load #2) stays pending.
+    const submit = handler?.({
+      type: 'createWorkset',
+      name: 'feature',
+      members: ['/projects/current'],
+    });
+    await vi.runAllTimersAsync();
+    // A newer surface request supersedes it with reload #3.
+    const newer = handler?.({ type: 'getProjectSidebarData' });
+    await vi.runAllTimersAsync();
+    expect(resolvers).toHaveLength(3);
+
+    // The superseded create reload resolves without the name; the newer reload
+    // publishes a snapshot that contains it.
+    resolvers[1]?.(makeNavigationPayload(fixture, ['planning']));
+    resolvers[2]?.(makeNavigationPayload(fixture, ['planning', 'feature']));
+    await submit;
+    await newer;
+    await vi.runAllTimersAsync();
+
+    expect(createWorkset).toHaveBeenCalledTimes(1);
+    const results = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'worksetCreateResult');
+    expect(results).toEqual([{ type: 'worksetCreateResult', success: true, name: 'feature' }]);
+  });
+
+  it('reports failure when the create reload is superseded by a newer reload that lacks the new name', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const resolvers: Array<(value: unknown) => void> = [];
+    const gateway = {
+      loadProjectSidebarData: vi.fn(() => new Promise((resolve) => {
+        resolvers.push(resolve);
+      })),
+    };
+    const createWorkset = vi.fn().mockResolvedValue({ name: 'feature' });
+    const dataManager = makeDataManager({ createWorkset });
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(dataManager, gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+    resolvers[0]?.(makeNavigationPayload(fixture, ['planning']));
+    await vi.runAllTimersAsync();
+    postMessage.mockClear();
+
+    const submit = handler?.({
+      type: 'createWorkset',
+      name: 'feature',
+      members: ['/projects/current'],
+    });
+    await vi.runAllTimersAsync();
+    const newer = handler?.({ type: 'getProjectSidebarData' });
+    await vi.runAllTimersAsync();
+
+    // The finally-published snapshot still does not contain the new name.
+    resolvers[1]?.(makeNavigationPayload(fixture, ['planning']));
+    resolvers[2]?.(makeNavigationPayload(fixture, ['planning']));
+    await submit;
+    await newer;
+    await vi.runAllTimersAsync();
+
+    const results = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'worksetCreateResult');
+    expect(results).toHaveLength(1);
+    expect(results[0].success).toBe(false);
+    expect(typeof results[0].message).toBe('string');
+    expect(results[0].message).toBeTruthy();
+    expect(postMessage.mock.calls.some(([message]) => (
+      message.type === 'worksetCreateResult' && message.success === true
+    ))).toBe(false);
+  });
+
+  it('reports a recoverable failure when the create reload is superseded by a newer reload that fails', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const resolvers: Array<(value: unknown) => void> = [];
+    const gateway = {
+      loadProjectSidebarData: vi.fn(() => new Promise((resolve) => {
+        resolvers.push(resolve);
+      })),
+    };
+    const createWorkset = vi.fn().mockResolvedValue({ name: 'feature' });
+    const dataManager = makeDataManager({ createWorkset });
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(dataManager, gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+    resolvers[0]?.(makeNavigationPayload(fixture, ['planning']));
+    await vi.runAllTimersAsync();
+    postMessage.mockClear();
+
+    const submit = handler?.({
+      type: 'createWorkset',
+      name: 'feature',
+      members: ['/projects/current'],
+    });
+    await vi.runAllTimersAsync();
+    const newer = handler?.({ type: 'getProjectSidebarData' });
+    await vi.runAllTimersAsync();
+
+    // The superseded create load resolves; the terminal newer load fails.
+    resolvers[1]?.(makeNavigationPayload(fixture, ['planning']));
+    resolvers[2]?.(new Error('sidebar load failed'));
+    await submit;
+    await newer;
+    await vi.runAllTimersAsync();
+
+    expect(createWorkset).toHaveBeenCalledTimes(1);
+    const results = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'worksetCreateResult');
+    expect(results).toHaveLength(1);
+    expect(results[0].success).toBe(false);
+    expect(typeof results[0].message).toBe('string');
+    expect(results[0].message).toBeTruthy();
+    // Accepted dual-surface semantics: the create flow reports its reload
+    // failure itself as exactly one result, while the newer (non-suppressed)
+    // reload's generic error is the one and only error message posted.
+    const errorMessages = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'error');
+    expect(errorMessages).toHaveLength(1);
+    expect(postMessage.mock.calls.some(([message]) => (
+      message.type === 'worksetCreateResult' && message.success === true
+    ))).toBe(false);
+  });
+
+  it('suppresses the generic reload error when creation succeeds but the refresh fails', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const gateway = {
+      loadProjectSidebarData: vi.fn()
+        .mockResolvedValueOnce(makeNavigationPayload(fixture, ['planning']))
+        .mockRejectedValue(new Error('sidebar load failed')),
+    };
+    const createWorkset = vi.fn().mockResolvedValue({ name: 'feature' });
+    const dataManager = makeDataManager({ createWorkset });
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(dataManager, gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+    postMessage.mockClear();
+
+    await handler?.({
+      type: 'createWorkset',
+      name: 'feature',
+      members: ['/projects/current'],
+    });
+    await vi.runAllTimersAsync();
+
+    // Exactly one createResult failure and zero generic error messages: the
+    // reload failure belongs to the create flow, which reports it itself.
+    const results = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'worksetCreateResult');
+    expect(results).toHaveLength(1);
+    expect(results[0].success).toBe(false);
+    expect(typeof results[0].message).toBe('string');
+    expect(results[0].message).toBeTruthy();
+    expect(postMessage.mock.calls.some(([message]) => message.type === 'error')).toBe(false);
+  });
+
+  it('includes a sanitized single-line CLI stderr excerpt in the failure result', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const gateway = {
+      loadProjectSidebarData: vi.fn().mockResolvedValue(makeNavigationPayload(fixture, ['planning'])),
+    };
+    const cliFailure = Object.assign(
+      new Error('Command failed with code 1'),
+      { stderr: 'Error: workset already exists\n  at createWorkset (cli.ts:12:3)\n\nhint: choose another name' },
+    );
+    const createWorkset = vi.fn().mockRejectedValue(cliFailure);
+    const dataManager = makeDataManager({ createWorkset });
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(dataManager, gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+    postMessage.mockClear();
+
+    await handler?.({
+      type: 'createWorkset',
+      name: 'feature',
+      members: ['/projects/current'],
+    });
+    await vi.runAllTimersAsync();
+
+    const results = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'worksetCreateResult');
+    expect(results).toHaveLength(1);
+    expect(results[0].success).toBe(false);
+    expect(results[0].message).toContain('Command failed with code 1');
+    expect(results[0].message).toContain('workset already exists');
+    // Sanitized: single line, bounded length, no raw CLI stack lines.
+    expect(results[0].message).not.toMatch(/[\r\n]/);
+    expect(results[0].message.length).toBeLessThanOrEqual(300);
+  });
+
+  it('rejects Workset creation before any CLI call when the capability is unavailable even with present navigation', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    // Present-but-empty navigation: the Gateway swallows CLI capability errors
+    // into an empty list, so navigation shape alone cannot gate creation.
+    const gateway = {
+      loadProjectSidebarData: vi.fn().mockResolvedValue(makeNavigationPayload(fixture, [])),
+    };
+    const createWorkset = vi.fn();
+    const dataManager = makeDataManager({
+      createWorkset,
+      getCapabilities: vi.fn().mockReturnValue({
+        stores: true,
+        context: true,
+        doctor: true,
+        worksets: false,
+        diagnostics: [],
+      }),
+    });
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(dataManager, gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+    postMessage.mockClear();
+
+    await handler?.({
+      type: 'createWorkset',
+      name: 'feature',
+      members: ['/projects/current'],
+    });
+    await vi.runAllTimersAsync();
+
+    expect(createWorkset).not.toHaveBeenCalled();
+    const results = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'worksetCreateResult');
+    expect(results).toHaveLength(1);
+    expect(results[0].success).toBe(false);
+    expect(results[0].message).toContain('not supported');
+  });
+
+  it('publishes the Workset capability flag with an empty navigation for the first-creation surface', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const gateway = {
+      loadProjectSidebarData: vi.fn().mockResolvedValue(makeNavigationPayload(fixture, [])),
+    };
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(makeDataManager(), gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+
+    const freshContext = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'setContext' && message.view === 'sidebar')
+      .at(-1);
+    // Empty navigation publishes (the Create entry lives on the empty list)
+    // together with the authoritative capability fact.
+    expect(freshContext?.data?.worksetNavigation).toEqual(
+      expect.objectContaining({ worksets: [] }),
+    );
+    expect(freshContext?.data?.worksetCapabilityAvailable).toBe(true);
+  });
+
+  it('marks the published snapshot capability-unavailable when CLI detection lacks worksets', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const gateway = {
+      loadProjectSidebarData: vi.fn().mockResolvedValue(makeNavigationPayload(fixture, [])),
+    };
+    const dataManager = makeDataManager({
+      getCapabilities: vi.fn().mockReturnValue({
+        stores: true,
+        context: true,
+        doctor: true,
+        worksets: false,
+        diagnostics: [],
+      }),
+    });
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(dataManager, gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+
+    const freshContext = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'setContext' && message.view === 'sidebar')
+      .at(-1);
+    expect(freshContext?.data?.worksetCapabilityAvailable).toBe(false);
+  });
+
+  it('leaves the watcher target untouched when an accepted Store selection load fails', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const initialPayload = {
+      project: fixture.project,
+      binding: fixture.binding,
+      changes: [makeProjectChange('project-change')],
+      archivedChanges: [],
+      projectSpecs: [],
+      referencedStoreSpecs: [],
+    };
+    const gateway = {
+      loadProjectSidebarData: vi.fn()
+        .mockResolvedValueOnce(initialPayload)
+        .mockImplementation(async (_project: ProjectContext, storeId?: string) => {
+          if (storeId) throw new Error('store context unavailable');
+          return initialPayload;
+        }),
+      resolveWorksetStore: vi.fn().mockResolvedValue({
+        storeId: 'team-store',
+        canonicalRoot: '/stores/team-store',
+      }),
+    };
+    const setWatchedProjectRoot = vi.fn();
+    const dataManager = makeDataManager({ setWatchedProjectRoot });
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(dataManager, gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+
+    await handler?.({ type: 'selectWorksetStore', worksetName: 'team', memberPath: '/stores/team-store' });
+    await vi.runAllTimersAsync();
+
+    expect(gateway.loadProjectSidebarData).toHaveBeenLastCalledWith(fixture.project, 'team-store');
+    expect(setWatchedProjectRoot).not.toHaveBeenCalled();
+    expect((provider as any).explicitProjectStoreId).toBeUndefined();
+    expect((provider as any).currentProjectBinding).toEqual(fixture.binding);
+  });
+
+  it('loads store-scoped data on a watcher-triggered refresh while a selector is active', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const storeBinding: OpenSpecRootBinding = {
+      projectId: fixture.project.id,
+      commandCwd: fixture.project.projectPath,
+      rootPath: '/stores/team-store',
+      rootSource: 'store',
+      storeId: 'team-store',
+    };
+    const payloadFor = (binding: OpenSpecRootBinding) => ({
+      project: fixture.project,
+      binding,
+      changes: [makeProjectChange(binding.storeId ? 'store-change' : 'project-change')],
+      archivedChanges: [],
+      projectSpecs: [],
+      referencedStoreSpecs: [],
+    });
+    const gateway = {
+      loadProjectSidebarData: vi.fn(async (_project: ProjectContext, storeId?: string) => (
+        storeId ? payloadFor(storeBinding) : payloadFor(fixture.binding)
+      )),
+      resolveWorksetStore: vi.fn().mockResolvedValue({
+        storeId: 'team-store',
+        canonicalRoot: '/stores/team-store',
+      }),
+    };
+    const dataManager = makeDataManager();
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(dataManager, gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+    await handler?.({ type: 'selectWorksetStore', worksetName: 'team', memberPath: '/stores/team-store' });
+    await vi.runAllTimersAsync();
+    expect((provider as any).explicitProjectStoreId).toBe('team-store');
+    postMessage.mockClear();
+
+    // A watcher event fires the DataManager refresh callback.
+    const refreshCallback = (dataManager.onRefresh as any).mock.calls[0]?.[0] as ((data: any) => void) | undefined;
+    refreshCallback?.(makeDashboardData({ changeName: 'legacy-refresh', lastRefresh: 3 }));
+    await vi.runAllTimersAsync();
+
+    expect(gateway.loadProjectSidebarData).toHaveBeenLastCalledWith(fixture.project, 'team-store');
+    const contextMessages = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'setContext');
+    expect(contextMessages.at(-1)).toEqual(expect.objectContaining({
+      data: expect.objectContaining({ binding: storeBinding }),
+    }));
+  });
+
+  it('keeps the active selector and snapshot when the default-root restore fails', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture('/planning/current');
+    const storeBinding: OpenSpecRootBinding = {
+      projectId: fixture.project.id,
+      commandCwd: fixture.project.projectPath,
+      rootPath: '/stores/team-store',
+      rootSource: 'store',
+      storeId: 'team-store',
+    };
+    const storePayload = {
+      project: fixture.project,
+      binding: storeBinding,
+      changes: [makeProjectChange('store-change')],
+      archivedChanges: [],
+      projectSpecs: [],
+      referencedStoreSpecs: [],
+    };
+    const gateway = {
+      loadProjectSidebarData: vi.fn()
+        .mockResolvedValueOnce({
+          project: fixture.project,
+          binding: fixture.binding,
+          changes: [makeProjectChange('project-change')],
+          archivedChanges: [],
+          projectSpecs: [],
+          referencedStoreSpecs: [],
+        })
+        .mockImplementation(async (_project: ProjectContext, storeId?: string) => {
+          if (storeId) return storePayload;
+          throw new Error('project default root unavailable');
+        }),
+      resolveWorksetStore: vi.fn().mockResolvedValue({
+        storeId: 'team-store',
+        canonicalRoot: '/stores/team-store',
+      }),
+    };
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(makeDataManager(), gateway, fixture);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+    await handler?.({ type: 'selectWorksetStore', worksetName: 'team', memberPath: '/stores/team-store' });
+    await vi.runAllTimersAsync();
+    expect((provider as any).explicitProjectStoreId).toBe('team-store');
+    const snapshotBefore = (provider as any).cachedProjectSidebarData;
+    const bindingBefore = (provider as any).currentProjectBinding;
+    postMessage.mockClear();
+
+    await handler?.({ type: 'selectProjectDefaultRoot' });
+    await vi.runAllTimersAsync();
+
+    expect(gateway.loadProjectSidebarData).toHaveBeenLastCalledWith(fixture.project, undefined);
+    expect(postMessage.mock.calls.some(([message]) => message.type === 'setContext')).toBe(false);
+    expect((provider as any).explicitProjectStoreId).toBe('team-store');
+    expect((provider as any).cachedProjectSidebarData).toBe(snapshotBefore);
+    expect((provider as any).currentProjectBinding).toBe(bindingBefore);
+
+    // The selector survives the failed restore and keeps driving later reloads.
+    await handler?.({ type: 'getProjectSidebarData' });
+    await vi.runAllTimersAsync();
+    expect(gateway.loadProjectSidebarData).toHaveBeenLastCalledWith(fixture.project, 'team-store');
+  });
+
+  it('carries an active Planning Store selector into Current Project restoration', async () => {
+    vi.useFakeTimers();
+    const current = makeProjectFixture('/planning/current');
+    const selectedProject: ProjectContext = {
+      id: '/projects/server-dotnetcore',
+      label: 'server-dotnetcore',
+      projectPath: '/projects/server-dotnetcore',
+    };
+    const currentStoreBinding: OpenSpecRootBinding = {
+      projectId: current.project.id,
+      commandCwd: current.project.projectPath,
+      rootPath: '/stores/team-store',
+      rootSource: 'store',
+      storeId: 'team-store',
+    };
+    const selectedStoreBinding: OpenSpecRootBinding = {
+      projectId: selectedProject.id,
+      commandCwd: selectedProject.projectPath,
+      rootPath: '/stores/team-store',
+      rootSource: 'store',
+      storeId: 'team-store',
+    };
+    const payloadFor = (project: ProjectContext, binding: OpenSpecRootBinding) => ({
+      project,
+      binding,
+      changes: [makeProjectChange(binding.storeId ? 'store-change' : 'project-change')],
+      archivedChanges: [],
+      projectSpecs: [],
+      referencedStoreSpecs: [],
+    });
+    const gateway = {
+      loadProjectSidebarData: vi.fn(async (project: ProjectContext, storeId?: string) => (
+        storeId
+          ? payloadFor(project, project.id === current.project.id ? currentStoreBinding : selectedStoreBinding)
+          : payloadFor(project, {
+            projectId: project.id,
+            commandCwd: project.projectPath,
+            rootPath: '/planning/current',
+            rootSource: 'nearest',
+          })
+      )),
+      resolveWorksetStore: vi.fn().mockResolvedValue({
+        storeId: 'team-store',
+        canonicalRoot: '/stores/team-store',
+      }),
+      resolveWorksetProject: vi.fn().mockResolvedValue(selectedProject),
+      resolveBinding: vi.fn(async (project: ProjectContext, storeId?: string) => (
+        storeId
+          ? (project.id === current.project.id ? currentStoreBinding : selectedStoreBinding)
+          : {
+            projectId: project.id,
+            commandCwd: project.projectPath,
+            rootPath: '/planning/current',
+            rootSource: 'nearest',
+          }
+      )),
+    };
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(makeDataManager(), gateway, current);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+
+    await handler?.({ type: 'selectWorksetStore', worksetName: 'team', memberPath: '/stores/team-store' });
+    await vi.runAllTimersAsync();
+    await handler?.({
+      type: 'selectWorksetProject',
+      worksetName: 'shared-workset',
+      memberPath: selectedProject.projectPath,
+    });
+    await vi.runAllTimersAsync();
+    expect(gateway.resolveBinding).toHaveBeenLastCalledWith(selectedProject, 'team-store');
+    postMessage.mockClear();
+
+    await handler?.({ type: 'selectCurrentProject' });
+    await vi.runAllTimersAsync();
+
+    expect(gateway.resolveBinding).toHaveBeenLastCalledWith(current.project, 'team-store');
+    expect(gateway.loadProjectSidebarData).toHaveBeenLastCalledWith(current.project, 'team-store');
+    const restoredMessage = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'setContext' && message.view === 'sidebar')
+      .at(-1);
+    expect(restoredMessage).toEqual(expect.objectContaining({
+      data: expect.objectContaining({ project: current.project, binding: currentStoreBinding }),
+    }));
+    expect((provider as any).explicitProjectStoreId).toBe('team-store');
+  });
+
+  it('carries an active Planning Store selector into Workset Project navigation', async () => {
+    vi.useFakeTimers();
+    const current = makeProjectFixture('/planning/current');
+    const selectedProject: ProjectContext = {
+      id: '/projects/server-dotnetcore',
+      label: 'server-dotnetcore',
+      projectPath: '/projects/server-dotnetcore',
+    };
+    const currentStoreBinding: OpenSpecRootBinding = {
+      projectId: current.project.id,
+      commandCwd: current.project.projectPath,
+      rootPath: '/stores/team-store',
+      rootSource: 'store',
+      storeId: 'team-store',
+    };
+    const selectedStoreBinding: OpenSpecRootBinding = {
+      projectId: selectedProject.id,
+      commandCwd: selectedProject.projectPath,
+      rootPath: '/stores/team-store',
+      rootSource: 'store',
+      storeId: 'team-store',
+    };
+    const payloadFor = (project: ProjectContext, binding: OpenSpecRootBinding) => ({
+      project,
+      binding,
+      changes: [makeProjectChange(binding.storeId ? 'store-change' : 'project-change')],
+      archivedChanges: [],
+      projectSpecs: [],
+      referencedStoreSpecs: [],
+    });
+    const gateway = {
+      loadProjectSidebarData: vi.fn(async (project: ProjectContext, storeId?: string) => {
+        if (!storeId) {
+          return payloadFor(project, {
+            projectId: project.id,
+            commandCwd: project.projectPath,
+            rootPath: '/planning/current',
+            rootSource: 'nearest',
+          });
+        }
+        return payloadFor(
+          project,
+          project.id === current.project.id ? currentStoreBinding : selectedStoreBinding
+        );
+      }),
+      resolveWorksetStore: vi.fn().mockResolvedValue({
+        storeId: 'team-store',
+        canonicalRoot: '/stores/team-store',
+      }),
+      resolveWorksetProject: vi.fn().mockResolvedValue(selectedProject),
+      resolveBinding: vi.fn().mockResolvedValue(selectedStoreBinding),
+    };
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(makeDataManager(), gateway, current);
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+
+    await handler?.({ type: 'selectWorksetStore', worksetName: 'team', memberPath: '/stores/team-store' });
+    await vi.runAllTimersAsync();
+    postMessage.mockClear();
+
+    await handler?.({
+      type: 'selectWorksetProject',
+      worksetName: 'shared-workset',
+      memberPath: selectedProject.projectPath,
+    });
+    await vi.runAllTimersAsync();
+
+    expect(gateway.resolveBinding).toHaveBeenLastCalledWith(selectedProject, 'team-store');
+    expect(gateway.loadProjectSidebarData).toHaveBeenLastCalledWith(selectedProject, 'team-store');
+    const selectedMessage = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'setContext' && message.view === 'sidebar')
+      .at(-1);
+    expect(selectedMessage).toEqual(expect.objectContaining({
+      data: expect.objectContaining({ project: selectedProject, binding: selectedStoreBinding }),
     }));
   });
 

@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { spawn } from 'child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { OpenSpecCliService } from '@extension/services/openspecCli';
 
 vi.mock('vscode', () => ({
@@ -266,7 +269,7 @@ describe('OpenSpecCliService', () => {
       try {
         await expect(service.runCommand(['workset', 'open', 'planning']))
           .resolves.toBe('Opened planning\n');
-        expect(exec).toHaveBeenCalledWith(['workset', 'open', 'planning']);
+        expect(exec).toHaveBeenCalledWith(['workset', 'open', 'planning'], 3);
         expect(parse).not.toHaveBeenCalled();
       } finally {
         parse.mockRestore();
@@ -1381,5 +1384,424 @@ describe('argsPrefix and scope support', () => {
     // Every command (list/status) spawned with cwd = the declared project root.
     expect(capturedOptions.length).toBeGreaterThan(0);
     expect(capturedOptions.every((o) => o.cwd === declaredRoot)).toBe(true);
+  });
+});
+
+describe('Windows shell-free spawning', () => {
+  const workspaceRoot = '/fake/workspace';
+
+  beforeEach(() => {
+    vi.mocked(spawn).mockReset();
+  });
+
+  // Same platform-faking idiom as the shell-resolution-failed diagnostic test above.
+  async function withFakePlatform<T>(platform: string, fn: () => Promise<T>): Promise<T> {
+    const original = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: platform });
+    try {
+      return await fn();
+    } finally {
+      if (original) {
+        Object.defineProperty(process, 'platform', original);
+      }
+    }
+  }
+
+  function installInstalledRuntime(service: OpenSpecCliService, command: string): void {
+    (service as any).resolver.resolveRuntime = vi.fn().mockResolvedValue({
+      command,
+      argsPrefix: [],
+      env: process.env,
+      version: '1.5.0',
+      source: 'installed',
+      sourceLabel: 'installed',
+      diagnostics: [],
+    });
+  }
+
+  function recordSpawns(stdoutFor: (command: string, args: readonly string[]) => string = () => '') {
+    const spawned: Array<{ command: string; args: readonly string[]; options: any }> = [];
+    vi.mocked(spawn).mockImplementation((command, args, options) => {
+      spawned.push({ command, args, options });
+      return createSpawnSuccessProcess(stdoutFor(command, args)) as any;
+    });
+    return spawned;
+  }
+
+  const SHIM_ENTRY_REL = 'node_modules\\@fission-ai\\openspec\\bin\\openspec.js';
+
+  /** Writes an npm-style .cmd launcher fixture; returns its path. */
+  function writeCmdShim(dir: string, style: 'modern' | 'legacy'): string {
+    const shimPath = path.join(dir, 'openspec.cmd');
+    const content = style === 'modern'
+      ? [
+          '@ECHO off',
+          'GOTO start',
+          ':find_dp0',
+          'SET dp0=%~dp0',
+          'EXIT /b',
+          ':start',
+          'SETLOCAL',
+          'CALL :find_dp0',
+          'IF EXIST "%~dp0\\node.exe" (',
+          '  SET "_prog=%~dp0\\node.exe"',
+          ') ELSE (',
+          '  SET "_prog=node"',
+          '  SET PATHEXT=%PATHEXT:;.JS;=;%',
+          ')',
+          '',
+          `endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%~dp0\\${SHIM_ENTRY_REL}" %*`,
+        ].join('\r\n')
+      : [
+          '@IF EXIST "%~dp0\\node.exe" (',
+          `  "%~dp0\\node.exe"  "%~dp0\\${SHIM_ENTRY_REL}" %*`,
+          ') ELSE (',
+          '  @SETLOCAL',
+          '  @SET PATHEXT=%PATHEXT:;.JS;=;%',
+          `  node  "%~dp0\\${SHIM_ENTRY_REL}" %*`,
+          ')',
+        ].join('\r\n');
+    writeFileSync(shimPath, content);
+    return shimPath;
+  }
+
+  function makeTempShimDir(): string {
+    return mkdtempSync(path.join(os.tmpdir(), 'openspec-cmd-shim-'));
+  }
+
+  it('passes %VAR%, quoted-percent, and spaced args verbatim through a resolved .cmd shim without a shell', async () => {
+    const tmp = makeTempShimDir();
+    try {
+      // Bundled node.exe beside the shim: npm shims prefer it when present.
+      writeFileSync(path.join(tmp, 'node.exe'), '');
+      const shimPath = writeCmdShim(tmp, 'modern');
+      const spawned = recordSpawns();
+
+      const service = new OpenSpecCliService(workspaceRoot);
+      installInstalledRuntime(service, shimPath);
+
+      await withFakePlatform('win32', () =>
+        service.runCommand([
+          'workset',
+          'create',
+          'my workset',
+          '--member',
+          'C:\\work\\%USERNAME%\\repo',
+          '--ref',
+          "'%PATH%'",
+          '--pct',
+          '100%',
+        ])
+      );
+
+      expect(spawned).toHaveLength(1);
+      // The .cmd shim is resolved to its underlying node invocation, and every
+      // argv element reaches the child process byte-identical — cmd.exe never
+      // parses (and %-expands) these strings.
+      expect(spawned[0].command).toBe(path.join(tmp, 'node.exe'));
+      expect(spawned[0].args).toEqual([
+        path.join(tmp, SHIM_ENTRY_REL),
+        'workset',
+        'create',
+        'my workset',
+        '--member',
+        'C:\\work\\%USERNAME%\\repo',
+        '--ref',
+        "'%PATH%'",
+        '--pct',
+        '100%',
+      ]);
+      expect(spawned[0].options.shell).toBe(false);
+      expect(spawned[0].options.cwd).toBe(workspaceRoot);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("spawns bare 'node' when the shim directory has no node.exe (CreateProcess resolves node.exe via PATH)", async () => {
+    const tmp = makeTempShimDir();
+    try {
+      const shimPath = writeCmdShim(tmp, 'legacy');
+      const spawned = recordSpawns();
+
+      const service = new OpenSpecCliService(workspaceRoot);
+      installInstalledRuntime(service, shimPath);
+
+      await withFakePlatform('win32', () => service.runCommand(['workset', 'list', '--json']));
+
+      // where.exe must NOT be used to locate node: its first hit may be a
+      // node.cmd wrapper (unspawnable with shell:false), and its pipe output
+      // is OEM-codepage decoded, so non-ASCII install paths (e.g. zh-cn
+      // usernames) mojibake into ENOENT. A bare 'node' command lets
+      // CreateProcess resolve node.exe on PATH with correct Unicode handling.
+      expect(spawned).toHaveLength(1);
+      expect(spawned[0].command).toBe('node');
+      expect(spawned[0].args).toEqual([
+        path.join(tmp, SHIM_ENTRY_REL),
+        'workset',
+        'list',
+        '--json',
+      ]);
+      expect(spawned[0].options.shell).toBe(false);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('spawns .exe commands directly with shell:false and byte-identical argv', async () => {
+    const spawned = recordSpawns();
+
+    const service = new OpenSpecCliService(workspaceRoot);
+    installInstalledRuntime(service, 'C:\\tools\\openspec.exe');
+
+    await withFakePlatform('win32', () =>
+      service.runCommand(['workset', 'open', 'team workspace', 'C:\\work\\%USERNAME%\\repo'])
+    );
+
+    expect(spawned).toHaveLength(1);
+    expect(spawned[0].command).toBe('C:\\tools\\openspec.exe');
+    expect(spawned[0].args).toEqual([
+      'workset',
+      'open',
+      'team workspace',
+      'C:\\work\\%USERNAME%\\repo',
+    ]);
+    expect(spawned[0].options.shell).toBe(false);
+  });
+
+  it('fails closed without spawning when a .cmd shim cannot be resolved to a node invocation', async () => {
+    const tmp = makeTempShimDir();
+    try {
+      const shimPath = path.join(tmp, 'openspec.cmd');
+      writeFileSync(shimPath, '@echo off\r\nrem not an npm-style launcher\r\n');
+      const spawned = recordSpawns();
+
+      const service = new OpenSpecCliService(workspaceRoot);
+      installInstalledRuntime(service, shimPath);
+
+      await expect(
+        withFakePlatform('win32', () => service.runCommand(['workset', 'list']))
+      ).rejects.toThrow(/could not be resolved/i);
+
+      // Fail-closed: no child process may be spawned when the launcher cannot
+      // be resolved safely (never silently fall back to cmd.exe parsing).
+      expect(spawned).toHaveLength(0);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('resolves bare Windows commands through where.exe so PATH .cmd shims also spawn shell-free', async () => {
+    const tmp = makeTempShimDir();
+    try {
+      writeFileSync(path.join(tmp, 'node.exe'), '');
+      const shimPath = writeCmdShim(tmp, 'modern');
+      const spawned = recordSpawns((command, args) =>
+        command === 'where.exe' && args[0] === 'openspec' ? `${shimPath}\r\n` : ''
+      );
+
+      const service = new OpenSpecCliService(workspaceRoot);
+      installInstalledRuntime(service, 'openspec');
+
+      await withFakePlatform('win32', () => service.runCommand(['workset', 'list', '--json']));
+
+      expect(spawned).toHaveLength(2);
+      expect(spawned[0].command).toBe('where.exe');
+      expect(spawned[0].args).toEqual(['openspec']);
+      // where.exe probes PATH from the workspace root, matching the resolver
+      // and main-spawn cwd semantics (a workspace-local launcher must resolve
+      // the same way it will later be executed).
+      expect(spawned[0].options.cwd).toBe(workspaceRoot);
+      expect(spawned[0].options.shell).toBe(false);
+      expect(spawned[1].command).toBe(path.join(tmp, 'node.exe'));
+      expect(spawned[1].args).toEqual([
+        path.join(tmp, SHIM_ENTRY_REL),
+        'workset',
+        'list',
+        '--json',
+      ]);
+      expect(spawned[1].options.shell).toBe(false);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('skips extensionless and PowerShell where.exe entries and resolves the first spawnable launcher', async () => {
+    const tmp = makeTempShimDir();
+    try {
+      // npm global dirs contain an extension-less bash shim and a .ps1
+      // launcher alongside openspec.cmd. Taking the first where.exe line
+      // blindly would hand the extension-less shim to CreateProcess, which
+      // cannot execute a non-PE shell script.
+      writeFileSync(path.join(tmp, 'node.exe'), '');
+      const shimPath = writeCmdShim(tmp, 'modern');
+      const whereLines = [
+        path.join(tmp, 'openspec'), // extension-less bash shim — skipped
+        'C:\\npm\\openspec.ps1', // PowerShell launcher — skipped
+        shimPath, // spawnable .cmd — chosen
+      ].join('\r\n');
+      const spawned = recordSpawns((command, args) =>
+        command === 'where.exe' && args[0] === 'openspec' ? `${whereLines}\r\n` : ''
+      );
+
+      const service = new OpenSpecCliService(workspaceRoot);
+      installInstalledRuntime(service, 'openspec');
+
+      await withFakePlatform('win32', () => service.runCommand(['workset', 'list', '--json']));
+
+      expect(spawned).toHaveLength(2);
+      expect(spawned[0].command).toBe('where.exe');
+      expect(spawned[0].options.cwd).toBe(workspaceRoot);
+      // The .cmd entry is resolved to its node invocation, not the first line.
+      expect(spawned[1].command).toBe(path.join(tmp, 'node.exe'));
+      expect(spawned[1].args).toEqual([
+        path.join(tmp, SHIM_ENTRY_REL),
+        'workset',
+        'list',
+        '--json',
+      ]);
+      expect(spawned[1].options.shell).toBe(false);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('fails closed when where.exe only offers a PowerShell launcher', async () => {
+    const spawned = recordSpawns((command, args) =>
+      command === 'where.exe' && args[0] === 'openspec' ? 'C:\\npm\\openspec.ps1\r\n' : ''
+    );
+
+    const service = new OpenSpecCliService(workspaceRoot);
+    installInstalledRuntime(service, 'openspec');
+
+    await expect(
+      withFakePlatform('win32', () => service.runCommand(['workset', 'list']))
+    ).rejects.toThrow(/no spawnable openspec cli launcher/i);
+
+    // Only the where.exe probe ran; no main spawn of the PowerShell launcher.
+    expect(spawned).toHaveLength(1);
+    expect(spawned[0].command).toBe('where.exe');
+  });
+
+  it('fails closed when where.exe reports no spawnable launcher at all', async () => {
+    const spawned: Array<{ command: string; args: readonly string[]; options: any }> = [];
+    vi.mocked(spawn).mockImplementation((command, args, options) => {
+      spawned.push({ command, args, options });
+      if (command === 'where.exe') {
+        return {
+          stdout: { on: vi.fn() },
+          stderr: { on: vi.fn() },
+          on: (event: string, cb: (...args2: unknown[]) => void) => {
+            if (event === 'close') setImmediate(() => cb(1));
+          },
+          kill: vi.fn(),
+        } as any;
+      }
+      return createSpawnSuccessProcess('') as any;
+    });
+
+    const service = new OpenSpecCliService(workspaceRoot);
+    installInstalledRuntime(service, 'openspec');
+
+    await expect(
+      withFakePlatform('win32', () => service.runCommand(['workset', 'list']))
+    ).rejects.toThrow(/no spawnable openspec cli launcher/i);
+
+    // Only the where.exe probe ran; the bare name is never handed to
+    // CreateProcess as a blind direct spawn.
+    expect(spawned).toHaveLength(1);
+    expect(spawned[0].command).toBe('where.exe');
+  });
+
+  it('fails closed without spawning when the runtime command is a .ps1 launcher', async () => {
+    const spawned = recordSpawns();
+
+    const service = new OpenSpecCliService(workspaceRoot);
+    installInstalledRuntime(service, 'C:\\npm\\openspec.ps1');
+
+    await expect(
+      withFakePlatform('win32', () => service.runCommand(['workset', 'list']))
+    ).rejects.toThrow(/powershell/i);
+
+    expect(spawned).toHaveLength(0);
+  });
+
+  it('keeps local-source mode shell-free and unquoted even on Windows', async () => {
+    const spawned: Array<{ command: string; args: readonly string[]; options: any }> = [];
+    vi.mocked(spawn).mockImplementation((command, args, options) => {
+      spawned.push({ command, args, options });
+      return createSpawnSuccessProcess('') as any;
+    });
+
+    const service = new OpenSpecCliService(workspaceRoot);
+    (service as any).resolver.resolveRuntime = vi.fn().mockResolvedValue({
+      command: process.execPath,
+      argsPrefix: ['/Users/test/openspec/bin/openspec.js'],
+      env: process.env,
+      version: '1.4.0',
+      source: 'localSource',
+      sourceLabel: 'local source (/Users/test/openspec)',
+      diagnostics: [],
+    });
+
+    await withFakePlatform('win32', () => service.runCommand(['workset', 'list', '--json']));
+
+    expect(spawned).toHaveLength(1);
+    expect(spawned[0].command).toBe(process.execPath);
+    expect(spawned[0].args).toEqual(['/Users/test/openspec/bin/openspec.js', 'workset', 'list', '--json']);
+    expect(spawned[0].options.shell).toBe(false);
+  });
+
+  it('passes argv through byte-identical on non-Windows platforms', async () => {
+    const spawned: Array<{ command: string; args: readonly string[]; options: any }> = [];
+    vi.mocked(spawn).mockImplementation((command, args, options) => {
+      spawned.push({ command, args, options });
+      return createSpawnSuccessProcess('') as any;
+    });
+
+    const service = new OpenSpecCliService(workspaceRoot);
+    installInstalledRuntime(service, 'openspec');
+
+    await withFakePlatform('darwin', () =>
+      service.runCommand(['workset', 'create', 'my workset', '--member', '/work/my folder'])
+    );
+
+    expect(spawned).toHaveLength(1);
+    expect(spawned[0].command).toBe('openspec');
+    expect(spawned[0].args).toEqual(['workset', 'create', 'my workset', '--member', '/work/my folder']);
+    expect(spawned[0].options.shell).toBe(false);
+  });
+});
+
+describe('runJson/runCommand retry options', () => {
+  const workspaceRoot = '/fake/workspace';
+
+  it('forwards a retries override to execOpenSpec', async () => {
+    const service = new OpenSpecCliService(workspaceRoot);
+    const exec = vi.spyOn(service as any, 'execOpenSpec').mockResolvedValue('{"ok":true}');
+
+    await service.runJson(['workset', 'create', 'x', '--json'], { retries: 1 });
+
+    expect(exec).toHaveBeenCalledWith(['workset', 'create', 'x', '--json'], 1);
+  });
+
+  it('defaults to 3 attempts when no retry override is given', async () => {
+    const service = new OpenSpecCliService(workspaceRoot);
+    const exec = vi.spyOn(service as any, 'execOpenSpec').mockResolvedValue('{"ok":true}');
+
+    await service.runJson(['workset', 'list', '--json']);
+    await service.runCommand(['workset', 'open', 'x']);
+
+    expect(exec).toHaveBeenNthCalledWith(1, ['workset', 'list', '--json'], 3);
+    expect(exec).toHaveBeenNthCalledWith(2, ['workset', 'open', 'x'], 3);
+  });
+
+  it('keeps default retries for read paths like listWorksets', async () => {
+    const service = new OpenSpecCliService(workspaceRoot);
+    const runJson = vi.spyOn(service, 'runJson').mockResolvedValue({ worksets: [] });
+
+    await (service as any).listWorksets();
+
+    expect(runJson).toHaveBeenCalledWith(['workset', 'list', '--json']);
   });
 });
