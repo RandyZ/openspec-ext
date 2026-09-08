@@ -346,6 +346,8 @@
   "spec.requirements": "{count} requirements",
 
   "extension.noWorkspace": "OpenSpec: No workspace folder found",
+  "extension.emptyWorkspaceMessage": "Open a project folder to use OpenSpec",
+  "extension.openFolder": "Open Folder",
   "extension.reloadRecommended": "OpenSpec was installed or updated. Reload the window to refresh the sidebar contribution.",
   "extension.reloadWindow": "Reload Window",
 

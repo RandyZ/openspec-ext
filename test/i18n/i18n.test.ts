@@ -51,6 +51,10 @@ describe('i18n', () => {
       expect(t('verifyArchive.clearSession')).toBe('Clear Session');
       expect(t('verifyArchive.reviewArchive')).toBe('Review & Archive');
       expect(t('verifyArchive.archiveNow')).toBe('Archive Now');
+      expect(t('extension.emptyWorkspaceMessage')).toBe(
+        'Open a project folder to use OpenSpec'
+      );
+      expect(t('extension.openFolder')).toBe('Open Folder');
     });
 
     it('supports parameter substitution', () => {
@@ -84,6 +88,10 @@ describe('i18n', () => {
       expect(t('verifyArchive.clearSession')).toBe('Clear Session');
       expect(t('verifyArchive.reviewArchive')).toBe('审查并归档');
       expect(t('verifyArchive.archiveNow')).toBe('立即归档');
+      expect(t('extension.emptyWorkspaceMessage')).toBe(
+        '请先打开项目文件夹以使用 OpenSpec'
+      );
+      expect(t('extension.openFolder')).toBe('打开文件夹');
     });
 
     it('supports parameter substitution in Chinese', () => {

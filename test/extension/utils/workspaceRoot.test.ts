@@ -100,3 +100,47 @@ describe('getOpenSpecProjectRoots', () => {
     expect(roots).toEqual([]);
   });
 });
+
+describe('getOpenSpecWorkspaceRoot', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns null for undefined or empty workspace folders', async () => {
+    const { workspace } = await import('vscode');
+    const { getOpenSpecWorkspaceRoot } = await import('@extension/utils/workspaceRoot');
+
+    workspace.workspaceFolders = undefined;
+    await expect(getOpenSpecWorkspaceRoot()).resolves.toBeNull();
+
+    workspace.workspaceFolders = [];
+    await expect(getOpenSpecWorkspaceRoot()).resolves.toBeNull();
+  });
+
+  it('selects the configured folder in a multi-folder workspace', async () => {
+    const { workspace } = await import('vscode');
+    const { getOpenSpecWorkspaceRoot } = await import('@extension/utils/workspaceRoot');
+    workspace.workspaceFolders = [
+      { uri: { fsPath: '/work/notes' }, name: 'Notes', index: 0 },
+      { uri: { fsPath: '/work/app' }, name: 'App', index: 1 },
+    ];
+    (workspace.fs.stat as any).mockImplementation((uri: { fsPath: string }) =>
+      uri.fsPath.startsWith('/work/app/')
+        ? Promise.resolve({ type: 1 })
+        : Promise.reject(new Error('ENOENT'))
+    );
+
+    await expect(getOpenSpecWorkspaceRoot()).resolves.toBe('/work/app');
+  });
+
+  it('preserves the first-folder fallback when no config exists', async () => {
+    const { workspace } = await import('vscode');
+    const { getOpenSpecWorkspaceRoot } = await import('@extension/utils/workspaceRoot');
+    workspace.workspaceFolders = [
+      { uri: { fsPath: '/work/app' }, name: 'App', index: 0 },
+    ];
+    (workspace.fs.stat as any).mockRejectedValue(new Error('ENOENT'));
+
+    await expect(getOpenSpecWorkspaceRoot()).resolves.toBe('/work/app');
+  });
+});
