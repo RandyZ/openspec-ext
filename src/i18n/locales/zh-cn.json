@@ -346,6 +346,8 @@
   "spec.requirements": "{count} 个需求",
 
   "extension.noWorkspace": "OpenSpec：未找到工作区文件夹",
+  "extension.emptyWorkspaceMessage": "请先打开项目文件夹以使用 OpenSpec",
+  "extension.openFolder": "打开文件夹",
   "extension.reloadRecommended": "OpenSpec 已安装或更新。请重载窗口以刷新侧边栏贡献点。",
   "extension.reloadWindow": "重载窗口",
 

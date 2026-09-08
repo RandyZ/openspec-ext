@@ -9,6 +9,7 @@ import { InteractiveAgentTerminalManager } from './services/interactiveAgentTerm
 import { OpenSpecCacheService } from './services/openSpecCacheService';
 import { createProjectContext, ProjectDataGateway } from './services/projectDataGateway';
 import { setLocale, t } from '../i18n';
+import { EmptyWorkspaceViewProvider } from './providers/emptyWorkspaceViewProvider';
 
 let dataManager: DataManager | null = null;
 
@@ -21,8 +22,24 @@ export async function activate(context: vscode.ExtensionContext) {
   try {
     const workspaceRoot = await getOpenSpecWorkspaceRoot();
     if (!workspaceRoot) {
-      logger.error('No workspace folder found');
-      vscode.window.showErrorMessage(t('extension.noWorkspace'));
+      logger.info('No workspace folder found; registering the empty dashboard state');
+      context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(
+          DashboardViewProvider.viewType,
+          new EmptyWorkspaceViewProvider()
+        )
+      );
+      const commands = context.extension.packageJSON.contributes?.commands ?? [];
+      for (const contribution of commands) {
+        if (typeof contribution.command !== 'string' || !contribution.command.startsWith('openspec.')) {
+          continue;
+        }
+        context.subscriptions.push(
+          vscode.commands.registerCommand(contribution.command, () =>
+            vscode.commands.executeCommand(`${DashboardViewProvider.viewType}.focus`)
+          )
+        );
+      }
       return;
     }
     logger.info(`[archived] activate: using workspaceRoot=${workspaceRoot}`);

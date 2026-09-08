@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-09-08
+
+### Fixed
+
+- Show a lightweight dashboard with an Open Folder action when OpenSpec starts without a workspace folder.
+- Keep OpenSpec commands available in empty windows and guide users to the native folder picker without starting project services.
+
 ## [0.2.1] - 2026-09-04
 
 ### Added
