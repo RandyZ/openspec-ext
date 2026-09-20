@@ -1,4 +1,4 @@
-# OpenSpec Extension User Guide
+# OpenSpec Workflow User Guide
 
 English | [简体中文](USER_GUIDE.zh-CN.md)
 
