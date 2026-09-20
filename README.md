@@ -34,7 +34,8 @@ The detail view keeps artifacts, task progress, and workflow actions together. V
 
 ## Installation
 
-- **From marketplace**: Install **OpenSpec** from the [VS Code Marketplace](https://marketplace.visualstudio.com/) or [Open VSX](https://open-vsx.org/) (e.g. in Cursor).
+- **Open VSX (available now)**: Install **OpenSpec** from [Open VSX](https://open-vsx.org/extension/randysss/openspec-workflow) — works in Cursor, VSCodium, and other Open VSX–compatible editors.
+- **VS Code Marketplace (publishing in progress)**: The listing for publisher `randysss` / **OpenSpec** is being prepared; it is not live on [marketplace.visualstudio.com](https://marketplace.visualstudio.com/) yet. Until then, use Open VSX or install from a packaged `.vsix` (see [docs/PUBLISHING.md](docs/PUBLISHING.md)).
 - **Requirements**: [OpenSpec CLI](https://github.com/Fission-AI/OpenSpec#quick-start); a workspace that contains (or will contain) `openspec/config.yaml`. The extension activates when it finds an OpenSpec workspace.
 
 If Cursor or VS Code cannot see the CLI that works in your terminal, set `openspec.cliPath` to the absolute executable path, for example `/opt/homebrew/bin/openspec` or `/usr/local/bin/openspec`.
@@ -150,18 +151,18 @@ Open Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`):
 ---
 <!-- Below: development/contributing only; above: user-facing (packaged as extension README) -->
 
-[![Status](https://img.shields.io/badge/status-in%20development-yellow)](openspec/changes/vscode-extension-mvp/PROGRESS.md)
-[![Progress](https://img.shields.io/badge/progress-MVP-blue)](openspec/changes/vscode-extension-mvp/tasks.md)
+[![Version](https://img.shields.io/badge/version-0.2.2-blue)](CHANGELOG.md)
+[![Open VSX](https://img.shields.io/badge/Open%20VSX-available-green)](https://open-vsx.org/extension/randysss/openspec-workflow)
 
 ## 🏗️ Architecture
 
 ```
-Extension Host (Node.js)          Webview (Browser)
-├── DataManager                   ├── HTML (current)
-│   ├── OpenSpecCliService        └── React App (Phase 7-9)
-│   ├── FileManagerService            ├── Dashboard
-│   └── FileWatcherService            ├── TaskList
-├── CommandManager                    └── ArtifactViewer
+Extension Host (Node.js)          Webview (React)
+├── DataManager                   ├── Dashboard
+│   ├── OpenSpecCliService        ├── Change detail
+│   ├── FileManagerService        └── Shared UI components
+│   └── FileWatcherService
+├── CommandManager
 └── DashboardProvider
 ```
 
@@ -169,11 +170,11 @@ Extension Host (Node.js)          Webview (Browser)
 
 - Data Source: Hybrid (CLI + FileWatcher + Direct reads)
 - Backend: OpenSpec CLI via `child_process`
-- Frontend: React + Tailwind CSS + Radix UI (planned)
+- Frontend: React + Tailwind CSS + Radix UI
 - Build: esbuild + Vite
 - Package Manager: pnpm
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for details.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
 
 ***
 
@@ -204,7 +205,7 @@ pnpm run watch      # Watch mode
 
 ### Publishing
 
-To package and publish the extension to [VS Code Marketplace](https://marketplace.visualstudio.com/) and [Open VSX](https://open-vsx.org/) (e.g. for Cursor), see **[docs/PUBLISHING.md](docs/PUBLISHING.md)** for publisher setup, tokens, and release steps.
+Open VSX **0.2.2** is published; VS Code Marketplace listing is in progress. To package locally or publish to Open VSX (and eventually VS Code Marketplace), see **[docs/PUBLISHING.md](docs/PUBLISHING.md)** for publisher setup, tokens, and release steps.
 
 ### Project Structure
 
@@ -216,7 +217,7 @@ openspce-ui/
 │   │   ├── commands/           # Command handlers
 │   │   ├── providers/          # Webview providers
 │   │   └── utils/              # Logger, helpers
-│   └── webview/                # React app (coming)
+│   └── webview/                # React app
 ├── openspec/                   # OpenSpec workspace
 │   ├── changes/
 │   │   └── vscode-extension-mvp/  # This project
@@ -233,9 +234,10 @@ openspce-ui/
 ### Scripts
 
 ```bash
-pnpm run compile       # Build extension once
+pnpm run compile       # Build extension + webview once
 pnpm run watch         # Watch extension changes
-pnpm run build         # Build everything (future)
+pnpm run build         # Same as compile (extension + webview)
+pnpm test              # Run unit tests (Vitest)
 ```
 
 ### Tech Stack
@@ -243,7 +245,7 @@ pnpm run build         # Build everything (future)
 | Layer | Technology |
 |-------|-----------|
 | Backend | TypeScript, Node.js, VSCode API |
-| Frontend | React 19, Tailwind CSS, Radix UI (planned) |
+| Frontend | React 19, Tailwind CSS, Radix UI |
 | Build | esbuild (extension), Vite (webview) |
 | Tools | pnpm, ESLint, Prettier |
 
@@ -251,16 +253,9 @@ pnpm run build         # Build everything (future)
 
 ## 📊 Progress
 
-**Current**: MVP complete (Phases 1–12). Post-MVP: Sidebar tree, Spec diff, Archive browser.
+**Current**: v0.2.2 — project-first sidebar, lifecycle dashboard, Worksets, and bilingual user guides.
 
-### ✅ Completed Phases
-
-- ✅ **Phase 1–6**: Setup, CLI, File system, Cache, Commands, Dashboard provider
-- ✅ **Phase 7–10**: React webview, Dashboard & Change detail UI, UI component library
-- ✅ **Phase 11**: Testing & polish (manual checklist, edge cases, performance, docs)
-- ✅ **Phase 12**: Documentation, package config, release prep
-
-**Detailed progress**: [tasks.md](openspec/changes/vscode-extension-mvp/tasks.md)
+See [CHANGELOG.md](CHANGELOG.md) for release history. Historical MVP planning artifacts live under [openspec/changes/archive/2026-02-11-vscode-extension-mvp/](openspec/changes/archive/2026-02-11-vscode-extension-mvp/).
 
 ***
 
@@ -299,29 +294,28 @@ pnpm run build         # Build everything (future)
 
 | Document | Description |
 |----------|-------------|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | High-level architecture |
-| [PROGRESS.md](openspec/changes/vscode-extension-mvp/PROGRESS.md) | Development log |
-| [proposal.md](openspec/changes/vscode-extension-mvp/proposal.md) | Project proposal |
-| [design.md](openspec/changes/vscode-extension-mvp/design.md) | Technical design |
-| [tasks.md](openspec/changes/vscode-extension-mvp/tasks.md) | Task breakdown |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | High-level architecture |
+| [CHANGELOG.md](CHANGELOG.md) | Release history |
+| [docs/PUBLISHING.md](docs/PUBLISHING.md) | Package and publish to Open VSX / VS Marketplace |
+| [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | End-user guide |
 
 ***
 
 ## 🤝 Contributing
 
-Currently in active development. Contributions welcome after MVP release.
+Contributions welcome. Open an issue or pull request on GitHub.
 
 **To contribute:**
 
-1. Review [ARCHITECTURE.md](ARCHITECTURE.md)
-2. Check [tasks.md](openspec/changes/vscode-extension-mvp/tasks.md)
+1. Review [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+2. Run `pnpm install`, `pnpm run build`, and `pnpm test` before submitting
 3. Follow code style (ESLint + Prettier)
 
 ***
 
 ## 📄 License
 
-MIT (TBD)
+MIT — see [LICENSE](LICENSE)
 
 ***
 
@@ -332,6 +326,6 @@ MIT (TBD)
 
 ***
 
-**Version**: 0.1.0  
-**Last Updated**: 2026-02  
-**Status**: 🟢 MVP complete
+**Version**: 0.2.2  
+**Last Updated**: 2026-09  
+**Status**: 🟢 Released on Open VSX; VS Code Marketplace publishing in progress

@@ -1,6 +1,13 @@
 # Publishing the OpenSpec extension
 
-This document describes how to package and publish the extension to **VS Code Marketplace** and **Open VSX** (used by Cursor, VSCodium, and others). Ensure `package.json` version is bumped and changes are committed before publishing.
+This document describes how to package and publish the extension to **Open VSX** and **VS Code Marketplace**.
+
+**Current release status (2026-09-20):**
+
+- **Open VSX**: [OpenSpec 0.2.2](https://open-vsx.org/extension/randysss/openspec-workflow) is published (publisher `randysss`, extension id `openspec-workflow`).
+- **VS Code Marketplace**: Listing is **publishing in progress** — not live on marketplace.visualstudio.com yet. Use Open VSX until the Marketplace listing is available.
+
+Ensure `package.json` version is bumped and changes are committed before publishing.
 
 ## Prerequisites
 
@@ -94,15 +101,26 @@ pnpm run publish:openvsx
 
 ---
 
-## 3. Release flow (both marketplaces)
+## 3. Release flow
 
-1. Bump `version` in `package.json` and commit.
-2. Run once: `pnpm run package` (produces a `.vsix` in the project root).
+1. Bump `version` in `package.json`, update `CHANGELOG.md`, and commit.
+2. Run once: `pnpm run package` (produces a `.vsix` in the project root via `scripts/package-with-marketplace-readme.js`).
 3. Publish to one or both:
+   - **Open VSX:** `OVSX_TOKEN=<token> pnpm run publish:openvsx` (or `make publish-ovsx` if you use a local `.env`).
    - **VS Code Marketplace:** `pnpm run publish:marketplace` (after `vsce login <publisher>` or with `VSCE_PAT` set).
-   - **Open VSX:** `OVSX_TOKEN=<token> pnpm run publish:openvsx`.
 
-You can publish the same version to both; the same `.vsix` is used.
+The same `.vsix` from step 2 is used for both registries.
+
+### package.json scripts reference
+
+| Script | Command | Purpose |
+|--------|---------|---------|
+| `build` | `pnpm run compile` | Build extension host + webview |
+| `compile` | `node esbuild.js && pnpm run build:webview` | One-shot build |
+| `package` | `node scripts/package-with-marketplace-readme.js` | Build and create `.vsix` |
+| `publish:marketplace` | `pnpm exec vsce publish` | Publish to VS Code Marketplace |
+| `publish:openvsx` | `node scripts/publish-openvsx.js` | Publish pre-built `.vsix` to Open VSX |
+| `test` | `vitest run` | Unit tests |
 
 ---
 
