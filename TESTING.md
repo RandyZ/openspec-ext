@@ -33,7 +33,7 @@ code --extensionDevelopmentPath=$(pwd)
 
 ### 4. 验证扩展运行（Phase 11.1 手动测试清单）
 
-- **扩展激活**：Console 出现 `OpenSpec extension is now active!`；Running Extensions 中可见 "OpenSpec"。
+- **扩展激活**：Console 出现 `OpenSpec extension is now active!`；Running Extensions 中可见 "OpenSpec Workflow"。
 - **CLI 未安装**：在无 `openspec` 的 PATH 下打开项目，应出现友好提示。
 - **无 openspec 工作区**：打开不含 `openspec/config.yaml` 的文件夹，扩展不激活（无错误）。
 - **Dashboard 加载**：命令 "OpenSpec: Open Dashboard" 或侧边栏 OpenSpec → Dashboard，应打开 React 面板并显示数据。

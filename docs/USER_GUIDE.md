@@ -1,8 +1,8 @@
-# OpenSpec Extension User Guide
+# OpenSpec Workflow User Guide
 
 English | [简体中文](USER_GUIDE.zh-CN.md)
 
-This guide explains how the OpenSpec extension UI works with OpenSpec. For the full OpenSpec model, start with the official [Getting Started guide](https://github.com/Fission-AI/OpenSpec/blob/main/docs/getting-started.md) and [command guide](https://github.com/Fission-AI/OpenSpec/blob/main/docs/how-commands-work.md).
+This guide explains how the OpenSpec Workflow extension UI works with OpenSpec. For the full OpenSpec model, start with the official [Getting Started guide](https://github.com/Fission-AI/OpenSpec/blob/main/docs/getting-started.md) and [command guide](https://github.com/Fission-AI/OpenSpec/blob/main/docs/how-commands-work.md).
 
 ## Choose your path
 

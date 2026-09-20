@@ -1,4 +1,4 @@
-# OpenSpec Extension
+# OpenSpec Workflow
 
 > A focused, project-first dashboard for OpenSpec changes, specs, and safe workflow actions in VS Code and Cursor.
 
@@ -6,7 +6,7 @@ English | [简体中文](README.zh-CN.md)
 
 ## Overview
 
-OpenSpec brings change planning and execution into the editor. Review what needs attention, inspect specs and artifacts, and take the next workflow step without losing context.
+OpenSpec Workflow brings change planning and execution into the editor. Review what needs attention, inspect specs and artifacts, and take the next workflow step without losing context.
 
 ### Highlights
 
@@ -34,8 +34,8 @@ The detail view keeps artifacts, task progress, and workflow actions together. V
 
 ## Installation
 
-- **Open VSX (available now)**: Install **OpenSpec** from [Open VSX](https://open-vsx.org/extension/randysss/openspec-workflow) — works in Cursor, VSCodium, and other Open VSX–compatible editors.
-- **VS Code Marketplace (publishing in progress)**: The listing for publisher `randysss` / **OpenSpec** is being prepared; it is not live on [marketplace.visualstudio.com](https://marketplace.visualstudio.com/) yet. Until then, use Open VSX or install from a packaged `.vsix` (see [docs/PUBLISHING.md](docs/PUBLISHING.md)).
+- **Open VSX (available now)**: Install **OpenSpec Workflow** from [Open VSX](https://open-vsx.org/extension/randysss/openspec-workflow) — works in Cursor, VSCodium, and other Open VSX–compatible editors.
+- **VS Code Marketplace (publishing in progress)**: The listing for publisher `randysss` / **OpenSpec Workflow** is being prepared; it is not live on [marketplace.visualstudio.com](https://marketplace.visualstudio.com/) yet. Until then, use Open VSX or install from a packaged `.vsix` (see [docs/PUBLISHING.md](docs/PUBLISHING.md)).
 - **Requirements**: [OpenSpec CLI](https://github.com/Fission-AI/OpenSpec#quick-start); a workspace that contains (or will contain) `openspec/config.yaml`. The extension activates when it finds an OpenSpec workspace.
 
 If Cursor or VS Code cannot see the CLI that works in your terminal, set `openspec.cliPath` to the absolute executable path, for example `/opt/homebrew/bin/openspec` or `/usr/local/bin/openspec`.

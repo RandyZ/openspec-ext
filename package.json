@@ -1,6 +1,6 @@
 {
   "name": "openspec-workflow",
-  "displayName": "OpenSpec",
+  "displayName": "OpenSpec Workflow",
   "description": "Project-first OpenSpec dashboard for changes, specs, stores, worksets, and safe workflow actions",
   "version": "0.2.2",
   "publisher": "randysss",
