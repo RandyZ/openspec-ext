@@ -34,7 +34,8 @@ OpenSpec 将 change 规划与执行带回编辑器：集中查看需要关注的
 
 ## 安装
 
-- **从扩展市场安装**：在 [VS Code Marketplace](https://marketplace.visualstudio.com/) 或 [Open VSX](https://open-vsx.org/)（例如 Cursor）安装 **OpenSpec**。
+- **Open VSX（现已可用）**：在 [Open VSX](https://open-vsx.org/extension/randysss/openspec-workflow) 安装 **OpenSpec**，适用于 Cursor、VSCodium 等兼容 Open VSX 的编辑器。
+- **VS Code Marketplace（发布进行中）**：发布者 `randysss` 的 **OpenSpec** 列表正在准备，尚未在 [marketplace.visualstudio.com](https://marketplace.visualstudio.com/) 上线。在此之前请使用 Open VSX，或从打包的 `.vsix` 安装（见 [docs/PUBLISHING.md](docs/PUBLISHING.md)）。
 - **运行要求**：[OpenSpec CLI](https://github.com/Fission-AI/OpenSpec#quick-start)；工作区需要包含（或准备包含）`openspec/config.yaml`。扩展会在检测到 OpenSpec workspace 时激活。
 
 如果 Cursor 或 VS Code 无法找到你终端里可用的 OpenSpec CLI，请将 `openspec.cliPath` 设置为 CLI 的绝对路径，例如 `/opt/homebrew/bin/openspec` 或 `/usr/local/bin/openspec`。
