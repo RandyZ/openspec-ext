@@ -23,7 +23,6 @@ import {
   isCopyOnlyWorkflowMode,
   shouldForceCursorWorkflowRoute,
   toWorkflowLaunchConfigView,
-  toWorkflowLaunchConfigView,
 } from '../../shared/workflowLaunchConfig';
 import type {
   InteractiveWorkflowAction,
