@@ -20,8 +20,9 @@ import {
 import { confirmDirectArchive } from '../commands/archiveConfirm';
 import { formatBytes } from '../utils/formatBytes';
 import {
-  getEffectiveWorkflowAdapterId,
+  isCopyOnlyWorkflowMode,
   shouldForceCursorWorkflowRoute,
+  toWorkflowLaunchConfigView,
   toWorkflowLaunchConfigView,
 } from '../../shared/workflowLaunchConfig';
 import type {
@@ -1052,7 +1053,8 @@ export async function handleWebviewMessage(
       });
 
       const launchConfig = getWorkflowLaunchConfig();
-      const effectiveAdapterId = getEffectiveWorkflowAdapterId(launchConfig);
+      const launchConfigView = toWorkflowLaunchConfigView(launchConfig);
+      const effectiveAdapterId = launchConfigView.effectiveAdapterId;
       logger.info(
         `[workflow] launchWorkflowAction: action=${action}, changeName=${changeName}, ` +
           `scopeId=${message.scopeId ?? '<none>'}, scopeRoot=${scopeRootPath}, ` +
@@ -1063,7 +1065,7 @@ export async function handleWebviewMessage(
           `effectiveAdapterId=${effectiveAdapterId ?? 'none'}`
       );
 
-      if (!effectiveAdapterId) {
+      if (isCopyOnlyWorkflowMode(launchConfigView)) {
         const payload = buildWorkflowLaunchPayload({
           action,
           changeName,
@@ -1081,6 +1083,7 @@ export async function handleWebviewMessage(
       }
 
       const adapter = shouldForceCursorWorkflowRoute(launchConfig)
+        && launchConfig.preferredAgentAdapter !== 'clipboard'
         ? await getAdapterById('cursor')
         : await getCurrentAdapter();
       if (!adapter) {

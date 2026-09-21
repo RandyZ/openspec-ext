@@ -518,6 +518,8 @@ describe('handleWebviewMessage toggleTask', () => {
   it('routes launchWorkflowAction through Cursor adapter when Cursor launch mode is explicitly agentCli', async () => {
     vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
       get: vi.fn((key: string) => {
+        if (key === 'workflowLaunchMode') return 'adapter';
+        if (key === 'preferredAgentAdapter') return 'cursor';
         if (key === 'cursorLaunchMode') return 'agentCli';
         return false;
       }),
@@ -547,9 +549,42 @@ describe('handleWebviewMessage toggleTask', () => {
     );
   });
 
+  it('copies launchWorkflowAction when executor is clipboard even with explicit cursor launch mode', async () => {
+    vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+      get: vi.fn((key: string) => {
+        if (key === 'workflowLaunchMode') return 'adapter';
+        if (key === 'preferredAgentAdapter') return 'clipboard';
+        if (key === 'cursorLaunchMode') return 'deeplink';
+        return false;
+      }),
+      inspect: vi.fn((key: string) => {
+        if (key === 'preferredAgentAdapter') return { globalValue: 'clipboard' };
+        if (key === 'cursorLaunchMode') return { globalValue: 'deeplink' };
+        return undefined;
+      }),
+    } as any);
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+    };
+    const webview = {
+      postMessage: vi.fn(),
+    };
+
+    await handleWebviewMessage(
+      { type: 'launchWorkflowAction', action: 'continue', changeName: 'demo-change' },
+      webview as any,
+      dataManager as any
+    );
+
+    expect(adapterFillChat).not.toHaveBeenCalled();
+    expect(vscode.env.clipboard.writeText).toHaveBeenCalledWith('/opsx:continue demo-change');
+  });
+
   it('routes launchWorkflowAction through Cursor adapter when Cursor launch mode is explicitly deeplink', async () => {
     vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
       get: vi.fn((key: string) => {
+        if (key === 'workflowLaunchMode') return 'adapter';
+        if (key === 'preferredAgentAdapter') return 'cursor';
         if (key === 'cursorLaunchMode') return 'deeplink';
         return false;
       }),

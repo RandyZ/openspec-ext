@@ -40,6 +40,29 @@ describe('TaskList next actions', () => {
     expect(html).not.toContain('Done task</span><button');
   });
 
+  it('uses Copy when effective adapter is clipboard even if cursor launch mode is explicit', () => {
+    setLocale('en');
+    const html = renderToStaticMarkup(
+      <TaskList
+        content={'- [ ] First task'}
+        changeName="demo"
+        workflowLaunchConfig={{
+          workflowLaunchMode: 'adapter',
+          preferredAgentAdapter: 'clipboard',
+          cursorLaunchMode: 'deeplink',
+          cursorLaunchModeExplicit: true,
+          cursorAgentModel: 'auto',
+          effectiveAdapterId: 'clipboard',
+        }}
+        onToggleTask={vi.fn()}
+        onExecuteTask={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain('Copy');
+    expect(html).not.toContain('>Next<');
+  });
+
   it('uses Copy label in copy-only mode', () => {
     setLocale('en');
     const html = renderToStaticMarkup(

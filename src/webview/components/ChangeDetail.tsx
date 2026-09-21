@@ -15,6 +15,8 @@ import {
   type ChangeWorkflowSnapshot,
 } from '../../shared/changeWorkflow';
 import type { WorkflowLaunchConfigView } from '../utils/workflowLaunchLabels';
+import { getWorkflowLaunchModeHint } from '../utils/workflowLaunchLabels';
+import { resolveUiWorkflowLaunchConfig } from '../utils/resolveUiWorkflowLaunchConfig';
 import type {
   ChangeDetailTabId,
   InteractiveWorkflowAction,
@@ -155,6 +157,11 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   };
 
   const isArchived = archivedLocally || changeName.startsWith('archive:');
+  const uiWorkflowLaunchConfig = useMemo(
+    () => resolveUiWorkflowLaunchConfig(workflowLaunchConfig, agentAdapters.currentId),
+    [workflowLaunchConfig, agentAdapters.currentId],
+  );
+  const tasksLaunchModeHint = getWorkflowLaunchModeHint(uiWorkflowLaunchConfig);
   const resolvedWorkflowActions = useMemo(
     () => workflowSnapshot
       ? resolveWorkflowActions(workflowSnapshot, {
@@ -614,7 +621,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         pendingAction={pendingWorkflowAction}
         receiptStatus={workflowReceipt?.status}
         receiptMessage={workflowReceipt?.message}
-        workflowLaunchConfig={workflowLaunchConfig}
+        workflowLaunchConfig={uiWorkflowLaunchConfig}
         onAction={handleResolvedAction}
         onCopyFf={(name) =>
           postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({ action: 'ff', changeName: name, target: 'clipboard' })))
@@ -768,6 +775,11 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
                       if (id) {
                         postMessage(sendMessage.setPreferredAgentAdapter(id));
                         setAgentAdapters((prev) => ({ ...prev, currentId: id }));
+                        setWorkflowLaunchConfig((prev) =>
+                          prev
+                            ? resolveUiWorkflowLaunchConfig(prev, id)
+                            : prev,
+                        );
                       }
                     }}
                     style={{
@@ -783,9 +795,11 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
                     ))}
                   </select>
                 </div>
-                <p className="text-xs" style={{ color: 'var(--vscode-descriptionForeground)' }}>
-                  {t('workflow.launchHelp')}
-                </p>
+                {tasksLaunchModeHint && (
+                  <p className="text-xs" style={{ color: 'var(--vscode-descriptionForeground)' }}>
+                    {tasksLaunchModeHint}
+                  </p>
+                )}
               </div>
             )}
             {isArchived && (
@@ -799,7 +813,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
               isArchived={isArchived}
               executingTaskIndex={executingTaskIndex}
               executionState={taskExecutionState}
-              workflowLaunchConfig={workflowLaunchConfig}
+              workflowLaunchConfig={uiWorkflowLaunchConfig}
               onToggleTask={(_name, taskIndex, taskText, done) =>
                 setPendingTaskToggle({ taskIndex, taskText, done })
               }

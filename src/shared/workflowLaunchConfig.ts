@@ -83,6 +83,12 @@ export function isCopyOnlyWorkflowMode(config: WorkflowLaunchConfigView): boolea
 export function getEffectiveWorkflowAdapterId(
   config: WorkflowLaunchConfig
 ): EffectiveWorkflowAdapterId {
+  if (config.preferredAgentAdapter === 'clipboard') {
+    return 'clipboard';
+  }
+  if (config.workflowLaunchMode === 'clipboard') {
+    return null;
+  }
   if (shouldForceCursorWorkflowRoute(config)) {
     return 'cursor';
   }
