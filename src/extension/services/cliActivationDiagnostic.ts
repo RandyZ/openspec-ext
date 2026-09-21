@@ -6,7 +6,18 @@ export type CliActivationDiagnosticCategory =
   | 'shell-resolution-failed'
   | 'version-check-failed'
   | 'local-source-invalid'
+  | 'timeout'
   | 'unknown';
+
+/** P0-1 button order: Retry → Open Settings → Copy Diagnostics → Open Docs (link). */
+export const STANDARD_RECOVERY_ACTION_ORDER: readonly CliActivationRecoveryAction[] = [
+  'retry',
+  'open-settings',
+  'copy-diagnostics',
+  'open-docs',
+];
+
+const STANDARD_RECOVERY_ACTIONS: CliActivationRecoveryAction[] = [...STANDARD_RECOVERY_ACTION_ORDER];
 
 export type CliActivationRecoveryAction =
   | 'open-settings'
@@ -34,21 +45,17 @@ export interface CliActivationDiagnostic {
   normalizedMessage: string;
 }
 
-const RECOVERY_ACTIONS: Record<CliActivationDiagnosticCategory, CliActivationRecoveryAction[]> = {
-  'configured-path-invalid': ['open-settings', 'copy-diagnostics', 'open-docs'],
-  'cli-not-found': ['open-docs', 'open-settings', 'retry', 'copy-diagnostics'],
-  'permission-denied': ['open-docs', 'copy-diagnostics', 'retry'],
-  'spawn-failed': ['open-settings', 'copy-diagnostics', 'retry', 'open-docs'],
-  'shell-resolution-failed': ['open-settings', 'open-docs', 'copy-diagnostics', 'retry'],
-  'version-check-failed': ['open-docs', 'copy-diagnostics', 'retry'],
-  'local-source-invalid': ['open-settings', 'retry', 'copy-diagnostics', 'open-docs'],
-  unknown: ['copy-diagnostics', 'retry', 'open-docs'],
-};
+export function orderRecoveryActions(
+  actions: readonly CliActivationRecoveryAction[]
+): CliActivationRecoveryAction[] {
+  return STANDARD_RECOVERY_ACTION_ORDER.filter((action) => actions.includes(action));
+}
 
 export function getRecoveryActionsForCategory(
   category: CliActivationDiagnosticCategory
 ): CliActivationRecoveryAction[] {
-  return [...RECOVERY_ACTIONS[category]];
+  void category;
+  return [...STANDARD_RECOVERY_ACTIONS];
 }
 
 /**

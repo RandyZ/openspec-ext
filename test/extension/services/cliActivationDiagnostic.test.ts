@@ -3,26 +3,37 @@ import {
   buildCliActivationDiagnostic,
   getRecoveryActionsForCategory,
   normalizeDiagnosticMessage,
+  orderRecoveryActions,
   sanitizeDiagnosticDetails,
+  STANDARD_RECOVERY_ACTION_ORDER,
   type CliActivationDiagnosticCategory,
 } from '@extension/services/cliActivationDiagnostic';
 
+const STANDARD_ACTIONS = [...STANDARD_RECOVERY_ACTION_ORDER];
+
 describe('cliActivationDiagnostic', () => {
   it.each([
-    ['configured-path-invalid', ['open-settings', 'copy-diagnostics', 'open-docs']],
-    ['cli-not-found', ['open-docs', 'open-settings', 'retry', 'copy-diagnostics']],
-    ['permission-denied', ['open-docs', 'copy-diagnostics', 'retry']],
-    ['spawn-failed', ['open-settings', 'copy-diagnostics', 'retry', 'open-docs']],
-    ['shell-resolution-failed', ['open-settings', 'open-docs', 'copy-diagnostics', 'retry']],
-    ['version-check-failed', ['open-docs', 'copy-diagnostics', 'retry']],
-    ['local-source-invalid', ['open-settings', 'retry', 'copy-diagnostics', 'open-docs']],
-    ['unknown', ['copy-diagnostics', 'retry', 'open-docs']],
-  ] as Array<[CliActivationDiagnosticCategory, string[]]>)(
-    'maps %s to deterministic recovery actions',
-    (category, actions) => {
-      expect(getRecoveryActionsForCategory(category)).toEqual(actions);
+    'configured-path-invalid',
+    'cli-not-found',
+    'permission-denied',
+    'spawn-failed',
+    'shell-resolution-failed',
+    'version-check-failed',
+    'local-source-invalid',
+    'timeout',
+    'unknown',
+  ] as CliActivationDiagnosticCategory[])(
+    'maps %s to the P0-1 recovery action order',
+    (category) => {
+      expect(getRecoveryActionsForCategory(category)).toEqual(STANDARD_ACTIONS);
     }
   );
+
+  it('orders recovery actions with Retry first and Open Docs last', () => {
+    expect(
+      orderRecoveryActions(['open-docs', 'copy-diagnostics', 'retry', 'open-settings'])
+    ).toEqual(STANDARD_ACTIONS);
+  });
 
   it('normalizes volatile paths while preserving stable error codes', () => {
     expect(
@@ -124,12 +135,7 @@ describe('cliActivationDiagnostic', () => {
     });
 
     expect(diagnostic.category).toBe('spawn-failed');
-    expect(diagnostic.recoveryActions).toEqual([
-      'open-settings',
-      'copy-diagnostics',
-      'retry',
-      'open-docs',
-    ]);
+    expect(diagnostic.recoveryActions).toEqual(STANDARD_ACTIONS);
     expect(diagnostic.copyText).toContain('category=spawn-failed');
     expect(diagnostic.copyText).toContain('platform=win32');
     expect(diagnostic.copyText).toContain('workspace=openspec-ext');
@@ -182,14 +188,12 @@ describe('cliActivationDiagnostic', () => {
     });
 
     expect(diagnostic.normalizedMessage).toBe('configured path invalid: <path>/openspec');
+    expect(diagnostic.canRetry).toBe(true);
   });
 
-  it('local-source-invalid has recovery actions including open-settings and retry', () => {
+  it('local-source-invalid includes retry in the standard order', () => {
     const actions = getRecoveryActionsForCategory('local-source-invalid');
-    expect(actions).toContain('open-settings');
-    expect(actions).toContain('retry');
-    expect(actions).toContain('copy-diagnostics');
-    expect(actions).toContain('open-docs');
+    expect(actions).toEqual(STANDARD_ACTIONS);
 
     const diagnostic = buildCliActivationDiagnostic({
       category: 'local-source-invalid',

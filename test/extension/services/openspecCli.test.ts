@@ -934,7 +934,7 @@ describe('CLI activation diagnostics', () => {
 
     expect(service.getCliActivationDiagnostic()).toMatchObject({
       category: 'cli-not-found',
-      recoveryActions: ['open-docs', 'open-settings', 'retry', 'copy-diagnostics'],
+      recoveryActions: ['retry', 'open-settings', 'copy-diagnostics', 'open-docs'],
     });
   });
 

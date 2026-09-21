@@ -364,9 +364,17 @@
 
   "cliDiagnostic.actionOpenSettings": "Open Settings",
   "cliDiagnostic.actionRetry": "Retry",
+  "cliDiagnostic.actionRetryChecking": "Checking…",
   "cliDiagnostic.actionCopyDiagnostics": "Copy Diagnostics",
   "cliDiagnostic.actionOpenDocs": "Open Docs",
-  "cliDiagnostic.staleWarning": "Displayed data may be stale until OpenSpec CLI is available again.",
+  "cliDiagnostic.title.cliNotFound": "OpenSpec CLI not found",
+  "cliDiagnostic.title.configuredPathInvalid": "Configured CLI path is invalid",
+  "cliDiagnostic.title.spawnFailed": "OpenSpec CLI failed to start",
+  "cliDiagnostic.title.timeout": "OpenSpec CLI timed out",
+  "cliDiagnostic.guidance": "Install the CLI or set `openspec.cliPath`, then Retry.",
+  "cliDiagnostic.staleWarning": "Showing cached data; refresh after fixing the CLI.",
+  "cliDiagnostic.copiedToast": "Diagnostics copied",
+  "cliDiagnostic.restoredToast": "CLI restored",
 
   "noContent": "No content",
   "loading": "Loading...",

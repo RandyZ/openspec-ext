@@ -137,6 +137,9 @@ export class OpenSpecCliService {
 
   private classifySpawnError(error: Error): CliActivationDiagnosticCategory {
     const message = error.message.toLowerCase();
+    if (message.includes('timed out') || message.includes('timeout')) {
+      return 'timeout';
+    }
     if (message.includes('eacces') || message.includes('eperm') || message.includes('permission denied')) {
       return 'permission-denied';
     }
