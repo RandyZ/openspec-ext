@@ -369,6 +369,9 @@ export const Dashboard: React.FC = () => {
     name: string;
     message?: string;
   } | null>(null);
+  const [cliRetrying, setCliRetrying] = useState(false);
+  const [cliDiagnosticToast, setCliDiagnosticToast] = useState<string | null>(null);
+  const cliRetryingRef = useRef(false);
 
   const { data, loading, loadingReason, pendingScopeId, activity, error } = state;
   const projectSidebar = state.projectSidebar;
@@ -429,16 +432,32 @@ export const Dashboard: React.FC = () => {
   const allowPageClamp = shouldClampChangesViewPage(data?.scope, viewScope);
 
   useEffect(() => {
+    if (!cliDiagnosticToast) return undefined;
+    const timer = window.setTimeout(() => setCliDiagnosticToast(null), 3000);
+    return () => window.clearTimeout(timer);
+  }, [cliDiagnosticToast]);
+
+  useEffect(() => {
     // Listen for messages from extension
     const cleanup = onMessage((event: MessageEvent) => {
       const message = event.data;
 
+      const finishCliRetry = (restored: boolean) => {
+        if (cliRetryingRef.current && restored) {
+          setCliDiagnosticToast(t('cliDiagnostic.restoredToast'));
+        }
+        cliRetryingRef.current = false;
+        setCliRetrying(false);
+      };
+
       if (message.type === 'setContext' && message.view === 'sidebar') {
+        finishCliRetry(message.data?.cache?.stale !== true && !message.data?.cliDiagnostic);
         dispatch({ type: 'SET_PROJECT_SIDEBAR', payload: message.data });
         if (message.data.workflowLaunchConfig) {
           setWorkflowLaunchConfig(message.data.workflowLaunchConfig);
         }
       } else if (message.type === 'dashboardData' && !projectFirst) {
+        finishCliRetry(message.cache?.stale !== true);
         dispatch({ type: 'SET_DATA', payload: message.data, cache: message.cache });
         if (message.debug !== undefined) {
           dispatch({ type: 'SET_DEBUG', payload: message.debug });
@@ -460,6 +479,7 @@ export const Dashboard: React.FC = () => {
       } else if (message.type === 'error') {
         dispatch({ type: 'SET_ERROR', payload: message.message });
       } else if (message.type === 'cliActivationDiagnostic') {
+        finishCliRetry(false);
         dispatch({
           type: 'SET_CLI_DIAGNOSTIC',
           payload: { diagnostic: message.diagnostic, mode: message.mode },
@@ -674,8 +694,16 @@ export const Dashboard: React.FC = () => {
 
   const handleCliDiagnosticAction = (action: string) => {
     if (action === 'open-settings') postMessage(sendMessage.openCliPathSettings());
-    if (action === 'retry') postMessage(sendMessage.retryCliDetection());
-    if (action === 'copy-diagnostics') postMessage(sendMessage.copyCliDiagnostic());
+    if (action === 'retry') {
+      if (cliRetrying) return;
+      cliRetryingRef.current = true;
+      setCliRetrying(true);
+      postMessage(sendMessage.retryCliDetection());
+    }
+    if (action === 'copy-diagnostics') {
+      postMessage(sendMessage.copyCliDiagnostic());
+      setCliDiagnosticToast(t('cliDiagnostic.copiedToast'));
+    }
     if (action === 'open-docs') postMessage(sendMessage.openCliInstallDocs());
   };
 
@@ -752,10 +780,23 @@ export const Dashboard: React.FC = () => {
           </div>
         )}
 
+        {cliDiagnosticToast && (
+          <div
+            className="mb-2 px-2 py-1 rounded text-xs"
+            style={{
+              background: 'var(--vscode-notificationsInfoBackground, var(--vscode-editorWidget-background))',
+              color: 'var(--vscode-foreground)',
+            }}
+          >
+            {cliDiagnosticToast}
+          </div>
+        )}
+
         {projectDiagnostic && (
           <CliActivationDiagnosticCard
             diagnostic={projectDiagnostic.diagnostic}
             mode={projectDiagnostic.mode}
+            isRetrying={cliRetrying}
             onAction={handleCliDiagnosticAction}
           />
         )}

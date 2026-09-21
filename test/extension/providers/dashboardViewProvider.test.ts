@@ -4291,7 +4291,7 @@ describe('DashboardViewProvider', () => {
     const diagnostic = {
       category: 'cli-not-found',
       message: 'OpenSpec CLI unavailable',
-      recoveryActions: ['open-docs', 'open-settings', 'retry', 'copy-diagnostics'],
+      recoveryActions: ['retry', 'open-settings', 'copy-diagnostics', 'open-docs'],
       safeDetails: ['extension host PATH: failed ENOENT'],
       copyText: 'category=cli-not-found',
       canRetry: true,

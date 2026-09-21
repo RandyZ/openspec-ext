@@ -34,21 +34,35 @@ export interface CliActivationDiagnostic {
   normalizedMessage: string;
 }
 
+/** P0-1 UX order: Retry → Open Settings → Copy Diagnostics → Open Docs (link). */
+const RECOVERY_ACTION_ORDER: CliActivationRecoveryAction[] = [
+  'retry',
+  'open-settings',
+  'copy-diagnostics',
+  'open-docs',
+];
+
 const RECOVERY_ACTIONS: Record<CliActivationDiagnosticCategory, CliActivationRecoveryAction[]> = {
-  'configured-path-invalid': ['open-settings', 'copy-diagnostics', 'open-docs'],
-  'cli-not-found': ['open-docs', 'open-settings', 'retry', 'copy-diagnostics'],
-  'permission-denied': ['open-docs', 'copy-diagnostics', 'retry'],
-  'spawn-failed': ['open-settings', 'copy-diagnostics', 'retry', 'open-docs'],
-  'shell-resolution-failed': ['open-settings', 'open-docs', 'copy-diagnostics', 'retry'],
-  'version-check-failed': ['open-docs', 'copy-diagnostics', 'retry'],
-  'local-source-invalid': ['open-settings', 'retry', 'copy-diagnostics', 'open-docs'],
-  unknown: ['copy-diagnostics', 'retry', 'open-docs'],
+  'configured-path-invalid': ['retry', 'open-settings', 'copy-diagnostics', 'open-docs'],
+  'cli-not-found': ['retry', 'open-settings', 'copy-diagnostics', 'open-docs'],
+  'permission-denied': ['retry', 'copy-diagnostics', 'open-docs'],
+  'spawn-failed': ['retry', 'open-settings', 'copy-diagnostics', 'open-docs'],
+  'shell-resolution-failed': ['retry', 'open-settings', 'copy-diagnostics', 'open-docs'],
+  'version-check-failed': ['retry', 'copy-diagnostics', 'open-docs'],
+  'local-source-invalid': ['retry', 'open-settings', 'copy-diagnostics', 'open-docs'],
+  unknown: ['retry', 'copy-diagnostics', 'open-docs'],
 };
+
+export function orderRecoveryActions(
+  actions: CliActivationRecoveryAction[]
+): CliActivationRecoveryAction[] {
+  return RECOVERY_ACTION_ORDER.filter((action) => actions.includes(action));
+}
 
 export function getRecoveryActionsForCategory(
   category: CliActivationDiagnosticCategory
 ): CliActivationRecoveryAction[] {
-  return [...RECOVERY_ACTIONS[category]];
+  return orderRecoveryActions(RECOVERY_ACTIONS[category]);
 }
 
 /**

@@ -3,26 +3,36 @@ import {
   buildCliActivationDiagnostic,
   getRecoveryActionsForCategory,
   normalizeDiagnosticMessage,
+  orderRecoveryActions,
   sanitizeDiagnosticDetails,
   type CliActivationDiagnosticCategory,
 } from '@extension/services/cliActivationDiagnostic';
 
 describe('cliActivationDiagnostic', () => {
   it.each([
-    ['configured-path-invalid', ['open-settings', 'copy-diagnostics', 'open-docs']],
-    ['cli-not-found', ['open-docs', 'open-settings', 'retry', 'copy-diagnostics']],
-    ['permission-denied', ['open-docs', 'copy-diagnostics', 'retry']],
-    ['spawn-failed', ['open-settings', 'copy-diagnostics', 'retry', 'open-docs']],
-    ['shell-resolution-failed', ['open-settings', 'open-docs', 'copy-diagnostics', 'retry']],
-    ['version-check-failed', ['open-docs', 'copy-diagnostics', 'retry']],
-    ['local-source-invalid', ['open-settings', 'retry', 'copy-diagnostics', 'open-docs']],
-    ['unknown', ['copy-diagnostics', 'retry', 'open-docs']],
+    ['configured-path-invalid', ['retry', 'open-settings', 'copy-diagnostics', 'open-docs']],
+    ['cli-not-found', ['retry', 'open-settings', 'copy-diagnostics', 'open-docs']],
+    ['permission-denied', ['retry', 'copy-diagnostics', 'open-docs']],
+    ['spawn-failed', ['retry', 'open-settings', 'copy-diagnostics', 'open-docs']],
+    ['shell-resolution-failed', ['retry', 'open-settings', 'copy-diagnostics', 'open-docs']],
+    ['version-check-failed', ['retry', 'copy-diagnostics', 'open-docs']],
+    ['local-source-invalid', ['retry', 'open-settings', 'copy-diagnostics', 'open-docs']],
+    ['unknown', ['retry', 'copy-diagnostics', 'open-docs']],
   ] as Array<[CliActivationDiagnosticCategory, string[]]>)(
     'maps %s to deterministic recovery actions',
     (category, actions) => {
       expect(getRecoveryActionsForCategory(category)).toEqual(actions);
     }
   );
+
+  it('orders recovery actions with Retry first and Open Docs last', () => {
+    expect(orderRecoveryActions(['open-docs', 'copy-diagnostics', 'retry', 'open-settings'])).toEqual([
+      'retry',
+      'open-settings',
+      'copy-diagnostics',
+      'open-docs',
+    ]);
+  });
 
   it('normalizes volatile paths while preserving stable error codes', () => {
     expect(
@@ -125,9 +135,9 @@ describe('cliActivationDiagnostic', () => {
 
     expect(diagnostic.category).toBe('spawn-failed');
     expect(diagnostic.recoveryActions).toEqual([
+      'retry',
       'open-settings',
       'copy-diagnostics',
-      'retry',
       'open-docs',
     ]);
     expect(diagnostic.copyText).toContain('category=spawn-failed');

@@ -364,9 +364,17 @@
 
   "cliDiagnostic.actionOpenSettings": "打开设置",
   "cliDiagnostic.actionRetry": "重试",
+  "cliDiagnostic.actionRetryLoading": "检测中…",
   "cliDiagnostic.actionCopyDiagnostics": "复制诊断",
   "cliDiagnostic.actionOpenDocs": "打开文档",
-  "cliDiagnostic.staleWarning": "在 OpenSpec CLI 恢复可用前，当前展示的数据可能已经过时。",
+  "cliDiagnostic.copiedToast": "诊断已复制",
+  "cliDiagnostic.restoredToast": "CLI 已恢复",
+  "cliDiagnostic.guideLine": "请安装 CLI 或设置 `openspec.cliPath`，然后重试。",
+  "cliDiagnostic.title.cliNotFound": "未找到 OpenSpec CLI",
+  "cliDiagnostic.title.configuredPathInvalid": "已配置的 CLI 路径无效",
+  "cliDiagnostic.title.spawnFailed": "OpenSpec CLI 启动失败",
+  "cliDiagnostic.title.timeout": "OpenSpec CLI 探测超时",
+  "cliDiagnostic.staleWarning": "当前可能为缓存数据；修复 CLI 后请重试。",
 
   "noContent": "暂无内容",
   "loading": "加载中...",
