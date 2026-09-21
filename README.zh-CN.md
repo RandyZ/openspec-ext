@@ -47,11 +47,11 @@ OpenSpec 将 change 规划与执行带回编辑器：集中查看需要关注的
 1. 打开包含 `openspec/config.yaml` 的工作区。
 2. 执行 **OpenSpec: Open Dashboard**。
 3. 检查当前 **Root**，然后选择 **New Change**。
-4. 默认选择 **Copy Continue planning** 或 **Copy FF**，再将复制的命令粘贴给 Agent，以生成 planning artifacts。
-5. 检查 **Proposal**、**Specs**、**Design** 和 **Tasks**，然后选择 **Copy Apply**，并将复制的命令粘贴给 Agent。
+4. 在 Cursor 中，默认选择 **在 Cursor 打开 · Continue planning** 或 **在 Cursor 打开 · FF** 直接启动工作流（也可在设置中选择「仅复制（安全）」）。在 VS Code 中，按钮默认只复制命令。
+5. 检查 **Proposal**、**Specs**、**Design** 和 **Tasks**，然后选择 **在 Cursor 打开 · Apply**（仅复制模式下为 **复制 Apply**）继续执行。
 6. 在 **Verify & Archive** 中先运行 **Run Verify**，再按需要使用 **Review & Archive**。
 
-默认的 `clipboard` 启动模式只复制 workflow 命令；将 `openspec.workflowLaunchMode` 配置为 `adapter` 后，相应动作才会通过 adapter 打开、启动或运行。
+在 **Cursor** 中，工作流按钮默认 **可执行（推荐）**——会打开聊天或在 Cursor 中打开并预填 `/opsx:*` 命令。若只需复制，请在 `openspec.workflowLaunchMode` 中选择「仅复制（安全）」。在 VS Code 中，除非显式选择 adapter 模式，否则仍以仅复制为默认。
 
 **Review & Archive** 是推荐的 Agent 辅助路径。**Archive Now** 是需显式确认后执行的直接 CLI 归档方式，仅在 workflow 完成时可用。
 
@@ -103,9 +103,9 @@ Store 与 Workset 需要 OpenSpec CLI 1.5.0 或更高版本。
 | `openspec.focusSidebarViewWhenOpeningDashboard` | `false` | 执行 Open Dashboard 命令时聚焦 OpenSpec sidebar |
 | `openspec.cliPath` | `""` | 可选的 OpenSpec CLI 绝对路径；为空时自动从 PATH 和 login shell 检测 |
 | `openspec.taskExecutionMode` | `fillChat` | 点击任务执行时的模式：`auto` 通过 adapter 执行；`fillChat` 填充 chat 或复制到剪贴板 |
-| `openspec.workflowLaunchMode` | `clipboard` | workflow 按钮行为：`clipboard` 只复制命令；`adapter` 按首选 adapter 路由 |
-| `openspec.preferredAgentAdapter` | `clipboard` | `workflowLaunchMode=adapter` 时使用的首选执行适配器：`clipboard`、`cursor`、`vscode-copilot`、`claude-code` 或 `opencode` |
-| `openspec.cursorLaunchMode` | `clipboard` | 非交互 workflow 动作的 Cursor adapter 启动方式：`clipboard` 仅复制；`deeplink` 打开 Cursor prompt 并复制兜底；`chatCommand` 尝试 Cursor Chat query 并复制兜底；`agentCli` 以 headless 模式运行 Cursor Agent CLI |
+| `openspec.workflowLaunchMode` | `clipboard`（VS Code）/ Cursor 智能默认可执行 | **可执行（推荐）** 或 **仅复制（安全）**。Cursor 未配置时默认可执行。 |
+| `openspec.preferredAgentAdapter` | `clipboard`（VS Code）/ Cursor 模式下为 `cursor` | launch 模式为 adapter 时的首选执行适配器 |
+| `openspec.cursorLaunchMode` | 存储默认 `clipboard` / Cursor 可执行模式下为 `deeplink` | Cursor 启动方式：`deeplink`、`chatCommand`、`clipboard`，或显式 `agentCli`（**可能修改工作区文件**，不会自动选中） |
 | `openspec.taskDependencyPolicy` | `block` | 前置任务未完成时的策略：`block` 阻止执行；`warn` 提示后允许继续 |
 | `openspec.cursorAgentModel` | `auto` | 显式 Cursor Agent CLI 执行时使用的模型；`auto` 表示由 Cursor 选择 |
 | `openspec.agentModel` | `auto` | 旧版 Cursor Agent CLI 模型配置；建议改用 `openspec.cursorAgentModel` |
@@ -113,10 +113,10 @@ Store 与 Workset 需要 OpenSpec CLI 1.5.0 或更高版本。
 
 ### 任务执行与适配器
 
-- **Clipboard** (`clipboard`)：始终可用，也是默认 workflow 启动方式，只复制生成的 `/opsx:*` 命令。
-- **Cursor** (`cursor`)：在 Cursor 中可复制命令并打开官方 prompt deeplink、尝试 Chat query、仅复制，或在用户显式配置时启动 headless Agent CLI。
+- **Clipboard** (`clipboard`)：始终可用。选择「仅复制（安全）」时只复制 `/opsx:*` 命令。
+- **Cursor** (`cursor`)：在 Cursor 中默认通过 deeplink 或 Chat 打开；`agentCli` 仅在你显式选择时可用，且可能修改工作区文件。
 - **OpenCode** (`opencode`)：通过 adapter 路由时使用 `/opsx-<action>` 命令格式。
-- workflow 动作默认使用 `workflowLaunchMode=clipboard`。当你希望按钮打开所选 adapter 时，设置 `openspec.workflowLaunchMode=adapter` 并选择 `openspec.preferredAgentAdapter`。在 Cursor 中，显式设置 `openspec.cursorLaunchMode` 为 `deeplink`、`chatCommand` 或 `agentCli` 也会让非交互 workflow 按钮走 Cursor 路由。
+- Cursor 未配置 workflow 设置时会智能默认可执行模式。若 launch 失败，扩展会回退到剪贴板并显示可见提示。
 - Verify 和 Archive 是刻意分开的：它们会进入专用 `Verify & Archive` 标签页，并在 VS Code 官方终端编辑器中运行，而不是走 headless `agentCli`。
 - 在该标签页中，`Review & Archive` 保留 Agent 交互式审查；`Archive Now` 是显式 direct archive 逃生路径，workflow 未完成时会保持禁用并说明原因。
 

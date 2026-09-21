@@ -9,6 +9,9 @@ vi.mock('vscode', () => ({
   workspace: {
     getConfiguration: vi.fn(),
   },
+  env: {
+    appName: 'Visual Studio Code',
+  },
 }));
 
 const getConfiguration = vi.mocked(vscode.workspace.getConfiguration);
@@ -30,7 +33,8 @@ describe('workflow launch config', () => {
     vi.clearAllMocks();
   });
 
-  it('uses safe defaults when settings are missing', () => {
+  it('uses copy-only defaults when settings are missing on non-Cursor hosts', () => {
+    vi.mocked(vscode.env).appName = 'Visual Studio Code';
     mockConfig({});
 
     expect(getWorkflowLaunchConfig()).toEqual({
@@ -42,7 +46,21 @@ describe('workflow launch config', () => {
     });
   });
 
+  it('defaults Cursor hosts to launch mode with deeplink when settings are missing', () => {
+    vi.mocked(vscode.env).appName = 'Cursor';
+    mockConfig({});
+
+    expect(getWorkflowLaunchConfig()).toEqual({
+      workflowLaunchMode: 'adapter',
+      preferredAgentAdapter: 'cursor',
+      cursorLaunchMode: 'deeplink',
+      cursorAgentModel: 'auto',
+      cursorLaunchModeExplicit: false,
+    });
+  });
+
   it('normalizes invalid enum values back to safe defaults', () => {
+    vi.mocked(vscode.env).appName = 'Visual Studio Code';
     mockConfig({
       workflowLaunchMode: 'run-everything',
       preferredAgentAdapter: 'unknown',

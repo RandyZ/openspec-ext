@@ -3,8 +3,10 @@ import type {
   CursorLaunchMode,
   PreferredAgentAdapter,
   WorkflowLaunchConfig,
+  WorkflowLaunchConfigWithExplicit,
   WorkflowLaunchMode,
 } from '../../shared/workflowLaunchConfig';
+import { resolveWorkflowLaunchConfig } from '../../shared/workflowLaunchConfig';
 export type {
   CursorLaunchMode,
   PreferredAgentAdapter,
@@ -58,7 +60,11 @@ export function getCursorAgentModel(): string {
   return legacyModel || 'auto';
 }
 
-export function getWorkflowLaunchConfig(): WorkflowLaunchConfig {
+function isCursorHost(): boolean {
+  return (vscode.env.appName ?? '').toLowerCase().includes('cursor');
+}
+
+function readRawWorkflowLaunchConfig(): WorkflowLaunchConfigWithExplicit {
   const workflowLaunchMode = readString('workflowLaunchMode');
   const preferredAgentAdapter = readString('preferredAgentAdapter');
   const cursorLaunchMode = readString('cursorLaunchMode');
@@ -75,5 +81,13 @@ export function getWorkflowLaunchConfig(): WorkflowLaunchConfig {
       : 'clipboard',
     cursorAgentModel: getCursorAgentModel(),
     cursorLaunchModeExplicit: hasExplicitConfigValue('cursorLaunchMode'),
+    workflowLaunchModeExplicit: hasExplicitConfigValue('workflowLaunchMode'),
+    preferredAgentAdapterExplicit: hasExplicitConfigValue('preferredAgentAdapter'),
   };
+}
+
+export function getWorkflowLaunchConfig(): WorkflowLaunchConfig {
+  return resolveWorkflowLaunchConfig(readRawWorkflowLaunchConfig(), {
+    isCursorHost: isCursorHost(),
+  });
 }

@@ -96,7 +96,7 @@ describe('ActionBar', () => {
       childrenOf(node.props.children).forEach(visit);
     };
     visit(tree);
-    expect(buttons.find((button) => textOf(button).includes('Apply'))?.props.disabled).toBe(true);
+    expect(buttons.find((button) => textOf(button) === 'Launching…')?.props.disabled).toBe(true);
     expect(buttons.find((button) => textOf(button).includes('FF'))?.props.disabled).toBe(false);
     expect(textOf(tree)).toContain('Pending: Waiting');
   });

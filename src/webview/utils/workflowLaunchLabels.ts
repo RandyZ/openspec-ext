@@ -1,52 +1,73 @@
+import { t } from '../../i18n';
 import type { WorkflowLaunchConfigView } from '../../shared/workflowLaunchConfig';
+import { isCopyOnlyWorkflowMode } from '../../shared/workflowLaunchConfig';
+
 export type { WorkflowLaunchConfigView } from '../../shared/workflowLaunchConfig';
 
 export function getWorkflowActionButtonLabel(
   actionLabel: string,
-  config?: WorkflowLaunchConfigView | null
+  config?: WorkflowLaunchConfigView | null,
+  options?: { launching?: boolean },
 ): string {
-  if (!config || config.effectiveAdapterId == null || config.effectiveAdapterId === 'clipboard') {
-    return `Copy ${actionLabel}`;
+  if (options?.launching) {
+    return t('workflow.launching');
+  }
+
+  if (!config || isCopyOnlyWorkflowMode(config)) {
+    return t('workflow.button.copy', { action: actionLabel });
   }
 
   if (config.effectiveAdapterId === 'cursor') {
     switch (config.cursorLaunchMode) {
       case 'agentCli':
-        return `Run Agent ${actionLabel}`;
+        return t('workflow.button.runAgent', { action: actionLabel });
       case 'chatCommand':
-        return `Open Chat ${actionLabel}`;
+        return t('workflow.button.openChat', { action: actionLabel });
       case 'clipboard':
-        return `Copy ${actionLabel}`;
+        return t('workflow.button.copy', { action: actionLabel });
       case 'deeplink':
       default:
-        return `Open Cursor ${actionLabel}`;
+        return t('workflow.button.openCursor', { action: actionLabel });
     }
   }
 
-  return `Launch ${actionLabel}`;
+  return t('workflow.button.launch', { action: actionLabel });
 }
 
 export function getWorkflowActionTitle(
   actionLabel: string,
-  config?: WorkflowLaunchConfigView | null
+  config?: WorkflowLaunchConfigView | null,
 ): string {
-  if (!config || config.effectiveAdapterId == null || config.effectiveAdapterId === 'clipboard') {
-    return `${actionLabel}: copy command to clipboard`;
+  if (!config || isCopyOnlyWorkflowMode(config)) {
+    return t('workflow.title.copy', { action: actionLabel });
   }
 
   if (config.effectiveAdapterId === 'cursor') {
     switch (config.cursorLaunchMode) {
       case 'agentCli':
-        return `${actionLabel}: copy command and run Cursor Agent CLI`;
+        return t('workflow.title.runAgent', { action: actionLabel });
       case 'chatCommand':
-        return `${actionLabel}: copy command and open Cursor Chat`;
+        return t('workflow.title.openChat', { action: actionLabel });
       case 'clipboard':
-        return `${actionLabel}: copy command to clipboard`;
+        return t('workflow.title.copy', { action: actionLabel });
       case 'deeplink':
       default:
-        return `${actionLabel}: copy command and open Cursor prompt`;
+        return t('workflow.title.openCursor', { action: actionLabel });
     }
   }
 
-  return `${actionLabel}: launch via configured adapter`;
+  return t('workflow.title.launch', { action: actionLabel });
+}
+
+export function getWorkflowLaunchModeHint(
+  config?: WorkflowLaunchConfigView | null,
+): string | null {
+  if (!config) return null;
+  if (isCopyOnlyWorkflowMode(config)) {
+    return t('workflow.modeHint.copyOnly');
+  }
+  if (config.effectiveAdapterId === 'cursor') {
+    return t('workflow.modeHint.executableCursor');
+  }
+  return t('workflow.modeHint.executableGeneric');
 }

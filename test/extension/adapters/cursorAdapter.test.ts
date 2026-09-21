@@ -48,6 +48,15 @@ const showInformationMessage = vi.mocked(vscode.window.showInformationMessage);
 function mockConfig(values: Record<string, unknown>) {
   getConfiguration.mockReturnValue({
     get: vi.fn((key: string) => values[key]),
+    inspect: vi.fn((key: string) => {
+      if (values.__explicitCursorLaunchMode === true && key === 'cursorLaunchMode') {
+        return { globalValue: values.cursorLaunchMode };
+      }
+      if (values.__explicitWorkflowLaunchMode === true && key === 'workflowLaunchMode') {
+        return { globalValue: values.workflowLaunchMode };
+      }
+      return undefined;
+    }),
   } as any);
 }
 
@@ -115,6 +124,8 @@ describe('cursorAdapter fillChat launch modes', () => {
 
   it('only copies command in clipboard mode', async () => {
     mockConfig({
+      workflowLaunchMode: 'clipboard',
+      __explicitWorkflowLaunchMode: true,
       cursorLaunchMode: 'clipboard',
       cursorAgentModel: 'auto',
     });

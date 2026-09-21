@@ -30,6 +30,7 @@ export const TerminalLocation = {
 };
 
 export const env = {
+  appName: 'Visual Studio Code',
   openExternal: noopAsync,
 };
 
