@@ -12,8 +12,35 @@ vi.mock('@extension/providers/webviewMessageHandler', () => ({
   getWebviewContent: vi.fn(() => '<!doctype html>'),
 }));
 
+const { postExecutorLaunchPresentationFromHostMock, createExecutorLaunchPresentationMock } = vi.hoisted(() => ({
+  postExecutorLaunchPresentationFromHostMock: vi.fn().mockResolvedValue(undefined),
+  createExecutorLaunchPresentationMock: vi.fn().mockResolvedValue({
+    agentAdapters: {
+      available: [{ id: 'clipboard', displayName: 'Clipboard (copy to clipboard)' }],
+      currentId: 'clipboard',
+    },
+    workflowLaunchConfig: {
+      workflowLaunchMode: 'adapter',
+      preferredAgentAdapter: 'cursor',
+      cursorLaunchMode: 'deeplink',
+      cursorLaunchModeExplicit: true,
+      cursorAgentModel: 'auto',
+      effectiveAdapterId: 'cursor',
+    },
+    uiWorkflowLaunchConfig: {
+      workflowLaunchMode: 'clipboard',
+      preferredAgentAdapter: 'clipboard',
+      cursorLaunchMode: 'clipboard',
+      cursorLaunchModeExplicit: true,
+      cursorAgentModel: 'auto',
+      effectiveAdapterId: 'clipboard',
+    },
+  }),
+}));
+
 vi.mock('@extension/services/executorLaunchPresentation', () => ({
-  postExecutorLaunchPresentationFromHost: vi.fn().mockResolvedValue(undefined),
+  postExecutorLaunchPresentationFromHost: postExecutorLaunchPresentationFromHostMock,
+  createExecutorLaunchPresentation: createExecutorLaunchPresentationMock,
 }));
 
 vi.mock('vscode', () => ({
@@ -122,8 +149,12 @@ describe('ChangeDetailPanelManager scope binding', () => {
         changeName: 'same-change',
         existingArtifactIds: ['proposal'],
         scope: expect.objectContaining({ id: localScope.id }),
+        executorLaunchPresentation: expect.objectContaining({
+          uiWorkflowLaunchConfig: expect.objectContaining({ effectiveAdapterId: 'clipboard' }),
+        }),
       })
     );
+    expect(postExecutorLaunchPresentationFromHostMock).toHaveBeenCalled();
     expect(panels[1].webview.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         changeName: 'same-change',

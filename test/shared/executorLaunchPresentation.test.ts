@@ -3,6 +3,7 @@ import { setLocale } from '../../src/i18n';
 import {
   buildExecutorLaunchPresentation,
   normalizeAgentAdaptersState,
+  normalizeExecutorAdapterId,
   resolveUiWorkflowLaunchConfig,
 } from '../../src/shared/executorLaunchPresentation';
 import type { WorkflowLaunchConfigView } from '../../src/shared/workflowLaunchConfig';
@@ -70,5 +71,32 @@ describe('resolveUiWorkflowLaunchConfig', () => {
     setLocale('en');
     const uiConfig = resolveUiWorkflowLaunchConfig(cursorSettingsConfig, 'clipboard');
     expect(getTaskNextButtonLabel(uiConfig)).toBe('Copy');
+  });
+});
+
+describe('normalizeExecutorAdapterId', () => {
+  it('never keeps cursor when only clipboard adapter is available', () => {
+    expect(normalizeExecutorAdapterId('cursor', 'cursor', ['clipboard'])).toBe('clipboard');
+    expect(normalizeExecutorAdapterId(null, 'cursor', ['clipboard'])).toBe('clipboard');
+  });
+});
+
+describe('b663c24 regression: settings cursor + runtime clipboard only', () => {
+  it('settings-only resolution shows Next/Open Cursor and must not be the UI source of truth', () => {
+    setLocale('en');
+    const settingsOnly = resolveUiWorkflowLaunchConfig(cursorSettingsConfig, null, []);
+    expect(getTaskNextButtonLabel(settingsOnly)).toBe('Next');
+    expect(getWorkflowActionButtonLabel('Continue planning', settingsOnly)).toContain('Open Cursor');
+
+    const presentation = buildExecutorLaunchPresentation(
+      cursorSettingsConfig,
+      clipboardOnlyAvailable,
+      'cursor',
+    );
+    expect(getTaskNextButtonLabel(presentation.uiWorkflowLaunchConfig)).toBe('Copy');
+    expect(getWorkflowActionButtonLabel('Continue planning', presentation.uiWorkflowLaunchConfig)).toBe(
+      'Copy Continue planning',
+    );
+    expect(getWorkflowLaunchModeHint(presentation.uiWorkflowLaunchConfig)).toBe('Copies command');
   });
 });

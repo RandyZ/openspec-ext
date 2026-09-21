@@ -204,6 +204,11 @@ export type ExtensionMessage =
     project?: ProjectContext;
     binding?: OpenSpecRootBinding;
     workflowSnapshot?: ChangeWorkflowSnapshot;
+    executorLaunchPresentation?: {
+      agentAdapters: { available: { id: string; displayName: string }[]; currentId: string | null };
+      workflowLaunchConfig: WorkflowLaunchConfigView;
+      uiWorkflowLaunchConfig: WorkflowLaunchConfigView;
+    };
   }
   | { type: 'setContext'; view: 'sidebar'; data: ProjectSidebarData }
   | { type: 'setContext'; view: 'dashboard'; data: ProjectSidebarData }

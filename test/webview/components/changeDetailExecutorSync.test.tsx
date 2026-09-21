@@ -68,6 +68,48 @@ describe('Change detail executor-driven labels', () => {
     expect(taskListHtml).not.toContain('>Next<');
   });
 
+  it('forbids Next/Open Cursor when settings=cursor but runtime adapters are clipboard-only', () => {
+    setLocale('en');
+    const presentation = buildExecutorLaunchPresentation(
+      cursorSettingsConfig,
+      [{ id: 'clipboard', displayName: 'Clipboard (copy to clipboard)' }],
+      'cursor',
+    );
+
+    const resolvedActions = resolveWorkflowActions(workflowSnapshot, {
+      completedTasks: 0,
+      totalTasks: 2,
+      isArchived: false,
+      hasDeltaSpecs: false,
+    });
+
+    const actionBarHtml = renderToStaticMarkup(
+      <ActionBar
+        changeName="demo"
+        isArchived={false}
+        resolvedActions={resolvedActions}
+        workflowLaunchConfig={presentation.uiWorkflowLaunchConfig}
+        onAction={vi.fn()}
+        onCopyFf={vi.fn()}
+        onCopyApply={vi.fn()}
+      />,
+    );
+    const taskListHtml = renderToStaticMarkup(
+      <TaskList
+        content={'- [ ] First task\n- [ ] Blocked task'}
+        changeName="demo"
+        workflowLaunchConfig={presentation.uiWorkflowLaunchConfig}
+        onToggleTask={vi.fn()}
+        onExecuteTask={vi.fn()}
+      />,
+    );
+
+    expect(actionBarHtml).not.toContain('Open Cursor');
+    expect(actionBarHtml).not.toContain('Runs in Cursor');
+    expect(taskListHtml).not.toContain('>Next<');
+    expect(taskListHtml).toContain('Copy');
+  });
+
   it('renders Next labels when cursor executor is available and selected', () => {
     setLocale('en');
     const presentation = buildExecutorLaunchPresentation(

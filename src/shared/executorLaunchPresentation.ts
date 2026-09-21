@@ -48,6 +48,10 @@ export function normalizeExecutorAdapterId(
 ): PreferredAgentAdapter {
   const available = availableAdapterIds ?? [];
 
+  if (currentAdapterId === 'clipboard') {
+    return 'clipboard';
+  }
+
   if (currentAdapterId && available.includes(currentAdapterId)) {
     return currentAdapterId as PreferredAgentAdapter;
   }
@@ -60,8 +64,8 @@ export function normalizeExecutorAdapterId(
     return configPreferredAdapter;
   }
 
-  if (currentAdapterId) {
-    return currentAdapterId as PreferredAgentAdapter;
+  if (available.length > 0) {
+    return available[0] as PreferredAgentAdapter;
   }
 
   return configPreferredAdapter;

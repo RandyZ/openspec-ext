@@ -119,4 +119,21 @@ describe('ChangeDetail workflow routing', () => {
     expect(source).not.toContain('onOpenInEditor={handleOpenInEditor}');
     expect(source).not.toContain('onRefresh={handleRefresh}');
   });
+
+  it('derives ActionBar and TaskList labels only from executor presentation, not settings workflowLaunchConfig', () => {
+    expect(source).not.toContain("msg.type === 'workflowLaunchConfig'");
+    expect(source).not.toContain('setWorkflowLaunchConfig');
+    expect(source).toContain('getExecutorLaunchPresentation');
+    expect(source).toContain('buildExecutorLaunchPresentation');
+    expect(source).toContain('executorLaunchPresentation');
+    expect(source).toContain('workflowLaunchConfig={uiWorkflowLaunchConfig}');
+    expect(source).not.toMatch(/workflowLaunchConfig=\{workflowLaunchConfig\}/);
+    expect(source).toContain('data-executor-ui-ready');
+    expect(source).toContain('data-executor-effective-id');
+  });
+
+  it('accepts executorLaunchPresentation from setContext and standalone messages', () => {
+    expect(source).toContain("msg.type === 'setContext'");
+    expect(source).toContain('msg.executorLaunchPresentation');
+  });
 });

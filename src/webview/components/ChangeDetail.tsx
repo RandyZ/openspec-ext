@@ -156,7 +156,14 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
 
   const isArchived = archivedLocally || changeName.startsWith('archive:');
   const agentAdapters = executorPresentation?.agentAdapters ?? { available: [], currentId: null };
-  const uiWorkflowLaunchConfig = executorPresentation?.uiWorkflowLaunchConfig ?? null;
+  const uiWorkflowLaunchConfig = useMemo(() => {
+    if (!executorPresentation) return null;
+    return buildExecutorLaunchPresentation(
+      executorPresentation.workflowLaunchConfig,
+      executorPresentation.agentAdapters.available,
+      executorPresentation.agentAdapters.currentId,
+    ).uiWorkflowLaunchConfig;
+  }, [executorPresentation]);
   const tasksLaunchModeHint = getWorkflowLaunchModeHint(uiWorkflowLaunchConfig);
   const resolvedWorkflowActions = useMemo(
     () => workflowSnapshot
@@ -399,12 +406,23 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         setError(msg.message ?? 'Failed to load spec');
         setLoading(false);
         setContent(null);
-      } else if (msg.type === 'executorLaunchPresentation') {
-        setExecutorPresentation({
-          agentAdapters: msg.agentAdapters,
-          workflowLaunchConfig: msg.workflowLaunchConfig,
-          uiWorkflowLaunchConfig: msg.uiWorkflowLaunchConfig,
-        });
+      } else if (
+        (msg.type === 'setContext'
+          && msg.view === 'changeDetail'
+          && msg.changeName === changeName
+          && msg.executorLaunchPresentation)
+        || msg.type === 'executorLaunchPresentation'
+      ) {
+        const presentation = msg.type === 'executorLaunchPresentation'
+          ? msg
+          : msg.executorLaunchPresentation;
+        if (presentation) {
+          setExecutorPresentation({
+            agentAdapters: presentation.agentAdapters,
+            workflowLaunchConfig: presentation.workflowLaunchConfig,
+            uiWorkflowLaunchConfig: presentation.uiWorkflowLaunchConfig,
+          });
+        }
       } else if (msg.type === 'taskExecutionFinished' && msg.changeName === changeName) {
         setExecutingTaskIndex(null);
         if (msg.executionState && typeof msg.executionState === 'object') {
@@ -571,6 +589,8 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   return (
     <div
       className="min-h-screen flex flex-col"
+      data-executor-ui-ready={uiWorkflowLaunchConfig ? 'true' : 'false'}
+      data-executor-effective-id={uiWorkflowLaunchConfig?.effectiveAdapterId ?? 'pending'}
       style={{
         background: 'var(--vscode-editor-background)',
         color: 'var(--vscode-foreground)',
