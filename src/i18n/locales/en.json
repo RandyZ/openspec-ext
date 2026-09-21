@@ -15,6 +15,10 @@
   "artifact.stateNoOutput": "No current output is available for this artifact.",
 
   "task.execute": "Execute",
+  "task.next": "Next",
+  "task.copy": "Copy",
+  "task.working": "Working…",
+  "task.blockedWaiting": "Blocked: waiting on \"{dep}\".",
   "task.executing": "Executing...",
   "task.lastSuccess": "Last execution succeeded",
   "task.lastFailed": "Last execution failed",

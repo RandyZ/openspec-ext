@@ -799,6 +799,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
               isArchived={isArchived}
               executingTaskIndex={executingTaskIndex}
               executionState={taskExecutionState}
+              workflowLaunchConfig={workflowLaunchConfig}
               onToggleTask={(_name, taskIndex, taskText, done) =>
                 setPendingTaskToggle({ taskIndex, taskText, done })
               }

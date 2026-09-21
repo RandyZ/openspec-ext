@@ -36,6 +36,10 @@ describe('i18n', () => {
 
     it('returns English text for known keys', () => {
       expect(t('task.execute')).toBe('Execute');
+      expect(t('task.next')).toBe('Next');
+      expect(t('task.copy')).toBe('Copy');
+      expect(t('task.working')).toBe('Working…');
+      expect(t('task.blockedWaiting', { dep: 'Setup' })).toBe('Blocked: waiting on "Setup".');
       expect(t('task.executing')).toBe('Executing...');
       expect(t('action.openInEditor')).toBe('Open in Editor');
       expect(t('action.refresh')).toBe('Refresh');
@@ -73,6 +77,10 @@ describe('i18n', () => {
 
     it('returns Chinese text for known keys', () => {
       expect(t('task.execute')).toBe('执行');
+      expect(t('task.next')).toBe('下一步');
+      expect(t('task.copy')).toBe('复制');
+      expect(t('task.working')).toBe('进行中…');
+      expect(t('task.blockedWaiting', { dep: '前置任务' })).toBe('已阻塞：等待「前置任务」完成。');
       expect(t('task.executing')).toBe('执行中...');
       expect(t('action.openInEditor')).toBe('在编辑器中打开');
       expect(t('action.refresh')).toBe('刷新');
