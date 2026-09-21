@@ -13,6 +13,9 @@ import {
 /** Embedded in webview bundle for VSIX unpack verification (survives minification). */
 export const WEBVIEW_EXECUTOR_UI_BUILD_MARKER = 'openspec-webview-executor-ui-v1';
 export const WEBVIEW_EXECUTOR_FN_MARKER = 'buildExecutorLaunchPresentation';
+export const WEBVIEW_EXECUTOR_NORMALIZE_MARKER = 'normalizeExecutorAdapterId';
+export const WEBVIEW_EXECUTOR_ADAPTERS_MARKER = 'normalizeAgentAdaptersState';
+export const WEBVIEW_EXECUTOR_RESOLVE_MARKER = 'resolveExecutorUiLaunchConfig';
 
 const COPY_ONLY_FALLBACK = toWorkflowLaunchConfigView({
   workflowLaunchMode: 'clipboard',

@@ -7,6 +7,7 @@ import {
   resolveExecutorUiLaunchConfig,
   shouldPersistNormalizedExecutor,
   WEBVIEW_EXECUTOR_FN_MARKER,
+  WEBVIEW_EXECUTOR_NORMALIZE_MARKER,
   WEBVIEW_EXECUTOR_UI_BUILD_MARKER,
 } from '../../../src/webview/utils/executorUiLaunchConfig';
 import { getTaskNextButtonLabel } from '../../../src/webview/utils/taskNextButtonLabels';
@@ -30,6 +31,7 @@ describe('executorUiLaunchConfig', () => {
   it('embeds VSIX verification markers', () => {
     expect(WEBVIEW_EXECUTOR_UI_BUILD_MARKER).toBe('openspec-webview-executor-ui-v1');
     expect(WEBVIEW_EXECUTOR_FN_MARKER).toBe('buildExecutorLaunchPresentation');
+    expect(WEBVIEW_EXECUTOR_NORMALIZE_MARKER).toBe('normalizeExecutorAdapterId');
   });
 
   it('returns Copy labels before presentation arrives (no settings cursor fallback)', () => {

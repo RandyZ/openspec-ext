@@ -13,10 +13,13 @@ const inputPath = path.resolve(rootDir, process.argv[2] ?? 'openspec-workflow-0.
 const REQUIRED_MARKERS = [
   'openspec-webview-executor-ui-v1',
   'buildExecutorLaunchPresentation',
+  'normalizeExecutorAdapterId',
   'executorLaunchPresentation',
   'data-executor-ui-ready',
   'executorUiLaunchConfig',
 ];
+
+const GATE_PATTERN = 'buildExecutorLaunchPresentation|normalizeExecutorAdapterId|data-executor-ui-ready';
 
 function fail(message) {
   console.error(`verify-vsix-webview: FAIL — ${message}`);
@@ -57,6 +60,12 @@ try {
     if (count === 0) {
       fail(`missing required marker "${marker}" — webview bundle may be stale`);
     }
+  }
+
+  const gateMatches = contents.match(new RegExp(GATE_PATTERN, 'g')) ?? [];
+  console.log(`verify-vsix-webview: gate pattern matches (${GATE_PATTERN}): ${gateMatches.length}`);
+  if (gateMatches.length === 0) {
+    fail(`gate pattern "${GATE_PATTERN}" matched 0 times in webview/index.js`);
   }
 
   console.log(`verify-vsix-webview: PASS (${label})`);
