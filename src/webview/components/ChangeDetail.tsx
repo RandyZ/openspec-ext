@@ -14,10 +14,11 @@ import {
   resolveWorkflowActions,
   type ChangeWorkflowSnapshot,
 } from '../../shared/changeWorkflow';
-import type { WorkflowLaunchConfigView } from '../utils/workflowLaunchLabels';
 import { getWorkflowLaunchModeHint } from '../utils/workflowLaunchLabels';
-import { normalizeAgentAdaptersState } from '../utils/agentAdaptersState';
-import { resolveUiWorkflowLaunchConfig } from '../utils/resolveUiWorkflowLaunchConfig';
+import {
+  buildExecutorLaunchPresentation,
+  type ExecutorLaunchPresentation,
+} from '../../shared/executorLaunchPresentation';
 import type {
   ChangeDetailTabId,
   InteractiveWorkflowAction,
@@ -124,17 +125,13 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   const [selectedSpecId, setSelectedSpecId] = useState<string | null>(null);
   const [artifactOutputs, setArtifactOutputs] = useState<Record<string, ArtifactOutputDescriptor[]>>({});
   const [selectedOutputPaths, setSelectedOutputPaths] = useState<Record<string, string | undefined>>({});
-  const [agentAdapters, setAgentAdapters] = useState<{
-    available: { id: string; displayName: string }[];
-    currentId: string | null;
-  }>({ available: [], currentId: null });
+  const [executorPresentation, setExecutorPresentation] = useState<ExecutorLaunchPresentation | null>(null);
   const [executingTaskIndex, setExecutingTaskIndex] = useState<number | null>(null);
   const [verifyCommandId, setVerifyCommandId] = useState('');
   const [verifyArgsJson, setVerifyArgsJson] = useState('');
   const [runCommandResult, setRunCommandResult] = useState<{ success: boolean; message?: string } | null>(null);
   const [taskExecutionState, setTaskExecutionState] = useState<Record<number, { success: boolean; timestamp: number }>>({});
   const [pendingTaskToggle, setPendingTaskToggle] = useState<{ taskIndex: number; taskText: string; done: boolean } | null>(null);
-  const [workflowLaunchConfig, setWorkflowLaunchConfig] = useState<WorkflowLaunchConfigView | null>(null);
   const [interactiveState, setInteractiveState] = useState<InteractiveWorkflowState>({
     changeName,
     sessions: {},
@@ -158,18 +155,8 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   };
 
   const isArchived = archivedLocally || changeName.startsWith('archive:');
-  const availableAdapterIds = useMemo(
-    () => agentAdapters.available.map((adapter) => adapter.id),
-    [agentAdapters.available],
-  );
-  const uiWorkflowLaunchConfig = useMemo(
-    () => resolveUiWorkflowLaunchConfig(
-      workflowLaunchConfig,
-      agentAdapters.currentId,
-      availableAdapterIds,
-    ),
-    [workflowLaunchConfig, agentAdapters.currentId, availableAdapterIds],
-  );
+  const agentAdapters = executorPresentation?.agentAdapters ?? { available: [], currentId: null };
+  const uiWorkflowLaunchConfig = executorPresentation?.uiWorkflowLaunchConfig ?? null;
   const tasksLaunchModeHint = getWorkflowLaunchModeHint(uiWorkflowLaunchConfig);
   const resolvedWorkflowActions = useMemo(
     () => workflowSnapshot
@@ -412,11 +399,12 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         setError(msg.message ?? 'Failed to load spec');
         setLoading(false);
         setContent(null);
-      } else if (msg.type === 'agentAdapters') {
-        setAgentAdapters(normalizeAgentAdaptersState(
-          msg.available ?? [],
-          msg.currentId ?? null,
-        ));
+      } else if (msg.type === 'executorLaunchPresentation') {
+        setExecutorPresentation({
+          agentAdapters: msg.agentAdapters,
+          workflowLaunchConfig: msg.workflowLaunchConfig,
+          uiWorkflowLaunchConfig: msg.uiWorkflowLaunchConfig,
+        });
       } else if (msg.type === 'taskExecutionFinished' && msg.changeName === changeName) {
         setExecutingTaskIndex(null);
         if (msg.executionState && typeof msg.executionState === 'object') {
@@ -428,8 +416,6 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         }
       } else if (msg.type === 'runCommandResult') {
         setRunCommandResult({ success: msg.success, message: msg.message });
-      } else if (msg.type === 'workflowLaunchConfig') {
-        setWorkflowLaunchConfig(msg.config ?? null);
       } else if (msg.type === 'interactiveWorkflowState' && msg.changeName === changeName) {
         setInteractiveState(msg.state ?? { changeName, sessions: {} });
       } else if (msg.type === 'artifactInvalidated' && msg.changeName === changeName) {
@@ -470,8 +456,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
    }, [activeTab, changeName, onMessage, postMessage, scopeId, workflowReceipt, workflowSnapshot]);
 
   useEffect(() => {
-    postMessage(sendMessage.getWorkflowLaunchConfig());
-    postMessage(sendMessage.getAgentAdapters());
+    postMessage(sendMessage.getExecutorLaunchPresentation());
   }, [postMessage]);
 
   useEffect(() => {
@@ -783,13 +768,12 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
                       const id = e.target.value;
                       if (id) {
                         postMessage(sendMessage.setPreferredAgentAdapter(id));
-                        setAgentAdapters((prev) => normalizeAgentAdaptersState(prev.available, id));
-                        setWorkflowLaunchConfig((prev) =>
+                        setExecutorPresentation((prev) =>
                           prev
-                            ? resolveUiWorkflowLaunchConfig(
-                              prev,
+                            ? buildExecutorLaunchPresentation(
+                              prev.workflowLaunchConfig,
+                              prev.agentAdapters.available,
                               id,
-                              prev.available.map((adapter) => adapter.id),
                             )
                             : prev,
                         );

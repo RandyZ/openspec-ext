@@ -6,8 +6,8 @@ import { InteractiveAgentTerminalManager } from '../services/interactiveAgentTer
 import {
   handleWebviewMessage,
   getWebviewContent,
-  getWorkflowLaunchConfigMessage,
 } from './webviewMessageHandler';
+import { postExecutorLaunchPresentationFromHost } from '../services/executorLaunchPresentation';
 import type { ChangeDetailTabId, InteractiveWorkflowAction } from '../../shared/interactiveWorkflow';
 import {
   isChangeWorkflowSnapshot,
@@ -327,6 +327,9 @@ export class ChangeDetailPanelManager {
       this.buildSetContextPayload(changeName, boundOptions).then((payload) =>
         this.panels.get(key) === panel && panel.webview.postMessage(payload)
       );
+      void postExecutorLaunchPresentationFromHost(panel.webview, this.dataManager).catch((error) => {
+        logger.warn('Failed to push executor launch presentation to change detail panel', error as Error);
+      });
     }, INITIAL_SET_CONTEXT_DELAY_MS);
 
     panel.webview.onDidReceiveMessage(
@@ -403,9 +406,10 @@ export class ChangeDetailPanelManager {
   }
 
   public postWorkflowLaunchConfig(): void {
-    const message = getWorkflowLaunchConfigMessage();
     for (const panel of this.panels.values()) {
-      panel.webview.postMessage(message);
+      void postExecutorLaunchPresentationFromHost(panel.webview, this.dataManager).catch((error) => {
+        logger.warn('Failed to push executor launch presentation to change detail panel', error as Error);
+      });
     }
   }
 }

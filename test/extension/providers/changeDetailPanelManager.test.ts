@@ -10,10 +10,10 @@ const { handleWebviewMessageMock } = vi.hoisted(() => ({
 vi.mock('@extension/providers/webviewMessageHandler', () => ({
   handleWebviewMessage: handleWebviewMessageMock,
   getWebviewContent: vi.fn(() => '<!doctype html>'),
-  getWorkflowLaunchConfigMessage: vi.fn(() => ({
-    type: 'workflowLaunchConfig',
-    config: {},
-  })),
+}));
+
+vi.mock('@extension/services/executorLaunchPresentation', () => ({
+  postExecutorLaunchPresentationFromHost: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('vscode', () => ({

@@ -4,7 +4,7 @@ import React from 'react';
 import { setLocale } from '../../../src/i18n';
 import { ActionBar } from '../../../src/webview/components/ActionBar';
 import { TaskList } from '../../../src/webview/components/TaskList';
-import { resolveUiWorkflowLaunchConfig } from '../../../src/webview/utils/resolveUiWorkflowLaunchConfig';
+import { buildExecutorLaunchPresentation } from '../../../src/shared/executorLaunchPresentation';
 import type { WorkflowLaunchConfigView } from '../../../src/shared/workflowLaunchConfig';
 import { resolveWorkflowActions } from '../../../src/shared/changeWorkflow';
 
@@ -27,12 +27,12 @@ const workflowSnapshot = {
 };
 
 describe('Change detail executor-driven labels', () => {
-  it('renders Copy labels for ActionBar and TaskList when only clipboard is available on VS Code', () => {
+  it('renders Copy labels for ActionBar and TaskList when host exposes only clipboard (no user action)', () => {
     setLocale('en');
-    const uiConfig = resolveUiWorkflowLaunchConfig(
+    const presentation = buildExecutorLaunchPresentation(
       cursorSettingsConfig,
+      [{ id: 'clipboard', displayName: 'Clipboard (copy to clipboard)' }],
       'cursor',
-      ['clipboard'],
     );
     const resolvedActions = resolveWorkflowActions(workflowSnapshot, {
       completedTasks: 0,
@@ -46,7 +46,7 @@ describe('Change detail executor-driven labels', () => {
         changeName="demo"
         isArchived={false}
         resolvedActions={resolvedActions}
-        workflowLaunchConfig={uiConfig}
+        workflowLaunchConfig={presentation.uiWorkflowLaunchConfig}
         onAction={vi.fn()}
         onCopyFf={vi.fn()}
         onCopyApply={vi.fn()}
@@ -56,7 +56,7 @@ describe('Change detail executor-driven labels', () => {
       <TaskList
         content={'- [ ] First task\n- [ ] Blocked task'}
         changeName="demo"
-        workflowLaunchConfig={uiConfig}
+        workflowLaunchConfig={presentation.uiWorkflowLaunchConfig}
         onToggleTask={vi.fn()}
         onExecuteTask={vi.fn()}
       />,
@@ -70,17 +70,20 @@ describe('Change detail executor-driven labels', () => {
 
   it('renders Next labels when cursor executor is available and selected', () => {
     setLocale('en');
-    const uiConfig = resolveUiWorkflowLaunchConfig(
+    const presentation = buildExecutorLaunchPresentation(
       cursorSettingsConfig,
+      [
+        { id: 'cursor', displayName: 'Cursor (agent CLI)' },
+        { id: 'clipboard', displayName: 'Clipboard (copy to clipboard)' },
+      ],
       'cursor',
-      ['cursor', 'clipboard'],
     );
 
     const taskListHtml = renderToStaticMarkup(
       <TaskList
         content={'- [ ] First task'}
         changeName="demo"
-        workflowLaunchConfig={uiConfig}
+        workflowLaunchConfig={presentation.uiWorkflowLaunchConfig}
         onToggleTask={vi.fn()}
         onExecuteTask={vi.fn()}
       />,

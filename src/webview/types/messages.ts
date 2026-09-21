@@ -94,6 +94,7 @@ export type WebviewMessage =
   | { type: 'revealSidebar' }
   | { type: 'executeTask'; changeName: string; taskIndex: number; taskText: string; scopeId?: string }
   | { type: 'getAgentAdapters' }
+  | { type: 'getExecutorLaunchPresentation' }
   | { type: 'getWorkflowLaunchConfig' }
   | { type: 'setPreferredAgentAdapter'; adapterId: string }
   | { type: 'requestCreateArtifact'; changeName: string; artifactType: string; scopeId?: string }
@@ -210,6 +211,12 @@ export type ExtensionMessage =
   | { type: 'setContext'; view: 'specsExplorer'; data: ProjectSpecsExplorerData }
   | { type: 'archivedChanges'; items: ArchivedChangeInfo[]; scopeId?: string }
   | { type: 'agentAdapters'; available: { id: string; displayName: string }[]; currentId: string | null }
+  | {
+    type: 'executorLaunchPresentation';
+    agentAdapters: { available: { id: string; displayName: string }[]; currentId: string | null };
+    workflowLaunchConfig: WorkflowLaunchConfigView;
+    uiWorkflowLaunchConfig: WorkflowLaunchConfigView;
+  }
   | { type: 'workflowLaunchConfig'; config: WorkflowLaunchConfigView }
   | { type: 'taskExecutionFinished'; changeName: string; taskIndex: number; success: boolean; executionState?: Record<number, { success: boolean; timestamp: number }> }
   | { type: 'taskExecutionState'; changeName: string; executionState: Record<number, { success: boolean; timestamp: number }> }
@@ -603,6 +610,10 @@ export const sendMessage = {
 
   getAgentAdapters: (): WebviewMessage => ({
     type: 'getAgentAdapters',
+  }),
+
+  getExecutorLaunchPresentation: (): WebviewMessage => ({
+    type: 'getExecutorLaunchPresentation',
   }),
 
   getWorkflowLaunchConfig: (): WebviewMessage => ({

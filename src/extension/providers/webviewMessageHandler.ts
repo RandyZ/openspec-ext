@@ -14,6 +14,7 @@ import type {
 import { t } from '../../i18n';
 import { buildWorkflowLaunchPayload } from '../../shared/workflowCommand';
 import { getWorkflowLaunchConfig } from '../services/workflowLaunchConfig';
+import { postExecutorLaunchPresentationFromHost } from '../services/executorLaunchPresentation';
 import {
   InteractiveAgentTerminalManager,
 } from '../services/interactiveAgentTerminalManager';
@@ -840,12 +841,12 @@ export async function handleWebviewMessage(
       break;
     }
 
-    case 'getAgentAdapters': {
+    case 'getAgentAdapters':
+    case 'getExecutorLaunchPresentation': {
       try {
-        const info = await dataManager.getAgentAdaptersInfo();
-        webview.postMessage({ type: 'agentAdapters', ...info });
+        await postExecutorLaunchPresentationFromHost(webview, dataManager);
       } catch (err) {
-        logger.error('getAgentAdapters failed', err as Error);
+        logger.error('getExecutorLaunchPresentation failed', err as Error);
         webview.postMessage({
           type: 'agentAdapters',
           available: [],
@@ -856,7 +857,11 @@ export async function handleWebviewMessage(
     }
 
     case 'getWorkflowLaunchConfig': {
-      webview.postMessage(getWorkflowLaunchConfigMessage());
+      try {
+        await postExecutorLaunchPresentationFromHost(webview, dataManager);
+      } catch {
+        webview.postMessage(getWorkflowLaunchConfigMessage());
+      }
       break;
     }
 
@@ -872,9 +877,7 @@ export async function handleWebviewMessage(
           await config.update('workflowLaunchMode', 'adapter', vscode.ConfigurationTarget.Global);
         }
         vscode.window.showInformationMessage(t('adapter.switched', { name: adapterId }));
-        const info = await dataManager.getAgentAdaptersInfo();
-        webview.postMessage({ type: 'agentAdapters', ...info });
-        webview.postMessage(getWorkflowLaunchConfigMessage());
+        await postExecutorLaunchPresentationFromHost(webview, dataManager);
       } catch (err) {
         logger.error('setPreferredAgentAdapter failed', err as Error);
         vscode.window.showErrorMessage(t('adapter.saveFailed'));
