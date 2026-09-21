@@ -38,6 +38,35 @@ export function normalizePresentationAdapters(
   );
 }
 
+/** Controlled <select> value: never keep an id that is not in available options. */
+export function resolveExecutorSelectValue(adapters: AgentAdaptersState): string {
+  const availableIds = adapters.available.map((adapter) => adapter.id);
+  if (adapters.currentId && availableIds.includes(adapters.currentId)) {
+    return adapters.currentId;
+  }
+  return availableIds[0] ?? '';
+}
+
+export function shouldPersistNormalizedExecutor(
+  rawCurrentId: string | null | undefined,
+  adapters: AgentAdaptersState,
+): string | null {
+  const availableIds = adapters.available.map((adapter) => adapter.id);
+  if (availableIds.length === 0) return null;
+  const selectValue = resolveExecutorSelectValue(adapters);
+  if (!selectValue) return null;
+  if (rawCurrentId === selectValue) return null;
+  return selectValue;
+}
+
+export type ExecutorUiModeLabel = 'copy' | 'cursor' | 'other';
+
+export function getExecutorUiModeLabel(config: WorkflowLaunchConfigView): ExecutorUiModeLabel {
+  if (isCopyOnlyWorkflowMode(config)) return 'copy';
+  if (config.effectiveAdapterId === 'cursor') return 'cursor';
+  return 'other';
+}
+
 export function shouldForceCopyOnlyAdapters(adapters: AgentAdaptersState): boolean {
   if (adapters.available.length === 1 && adapters.available[0]?.id === 'clipboard') {
     return true;

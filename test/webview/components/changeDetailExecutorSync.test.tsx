@@ -5,6 +5,8 @@ import { setLocale } from '../../../src/i18n';
 import { ActionBar } from '../../../src/webview/components/ActionBar';
 import { TaskList } from '../../../src/webview/components/TaskList';
 import { buildExecutorLaunchPresentation } from '../../../src/shared/executorLaunchPresentation';
+import { resolveExecutorUiLaunchConfig } from '../../../src/webview/utils/executorUiLaunchConfig';
+import { getWorkflowLaunchModeHint } from '../../../src/webview/utils/workflowLaunchLabels';
 import type { WorkflowLaunchConfigView } from '../../../src/shared/workflowLaunchConfig';
 import { resolveWorkflowActions } from '../../../src/shared/changeWorkflow';
 
@@ -70,11 +72,15 @@ describe('Change detail executor-driven labels', () => {
 
   it('forbids Next/Open Cursor when settings=cursor but runtime adapters are clipboard-only', () => {
     setLocale('en');
-    const presentation = buildExecutorLaunchPresentation(
-      cursorSettingsConfig,
-      [{ id: 'clipboard', displayName: 'Clipboard (copy to clipboard)' }],
-      'cursor',
-    );
+    const uiConfig = resolveExecutorUiLaunchConfig({
+      agentAdapters: {
+        available: [{ id: 'clipboard', displayName: 'Clipboard (copy to clipboard)' }],
+        currentId: 'cursor',
+      },
+      workflowLaunchConfig: cursorSettingsConfig,
+      uiWorkflowLaunchConfig: cursorSettingsConfig,
+    });
+    expect(getWorkflowLaunchModeHint(uiConfig)).toBe('Copies command');
 
     const resolvedActions = resolveWorkflowActions(workflowSnapshot, {
       completedTasks: 0,
@@ -88,7 +94,7 @@ describe('Change detail executor-driven labels', () => {
         changeName="demo"
         isArchived={false}
         resolvedActions={resolvedActions}
-        executorUiLaunchConfig={presentation.uiWorkflowLaunchConfig}
+        executorUiLaunchConfig={uiConfig}
         onAction={vi.fn()}
         onCopyFf={vi.fn()}
         onCopyApply={vi.fn()}
@@ -98,7 +104,7 @@ describe('Change detail executor-driven labels', () => {
       <TaskList
         content={'- [ ] First task\n- [ ] Blocked task'}
         changeName="demo"
-        executorUiLaunchConfig={presentation.uiWorkflowLaunchConfig}
+        executorUiLaunchConfig={uiConfig}
         onToggleTask={vi.fn()}
         onExecuteTask={vi.fn()}
       />,

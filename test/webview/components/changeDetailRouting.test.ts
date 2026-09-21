@@ -125,6 +125,9 @@ describe('ChangeDetail workflow routing', () => {
     expect(source).not.toContain('setWorkflowLaunchConfig');
     expect(source).toContain('getExecutorLaunchPresentation');
     expect(source).toContain('resolveExecutorUiLaunchConfig');
+    expect(source).toContain('resolveExecutorSelectValue');
+    expect(source).toContain('data-executor-ui-mode');
+    expect(source).toContain('UI: {executorUiModeLabel}');
     expect(source).toContain('executorLaunchPresentation');
     expect(source).toContain('executorUiLaunchConfig={executorUiLaunchConfig}');
     expect(source).not.toMatch(/workflowLaunchConfig=\{workflowLaunchConfig\}/);

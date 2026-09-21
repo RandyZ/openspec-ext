@@ -17,9 +17,12 @@ import {
 import { getWorkflowLaunchModeHint } from '../utils/workflowLaunchLabels';
 import type { ExecutorLaunchPresentation } from '../../shared/executorLaunchPresentation';
 import {
+  getExecutorUiModeLabel,
   normalizeExecutorPresentation,
   normalizePresentationAdapters,
+  resolveExecutorSelectValue,
   resolveExecutorUiLaunchConfig,
+  shouldPersistNormalizedExecutor,
 } from '../utils/executorUiLaunchConfig';
 import type {
   ChangeDetailTabId,
@@ -120,6 +123,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   const { postMessage, onMessage } = useVscode();
   const [activeTab, setActiveTab] = useState<string>(initialTab ?? 'proposal');
   const contentCacheRef = useRef<Map<string, string>>(new Map());
+  const persistedExecutorRef = useRef<string | null>(null);
   const [completedTasks, setCompletedTasks] = useState(0);
   const [totalTasks, setTotalTasks] = useState(0);
   const [content, setContent] = useState<string | null>(null);
@@ -178,6 +182,8 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     [executorPresentation],
   );
   const tasksLaunchModeHint = getWorkflowLaunchModeHint(executorUiLaunchConfig);
+  const executorUiModeLabel = getExecutorUiModeLabel(executorUiLaunchConfig);
+  const executorSelectValue = resolveExecutorSelectValue(agentAdapters);
   const resolvedWorkflowActions = useMemo(
     () => workflowSnapshot
       ? resolveWorkflowActions(workflowSnapshot, {
@@ -491,6 +497,27 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   }, [postMessage]);
 
   useEffect(() => {
+    const persistId = shouldPersistNormalizedExecutor(
+      executorPresentation?.agentAdapters.currentId,
+      agentAdapters,
+    );
+    if (!persistId || persistedExecutorRef.current === persistId) return;
+    persistedExecutorRef.current = persistId;
+    postMessage(sendMessage.setPreferredAgentAdapter(persistId));
+    setExecutorPresentation((prev) =>
+      prev
+        ? normalizeExecutorPresentation({
+          ...prev,
+          agentAdapters: {
+            ...prev.agentAdapters,
+            currentId: persistId,
+          },
+        })
+        : prev,
+    );
+  }, [agentAdapters, executorPresentation?.agentAdapters.currentId, postMessage]);
+
+  useEffect(() => {
     if (activeTab === 'specs' && selectedSpecId) {
       const key = cacheKey(scopeId, 'specs', selectedSpecId);
       const cached = contentCacheRef.current.get(key);
@@ -796,7 +823,9 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
                 <div className="flex items-center gap-2">
                   <span style={{ color: 'var(--vscode-descriptionForeground)' }}>{t('task.executor')}</span>
                   <select
-                    value={agentAdapters.currentId ?? ''}
+                    value={executorSelectValue}
+                    data-executor-select-value={executorSelectValue}
+                    data-executor-effective-id={executorUiLaunchConfig.effectiveAdapterId ?? 'pending'}
                     onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
                       const id = e.target.value;
                       if (id) {
@@ -827,11 +856,13 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
                     ))}
                   </select>
                 </div>
-                {tasksLaunchModeHint && (
-                  <p className="text-xs" style={{ color: 'var(--vscode-descriptionForeground)' }}>
-                    {tasksLaunchModeHint}
-                  </p>
-                )}
+                <p className="text-xs" style={{ color: 'var(--vscode-descriptionForeground)' }}>
+                  {tasksLaunchModeHint && <span>{tasksLaunchModeHint}</span>}
+                  {' '}
+                  <span data-executor-ui-mode={executorUiModeLabel}>
+                    UI: {executorUiModeLabel}
+                  </span>
+                </p>
               </div>
             )}
             {isArchived && (
