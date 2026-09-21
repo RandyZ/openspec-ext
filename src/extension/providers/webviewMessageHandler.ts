@@ -1092,8 +1092,8 @@ export async function handleWebviewMessage(
         logger.warn(`[workflow] no available adapter for effectiveAdapterId=${effectiveAdapterId}; copied fallback command=${payload.command}`);
         try {
           await vscode.env.clipboard.writeText(payload.command);
-          vscode.window.showInformationMessage(t('workflow.noAdapterCopied', { command: payload.command }));
-          postReceipt('clipboard', 'fallback', `Native target ${effectiveAdapterId} was unavailable; command copied to clipboard.`);
+          vscode.window.showInformationMessage(t('workflow.adapterFallback'));
+          postReceipt('clipboard', 'fallback', t('workflow.adapterFallback'));
         } catch (error) {
           postReceipt('clipboard', 'failed', (error as Error).message);
         }
@@ -1123,13 +1123,15 @@ export async function handleWebviewMessage(
           postReceipt(payload.target, 'delivered', result.message ?? 'Workflow command delivered to the selected target.');
         } else {
           await vscode.env.clipboard.writeText(payload.command);
-          postReceipt('clipboard', 'fallback', `${adapter.displayName} could not deliver the command; it was copied to clipboard.`);
+          vscode.window.showInformationMessage(t('workflow.adapterFallback'));
+          postReceipt('clipboard', 'fallback', t('workflow.adapterFallback'));
         }
       } catch (error) {
         logger.error('launchWorkflowAction adapter failed', error as Error);
         try {
           await vscode.env.clipboard.writeText(payload.command);
-          postReceipt('clipboard', 'fallback', `${adapter.displayName} failed; command copied to clipboard.`);
+          vscode.window.showInformationMessage(t('workflow.adapterFallback'));
+          postReceipt('clipboard', 'fallback', t('workflow.adapterFallback'));
         } catch (fallbackError) {
           postReceipt(payload.target, 'failed', (fallbackError as Error).message || (error as Error).message);
         }

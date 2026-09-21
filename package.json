@@ -82,7 +82,11 @@
             "adapter"
           ],
           "default": "clipboard",
-          "description": "Workflow button behavior: clipboard = copy the generated command; adapter = route through the preferred agent adapter."
+          "description": "Workflow launch mode: adapter launches the selected executor; clipboard copies the generated command only.",
+          "enumDescriptions": [
+            "Copy command only (safe): copies /opsx:* commands without launching an adapter.",
+            "Launch with adapter (recommended): opens Chat, Cursor, or the selected executor."
+          ]
         },
         "openspec.preferredAgentAdapter": {
           "type": "string",
@@ -110,9 +114,9 @@
             "Only copy the generated command to the clipboard. Does not open Cursor or start Agent CLI.",
             "Open Cursor through the prompt deeplink with the generated command prefilled. The command is also copied as fallback.",
             "Open Cursor Chat through the VS Code/Cursor chat command query. The command is also copied as fallback.",
-            "Run the generated command through Cursor Agent CLI in headless mode. This can modify the workspace and requires Cursor CLI login/trust."
+            "Run the generated command through Cursor Agent CLI in headless mode. May modify workspace files. Requires explicit selection."
           ],
-          "markdownDescription": "Cursor adapter launch behavior for workflow actions.\\n\\n- `clipboard`: safe default; only copy the generated `/opsx:*` command.\\n- `deeplink`: open Cursor prompt deeplink with `/opsx-*` prefilled, while keeping clipboard fallback.\\n- `chatCommand`: try Cursor Chat query prefill, while keeping clipboard fallback.\\n- `agentCli`: run Cursor Agent CLI directly in headless mode; may modify files."
+          "markdownDescription": "Cursor adapter launch behavior for workflow actions.\\n\\n- `clipboard`: only copy the generated `/opsx:*` command.\\n- `deeplink`: open Cursor prompt deeplink with `/opsx-*` prefilled, while keeping clipboard fallback.\\n- `chatCommand`: try Cursor Chat query prefill, while keeping clipboard fallback.\\n- `agentCli`: **May modify workspace files.** Run Cursor Agent CLI directly in headless mode; never used unless you explicitly select it."
         },
         "openspec.taskDependencyPolicy": {
           "type": "string",

@@ -47,11 +47,11 @@ If Cursor or VS Code cannot see the CLI that works in your terminal, set `opensp
 1. Open a workspace that contains `openspec/config.yaml`.
 2. Run **OpenSpec: Open Dashboard**.
 3. Check the active **Root**, then select **New Change**.
-4. By default, select **Copy Continue planning** or **Copy FF**, then paste the copied command into your Agent to generate the planning artifacts.
-5. Review **Proposal**, **Specs**, **Design**, and **Tasks**, then select **Copy Apply** and paste the copied command into your Agent.
+4. In Cursor, select **Open Cursor · Continue planning** or **Open Cursor · FF** to launch the workflow in Chat (or choose **Copy command only (safe)** in settings). In VS Code, buttons copy commands by default.
+5. Review **Proposal**, **Specs**, **Design**, and **Tasks**, then select **Open Cursor · Apply** (or **Copy Apply** in copy-only mode) and continue in your Agent.
 6. In **Verify & Archive**, run **Run Verify** first, then use **Review & Archive** as needed.
 
-The default `clipboard` launch mode only copies workflow commands. Set `openspec.workflowLaunchMode` to `adapter` when you want actions to open, launch, or run through the configured adapter.
+In **Cursor**, workflow buttons default to **Launch with adapter (recommended)** — they open Chat or Cursor with the `/opsx:*` command prefilled. Choose **Copy command only (safe)** in `openspec.workflowLaunchMode` when you only want clipboard copy. In VS Code, copy-only remains the default unless you explicitly choose adapter mode.
 
 **Review & Archive** is the recommended Agent-assisted path. **Archive Now** is a direct CLI path that requires explicit confirmation and is available only when the workflow is complete.
 
@@ -103,9 +103,9 @@ Open Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`):
 | `openspec.focusSidebarViewWhenOpeningDashboard` | `false` | Focus OpenSpec sidebar when opening dashboard |
 | `openspec.cliPath` | `""` | Optional absolute path to OpenSpec CLI; empty = auto-detect from PATH and login shell |
 | `openspec.taskExecutionMode` | `fillChat` | When clicking task execute: `auto` = run via adapter; `fillChat` = fill chat or copy to clipboard |
-| `openspec.workflowLaunchMode` | `clipboard` | Workflow button behavior: `clipboard` copies the generated command; `adapter` routes through the selected adapter |
-| `openspec.preferredAgentAdapter` | `clipboard` | Preferred agent executor adapter id used when `workflowLaunchMode=adapter`: `clipboard`, `cursor`, `vscode-copilot`, `claude-code`, or `opencode` |
-| `openspec.cursorLaunchMode` | `clipboard` | Cursor adapter launch behavior for non-interactive workflow actions: `clipboard` copies only; `deeplink` opens Cursor prompt with fallback copy; `chatCommand` tries Cursor Chat query with fallback copy; `agentCli` runs Cursor Agent CLI in headless mode |
+| `openspec.workflowLaunchMode` | `clipboard` (VS Code) / smart launch in Cursor | **Launch with adapter (recommended)** or **Copy command only (safe)**. In Cursor with unset settings, defaults to launch mode. |
+| `openspec.preferredAgentAdapter` | `clipboard` (VS Code) / `cursor` in Cursor launch mode | Preferred agent executor when launch mode is adapter: `clipboard`, `cursor`, `vscode-copilot`, `claude-code`, or `opencode` |
+| `openspec.cursorLaunchMode` | `clipboard` (stored default) / `deeplink` in Cursor launch mode | Cursor launch behavior: `deeplink`, `chatCommand`, `clipboard`, or explicit `agentCli` (**may modify workspace files**; never auto-selected) |
 | `openspec.taskDependencyPolicy` | `block` | When preceding tasks are incomplete: `block` = prevent execution; `warn` = show warning and allow proceed |
 | `openspec.cursorAgentModel` | `auto` | Cursor Agent CLI model for explicit Agent CLI execution. Use `auto` or a specific model name |
 | `openspec.agentModel` | `auto` | Legacy Cursor Agent CLI model setting; prefer `openspec.cursorAgentModel` |
@@ -113,10 +113,10 @@ Open Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`):
 
 **Task execution & Adapters**
 
-- **Clipboard** (`clipboard`): Always available. This is the default workflow launch behavior and only copies the generated `/opsx:*` command.
-- **Cursor** (`cursor`): In Cursor, the adapter can copy the command and open the official prompt deeplink, try a Chat query, copy only, or explicitly run the headless Agent CLI depending on `openspec.cursorLaunchMode`.
+- **Clipboard** (`clipboard`): Always available. Select **Copy command only (safe)** when you only want `/opsx:*` commands copied.
+- **Cursor** (`cursor`): In Cursor, defaults to opening the prompt deeplink (`deeplink`) or Chat (`chatCommand`). `agentCli` is available only when explicitly selected and may modify workspace files.
 - **OpenCode** (`opencode`): Uses `/opsx-<action>` command format when routed through the adapter.
-- Workflow actions default to `workflowLaunchMode=clipboard`. Set `openspec.workflowLaunchMode=adapter` and choose `openspec.preferredAgentAdapter` when you want buttons to open the selected adapter. In Cursor, explicitly setting `openspec.cursorLaunchMode` to `deeplink`, `chatCommand`, or `agentCli` also routes non-interactive workflow buttons through Cursor.
+- In Cursor, unset workflow settings smart-default to launch mode with the Cursor adapter. Choose **Copy command only (safe)** in settings to restore copy-only behavior. If launch fails, the extension falls back to clipboard with a visible notice.
 - Verify and Archive are intentionally different: they open the dedicated `Verify & Archive` tab and run inside a real VS Code terminal editor instead of the headless `agentCli` path.
 - Within that tab, `Review & Archive` keeps Agent review interactive, while `Archive Now` is the explicit direct-archive escape path and is disabled until the bound workflow is complete.
 

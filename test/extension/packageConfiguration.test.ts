@@ -32,6 +32,10 @@ describe('OpenSpec package configuration', () => {
       enum: ['clipboard', 'adapter'],
       default: 'clipboard',
     });
+    expect(properties['openspec.workflowLaunchMode'].enumDescriptions).toEqual([
+      'Copy command only (safe): copies /opsx:* commands without launching an adapter.',
+      'Launch with adapter (recommended): opens Chat, Cursor, or the selected executor.',
+    ]);
     expect(properties['openspec.cursorLaunchMode']).toMatchObject({
       type: 'string',
       enum: ['clipboard', 'deeplink', 'chatCommand', 'agentCli'],
@@ -41,6 +45,8 @@ describe('OpenSpec package configuration', () => {
     expect(properties['openspec.cursorLaunchMode'].description).toContain('headless');
     expect(properties['openspec.cursorLaunchMode'].markdownDescription).toContain('`deeplink`');
     expect(properties['openspec.cursorLaunchMode'].markdownDescription).toContain('`agentCli`');
+    expect(properties['openspec.cursorLaunchMode'].markdownDescription).toContain('May modify workspace files');
+    expect(properties['openspec.cursorLaunchMode'].enumDescriptions?.[3]).toContain('May modify workspace files');
     expect(properties['openspec.cursorAgentModel']).toMatchObject({
       type: 'string',
       default: 'auto',

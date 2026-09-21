@@ -6,6 +6,7 @@ import type { WorkflowAction as WorkflowCommandAction } from '../../shared/workf
 import {
   getWorkflowActionButtonLabel,
   getWorkflowActionTitle,
+  getWorkflowLaunchModeHint,
   type WorkflowLaunchConfigView,
 } from '../utils/workflowLaunchLabels';
 
@@ -81,6 +82,9 @@ export const ActionBar: React.FC<ActionBarProps> = ({
     );
   }
 
+  const launchModeHint = getWorkflowLaunchModeHint(workflowLaunchConfig);
+  const recommendedAction = resolvedActions?.recommended ?? workflowState?.nextAction;
+
   return (
     <div
       className="flex flex-wrap items-center gap-2"
@@ -90,29 +94,26 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         background: 'var(--vscode-editor-background)',
       }}
     >
-      {!isArchived && (resolvedActions?.recommended ?? workflowState?.nextAction) && (
-        <button
-          type="button"
-          style={primaryStyle}
-          title={getWorkflowActionTitle(
-            (resolvedActions?.recommended ?? workflowState?.nextAction)!.label,
-            workflowLaunchConfig
+      {!isArchived && recommendedAction && (
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            style={primaryStyle}
+            title={getWorkflowActionTitle(recommendedAction.label, workflowLaunchConfig)}
+            aria-label={getWorkflowActionTitle(recommendedAction.label, workflowLaunchConfig)}
+            onClick={() => onAction(recommendedAction.action as WorkflowCommandAction, changeName)}
+            disabled={pendingAction === recommendedAction.action}
+          >
+            {getWorkflowActionButtonLabel(recommendedAction.label, workflowLaunchConfig, {
+              launching: pendingAction === recommendedAction.action,
+            })}
+          </button>
+          {launchModeHint && pendingAction !== recommendedAction.action && (
+            <span className="text-xs" style={{ color: 'var(--vscode-descriptionForeground)' }}>
+              {launchModeHint}
+            </span>
           )}
-          aria-label={getWorkflowActionTitle(
-            (resolvedActions?.recommended ?? workflowState?.nextAction)!.label,
-            workflowLaunchConfig
-          )}
-          onClick={() => onAction(
-            (resolvedActions?.recommended ?? workflowState?.nextAction)!.action as WorkflowCommandAction,
-            changeName
-          )}
-          disabled={pendingAction === (resolvedActions?.recommended ?? workflowState?.nextAction)!.action}
-        >
-          {getWorkflowActionButtonLabel(
-            (resolvedActions?.recommended ?? workflowState?.nextAction)!.label,
-            workflowLaunchConfig
-          )}
-        </button>
+        </div>
       )}
 
       {!isArchived &&
@@ -126,7 +127,9 @@ export const ActionBar: React.FC<ActionBarProps> = ({
             onClick={() => onAction(action.action as WorkflowCommandAction, changeName)}
             disabled={pendingAction === action.action}
           >
-            {getWorkflowActionButtonLabel(action.label, workflowLaunchConfig)}
+            {getWorkflowActionButtonLabel(action.label, workflowLaunchConfig, {
+              launching: pendingAction === action.action,
+            })}
           </button>
         )}
 
@@ -143,7 +146,9 @@ export const ActionBar: React.FC<ActionBarProps> = ({
               onClick={() => onAction(action.action as WorkflowCommandAction, changeName)}
               disabled={pendingAction === action.action}
             >
-              {getWorkflowActionButtonLabel(action.label, workflowLaunchConfig)}
+              {getWorkflowActionButtonLabel(action.label, workflowLaunchConfig, {
+                launching: pendingAction === action.action,
+              })}
             </button>
           ))}
         </div>
