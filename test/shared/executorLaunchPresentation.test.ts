@@ -82,11 +82,11 @@ describe('normalizeExecutorAdapterId', () => {
 });
 
 describe('b663c24 regression: settings cursor + runtime clipboard only', () => {
-  it('settings-only resolution shows Next/Open Cursor and must not be the UI source of truth', () => {
+  it('settings-only resolution with empty adapters defaults to Copy (never cursor launch)', () => {
     setLocale('en');
     const settingsOnly = resolveUiWorkflowLaunchConfig(cursorSettingsConfig, null, []);
-    expect(getTaskNextButtonLabel(settingsOnly)).toBe('Next');
-    expect(getWorkflowActionButtonLabel('Continue planning', settingsOnly)).toContain('Open Cursor');
+    expect(getTaskNextButtonLabel(settingsOnly)).toBe('Copy');
+    expect(getWorkflowActionButtonLabel('Continue planning', settingsOnly)).toBe('Copy Continue planning');
 
     const presentation = buildExecutorLaunchPresentation(
       cursorSettingsConfig,

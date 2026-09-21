@@ -22,6 +22,9 @@ export interface TaskListProps {
   isArchived?: boolean;
   executingTaskIndex?: number | null;
   executionState?: Record<number, TaskExecutionStateItem>;
+  /** Executor-resolved UI config (Change detail). Takes precedence over workflowLaunchConfig. */
+  executorUiLaunchConfig?: WorkflowLaunchConfigView | null;
+  /** Settings-based config (Dashboard). Ignored when executorUiLaunchConfig is set. */
   workflowLaunchConfig?: WorkflowLaunchConfigView | null;
   taskDependencyPolicy?: TaskDependencyPolicy;
   onToggleTask: (changeName: string, taskIndex: number, taskText: string, done: boolean) => void;
@@ -49,6 +52,7 @@ export const TaskList: React.FC<TaskListProps> = ({
   isArchived = false,
   executingTaskIndex = null,
   executionState = {},
+  executorUiLaunchConfig = null,
   workflowLaunchConfig = null,
   taskDependencyPolicy = 'block',
   onToggleTask,
@@ -107,7 +111,8 @@ export const TaskList: React.FC<TaskListProps> = ({
         const blockedReason = isBlocked ? getBlockedReason(tasks, task.taskIndex) : null;
         const isRecommended = !task.done && task.taskIndex === recommendedTaskIndex;
         const showAction = onExecuteTask && !isArchived && !task.done;
-        const buttonLabel = getTaskNextButtonLabel(workflowLaunchConfig, { working: isExecuting });
+        const labelLaunchConfig = executorUiLaunchConfig ?? workflowLaunchConfig;
+        const buttonLabel = getTaskNextButtonLabel(labelLaunchConfig, { working: isExecuting });
         const isPrimary = isRecommended && !isBlocked && !isExecuting;
         const buttonTitle = isBlocked
           ? blockedReason ?? undefined

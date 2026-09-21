@@ -68,7 +68,12 @@ export function normalizeExecutorAdapterId(
     return available[0] as PreferredAgentAdapter;
   }
 
-  return configPreferredAdapter;
+  if (configPreferredAdapter === 'clipboard') {
+    return 'clipboard';
+  }
+
+  // Adapters not loaded yet: avoid rendering cursor launch from settings alone.
+  return 'clipboard';
 }
 
 /** Derive labels from runtime Executor adapter, not stale settings alone. */
@@ -78,6 +83,17 @@ export function resolveUiWorkflowLaunchConfig(
   availableAdapterIds?: readonly string[],
 ): WorkflowLaunchConfigView | null {
   if (!config) return null;
+
+  const available = availableAdapterIds ?? [];
+  if (available.length === 0) {
+    return toWorkflowLaunchConfigView({
+      workflowLaunchMode: 'clipboard',
+      preferredAgentAdapter: 'clipboard',
+      cursorLaunchMode: 'clipboard',
+      cursorAgentModel: config.cursorAgentModel,
+      cursorLaunchModeExplicit: config.cursorLaunchModeExplicit,
+    });
+  }
 
   const executorId = normalizeExecutorAdapterId(
     currentAdapterId,

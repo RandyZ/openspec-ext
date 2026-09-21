@@ -30,6 +30,9 @@ jobs:
       - name: Build
         run: pnpm run build
 
+      - name: Verify webview bundle markers
+        run: node scripts/verify-vsix-webview.js dist/webview/index.js
+
       - name: Test
         run: pnpm test
 

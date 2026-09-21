@@ -12,6 +12,7 @@ export default defineConfig({
       output: {
         entryFileNames: 'index.js',
         assetFileNames: 'index.[ext]',
+        banner: '/* openspec-webview-executor-ui-v1 buildExecutorLaunchPresentation executorUiLaunchConfig */',
       },
     },
   },

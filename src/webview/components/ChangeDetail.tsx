@@ -15,10 +15,12 @@ import {
   type ChangeWorkflowSnapshot,
 } from '../../shared/changeWorkflow';
 import { getWorkflowLaunchModeHint } from '../utils/workflowLaunchLabels';
+import type { ExecutorLaunchPresentation } from '../../shared/executorLaunchPresentation';
 import {
-  buildExecutorLaunchPresentation,
-  type ExecutorLaunchPresentation,
-} from '../../shared/executorLaunchPresentation';
+  normalizeExecutorPresentation,
+  normalizePresentationAdapters,
+  resolveExecutorUiLaunchConfig,
+} from '../utils/executorUiLaunchConfig';
 import type {
   ChangeDetailTabId,
   InteractiveWorkflowAction,
@@ -39,6 +41,8 @@ export interface ChangeDetailProps {
   scopeSource?: string;
   /** Scope id this panel was opened under; binds reads/writes to a store root. */
   scopeId?: string;
+  /** Host-provided executor presentation (from setContext); avoids missing pre-mount postMessage. */
+  initialExecutorPresentation?: ExecutorLaunchPresentation | null;
 }
 
 // Cache key includes scopeId so the same change name in two roots never shares content.
@@ -111,6 +115,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   planningRoot,
   scopeSource,
   scopeId,
+  initialExecutorPresentation = null,
 }) => {
   const { postMessage, onMessage } = useVscode();
   const [activeTab, setActiveTab] = useState<string>(initialTab ?? 'proposal');
@@ -125,7 +130,9 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   const [selectedSpecId, setSelectedSpecId] = useState<string | null>(null);
   const [artifactOutputs, setArtifactOutputs] = useState<Record<string, ArtifactOutputDescriptor[]>>({});
   const [selectedOutputPaths, setSelectedOutputPaths] = useState<Record<string, string | undefined>>({});
-  const [executorPresentation, setExecutorPresentation] = useState<ExecutorLaunchPresentation | null>(null);
+  const [executorPresentation, setExecutorPresentation] = useState<ExecutorLaunchPresentation | null>(
+    initialExecutorPresentation ? normalizeExecutorPresentation(initialExecutorPresentation) : null,
+  );
   const [executingTaskIndex, setExecutingTaskIndex] = useState<number | null>(null);
   const [verifyCommandId, setVerifyCommandId] = useState('');
   const [verifyArgsJson, setVerifyArgsJson] = useState('');
@@ -155,16 +162,22 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   };
 
   const isArchived = archivedLocally || changeName.startsWith('archive:');
-  const agentAdapters = executorPresentation?.agentAdapters ?? { available: [], currentId: null };
-  const uiWorkflowLaunchConfig = useMemo(() => {
-    if (!executorPresentation) return null;
-    return buildExecutorLaunchPresentation(
-      executorPresentation.workflowLaunchConfig,
-      executorPresentation.agentAdapters.available,
-      executorPresentation.agentAdapters.currentId,
-    ).uiWorkflowLaunchConfig;
-  }, [executorPresentation]);
-  const tasksLaunchModeHint = getWorkflowLaunchModeHint(uiWorkflowLaunchConfig);
+
+  useEffect(() => {
+    if (initialExecutorPresentation) {
+      setExecutorPresentation(normalizeExecutorPresentation(initialExecutorPresentation));
+    }
+  }, [initialExecutorPresentation]);
+
+  const agentAdapters = useMemo(
+    () => normalizePresentationAdapters(executorPresentation),
+    [executorPresentation],
+  );
+  const executorUiLaunchConfig = useMemo(
+    () => resolveExecutorUiLaunchConfig(executorPresentation),
+    [executorPresentation],
+  );
+  const tasksLaunchModeHint = getWorkflowLaunchModeHint(executorUiLaunchConfig);
   const resolvedWorkflowActions = useMemo(
     () => workflowSnapshot
       ? resolveWorkflowActions(workflowSnapshot, {
@@ -417,11 +430,11 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
           ? msg
           : msg.executorLaunchPresentation;
         if (presentation) {
-          setExecutorPresentation({
+          setExecutorPresentation(normalizeExecutorPresentation({
             agentAdapters: presentation.agentAdapters,
             workflowLaunchConfig: presentation.workflowLaunchConfig,
             uiWorkflowLaunchConfig: presentation.uiWorkflowLaunchConfig,
-          });
+          }));
         }
       } else if (msg.type === 'taskExecutionFinished' && msg.changeName === changeName) {
         setExecutingTaskIndex(null);
@@ -589,8 +602,8 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   return (
     <div
       className="min-h-screen flex flex-col"
-      data-executor-ui-ready={uiWorkflowLaunchConfig ? 'true' : 'false'}
-      data-executor-effective-id={uiWorkflowLaunchConfig?.effectiveAdapterId ?? 'pending'}
+      data-executor-ui-ready={executorPresentation ? 'true' : 'false'}
+      data-executor-effective-id={executorUiLaunchConfig.effectiveAdapterId ?? 'pending'}
       style={{
         background: 'var(--vscode-editor-background)',
         color: 'var(--vscode-foreground)',
@@ -635,7 +648,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         pendingAction={pendingWorkflowAction}
         receiptStatus={workflowReceipt?.status}
         receiptMessage={workflowReceipt?.message}
-        workflowLaunchConfig={uiWorkflowLaunchConfig}
+        executorUiLaunchConfig={executorUiLaunchConfig}
         onAction={handleResolvedAction}
         onCopyFf={(name) =>
           postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({ action: 'ff', changeName: name, target: 'clipboard' })))
@@ -790,11 +803,13 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
                         postMessage(sendMessage.setPreferredAgentAdapter(id));
                         setExecutorPresentation((prev) =>
                           prev
-                            ? buildExecutorLaunchPresentation(
-                              prev.workflowLaunchConfig,
-                              prev.agentAdapters.available,
-                              id,
-                            )
+                            ? normalizeExecutorPresentation({
+                              ...prev,
+                              agentAdapters: {
+                                ...prev.agentAdapters,
+                                currentId: id,
+                              },
+                            })
                             : prev,
                         );
                       }
@@ -830,7 +845,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
               isArchived={isArchived}
               executingTaskIndex={executingTaskIndex}
               executionState={taskExecutionState}
-              workflowLaunchConfig={uiWorkflowLaunchConfig}
+              executorUiLaunchConfig={executorUiLaunchConfig}
               onToggleTask={(_name, taskIndex, taskText, done) =>
                 setPendingTaskToggle({ taskIndex, taskText, done })
               }

@@ -46,7 +46,7 @@ describe('Change detail executor-driven labels', () => {
         changeName="demo"
         isArchived={false}
         resolvedActions={resolvedActions}
-        workflowLaunchConfig={presentation.uiWorkflowLaunchConfig}
+        executorUiLaunchConfig={presentation.uiWorkflowLaunchConfig}
         onAction={vi.fn()}
         onCopyFf={vi.fn()}
         onCopyApply={vi.fn()}
@@ -56,7 +56,7 @@ describe('Change detail executor-driven labels', () => {
       <TaskList
         content={'- [ ] First task\n- [ ] Blocked task'}
         changeName="demo"
-        workflowLaunchConfig={presentation.uiWorkflowLaunchConfig}
+        executorUiLaunchConfig={presentation.uiWorkflowLaunchConfig}
         onToggleTask={vi.fn()}
         onExecuteTask={vi.fn()}
       />,
@@ -88,7 +88,7 @@ describe('Change detail executor-driven labels', () => {
         changeName="demo"
         isArchived={false}
         resolvedActions={resolvedActions}
-        workflowLaunchConfig={presentation.uiWorkflowLaunchConfig}
+        executorUiLaunchConfig={presentation.uiWorkflowLaunchConfig}
         onAction={vi.fn()}
         onCopyFf={vi.fn()}
         onCopyApply={vi.fn()}
@@ -98,7 +98,7 @@ describe('Change detail executor-driven labels', () => {
       <TaskList
         content={'- [ ] First task\n- [ ] Blocked task'}
         changeName="demo"
-        workflowLaunchConfig={presentation.uiWorkflowLaunchConfig}
+        executorUiLaunchConfig={presentation.uiWorkflowLaunchConfig}
         onToggleTask={vi.fn()}
         onExecuteTask={vi.fn()}
       />,
@@ -125,7 +125,7 @@ describe('Change detail executor-driven labels', () => {
       <TaskList
         content={'- [ ] First task'}
         changeName="demo"
-        workflowLaunchConfig={presentation.uiWorkflowLaunchConfig}
+        executorUiLaunchConfig={presentation.uiWorkflowLaunchConfig}
         onToggleTask={vi.fn()}
         onExecuteTask={vi.fn()}
       />,

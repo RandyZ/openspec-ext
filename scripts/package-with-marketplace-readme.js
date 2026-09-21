@@ -23,6 +23,7 @@ try {
   const buildReadme = path.join(rootDir, 'build', 'README.md');
   fs.copyFileSync(buildReadme, readmePath);
   run('pnpm exec vsce package --no-dependencies');
+  run('node scripts/verify-vsix-webview.js');
 } finally {
   if (fs.existsSync(backupPath)) {
     fs.copyFileSync(backupPath, readmePath);

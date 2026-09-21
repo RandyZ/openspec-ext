@@ -124,12 +124,14 @@ describe('ChangeDetail workflow routing', () => {
     expect(source).not.toContain("msg.type === 'workflowLaunchConfig'");
     expect(source).not.toContain('setWorkflowLaunchConfig');
     expect(source).toContain('getExecutorLaunchPresentation');
-    expect(source).toContain('buildExecutorLaunchPresentation');
+    expect(source).toContain('resolveExecutorUiLaunchConfig');
     expect(source).toContain('executorLaunchPresentation');
-    expect(source).toContain('workflowLaunchConfig={uiWorkflowLaunchConfig}');
+    expect(source).toContain('executorUiLaunchConfig={executorUiLaunchConfig}');
     expect(source).not.toMatch(/workflowLaunchConfig=\{workflowLaunchConfig\}/);
+    expect(source).not.toContain('workflowLaunchConfig={uiWorkflowLaunchConfig}');
     expect(source).toContain('data-executor-ui-ready');
     expect(source).toContain('data-executor-effective-id');
+    expect(source).toContain('initialExecutorPresentation');
   });
 
   it('accepts executorLaunchPresentation from setContext and standalone messages', () => {

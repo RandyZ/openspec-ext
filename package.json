@@ -247,6 +247,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "package": "node scripts/package-with-marketplace-readme.js",
+    "verify:vsix-webview": "node scripts/verify-vsix-webview.js",
     "publish:marketplace": "pnpm exec vsce publish",
     "publish:openvsx": "node scripts/publish-openvsx.js"
   },
