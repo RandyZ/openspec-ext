@@ -6,7 +6,7 @@ English | [简体中文](README.zh-CN.md)
 
 ## Overview
 
-OpenSpec brings change planning and execution into the editor. Review what needs attention, inspect specs and artifacts, and take the next workflow step without losing context.
+OpenSpec Workflow brings change planning and execution into the editor. Review what needs attention, inspect specs and artifacts, and take the next workflow step without losing context.
 
 ### Highlights
 

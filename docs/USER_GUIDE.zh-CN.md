@@ -1,8 +1,8 @@
-# OpenSpec 插件使用指南
+# OpenSpec 工作流使用指南
 
 [English](USER_GUIDE.md) | 简体中文
 
-本指南介绍 OpenSpec 插件界面如何与 OpenSpec 配合使用。如需全面了解 OpenSpec 模型，请先阅读官方的 [Getting Started 指南](https://github.com/Fission-AI/OpenSpec/blob/main/docs/getting-started.md)和[命令指南](https://github.com/Fission-AI/OpenSpec/blob/main/docs/how-commands-work.md)。
+本指南介绍 OpenSpec 工作流界面如何与 OpenSpec 配合使用。如需全面了解 OpenSpec 模型，请先阅读官方的 [Getting Started 指南](https://github.com/Fission-AI/OpenSpec/blob/main/docs/getting-started.md)和[命令指南](https://github.com/Fission-AI/OpenSpec/blob/main/docs/how-commands-work.md)。
 
 ## 选择适合你的路径
 

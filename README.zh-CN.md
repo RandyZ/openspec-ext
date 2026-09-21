@@ -6,7 +6,7 @@
 
 ## 概览
 
-OpenSpec 将 change 规划与执行带回编辑器：集中查看需要关注的事项、检查 specs 和 artifacts，并在不丢失上下文的情况下推进下一步工作流。
+OpenSpec 工作流将 change 规划与执行带回编辑器：集中查看需要关注的事项、检查 specs 和 artifacts，并在不丢失上下文的情况下推进下一步工作流。
 
 ### 核心能力
 
