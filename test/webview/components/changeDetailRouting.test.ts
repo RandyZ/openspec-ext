@@ -119,4 +119,26 @@ describe('ChangeDetail workflow routing', () => {
     expect(source).not.toContain('onOpenInEditor={handleOpenInEditor}');
     expect(source).not.toContain('onRefresh={handleRefresh}');
   });
+
+  it('derives ActionBar and TaskList labels only from executor presentation, not settings workflowLaunchConfig', () => {
+    expect(source).not.toContain("msg.type === 'workflowLaunchConfig'");
+    expect(source).not.toContain('setWorkflowLaunchConfig');
+    expect(source).toContain('getExecutorLaunchPresentation');
+    expect(source).toContain('resolveExecutorUiLaunchConfig');
+    expect(source).toContain('resolveExecutorSelectValue');
+    expect(source).toContain('data-executor-ui-mode');
+    expect(source).toContain('UI: {executorUiModeLabel}');
+    expect(source).toContain('executorLaunchPresentation');
+    expect(source).toContain('executorUiLaunchConfig={executorUiLaunchConfig}');
+    expect(source).not.toMatch(/workflowLaunchConfig=\{workflowLaunchConfig\}/);
+    expect(source).not.toContain('workflowLaunchConfig={uiWorkflowLaunchConfig}');
+    expect(source).toContain('data-executor-ui-ready');
+    expect(source).toContain('data-executor-effective-id');
+    expect(source).toContain('initialExecutorPresentation');
+  });
+
+  it('accepts executorLaunchPresentation from setContext and standalone messages', () => {
+    expect(source).toContain("msg.type === 'setContext'");
+    expect(source).toContain('msg.executorLaunchPresentation');
+  });
 });

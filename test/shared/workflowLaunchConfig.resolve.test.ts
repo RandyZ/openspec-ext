@@ -35,7 +35,7 @@ describe('resolveWorkflowLaunchConfig', () => {
       preferredAgentAdapter: 'clipboard',
       cursorLaunchMode: 'clipboard',
     });
-    expect(getEffectiveWorkflowAdapterId(resolved)).toBeNull();
+    expect(getEffectiveWorkflowAdapterId(resolved)).toBe('clipboard');
   });
 
   it('respects explicit copy-only workflow launch mode on Cursor', () => {
@@ -48,7 +48,7 @@ describe('resolveWorkflowLaunchConfig', () => {
     );
 
     expect(resolved.workflowLaunchMode).toBe('clipboard');
-    expect(getEffectiveWorkflowAdapterId(resolved)).toBeNull();
+    expect(getEffectiveWorkflowAdapterId(resolved)).toBe('clipboard');
   });
 
   it('never smart-defaults agentCli; only explicit cursorLaunchMode may select it', () => {
@@ -80,6 +80,22 @@ describe('resolveWorkflowLaunchConfig', () => {
     );
 
     expect(resolved.cursorLaunchMode).toBe('chatCommand');
+  });
+
+  it('treats explicit clipboard executor as copy-only even with explicit cursor launch mode', () => {
+    const resolved = resolveWorkflowLaunchConfig(
+      {
+        ...baseConfig,
+        workflowLaunchMode: 'adapter',
+        preferredAgentAdapter: 'clipboard',
+        preferredAgentAdapterExplicit: true,
+        cursorLaunchMode: 'deeplink',
+        cursorLaunchModeExplicit: true,
+      },
+      { isCursorHost: true },
+    );
+
+    expect(getEffectiveWorkflowAdapterId(resolved)).toBe('clipboard');
   });
 
   it('preserves explicit adapter selections', () => {

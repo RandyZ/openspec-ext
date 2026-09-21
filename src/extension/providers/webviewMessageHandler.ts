@@ -14,13 +14,14 @@ import type {
 import { t } from '../../i18n';
 import { buildWorkflowLaunchPayload } from '../../shared/workflowCommand';
 import { getWorkflowLaunchConfig } from '../services/workflowLaunchConfig';
+import { postExecutorLaunchPresentationFromHost } from '../services/executorLaunchPresentation';
 import {
   InteractiveAgentTerminalManager,
 } from '../services/interactiveAgentTerminalManager';
 import { confirmDirectArchive } from '../commands/archiveConfirm';
 import { formatBytes } from '../utils/formatBytes';
 import {
-  getEffectiveWorkflowAdapterId,
+  isCopyOnlyWorkflowMode,
   shouldForceCursorWorkflowRoute,
   toWorkflowLaunchConfigView,
 } from '../../shared/workflowLaunchConfig';
@@ -840,12 +841,12 @@ export async function handleWebviewMessage(
       break;
     }
 
-    case 'getAgentAdapters': {
+    case 'getAgentAdapters':
+    case 'getExecutorLaunchPresentation': {
       try {
-        const info = await dataManager.getAgentAdaptersInfo();
-        webview.postMessage({ type: 'agentAdapters', ...info });
+        await postExecutorLaunchPresentationFromHost(webview, dataManager);
       } catch (err) {
-        logger.error('getAgentAdapters failed', err as Error);
+        logger.error('getExecutorLaunchPresentation failed', err as Error);
         webview.postMessage({
           type: 'agentAdapters',
           available: [],
@@ -856,7 +857,11 @@ export async function handleWebviewMessage(
     }
 
     case 'getWorkflowLaunchConfig': {
-      webview.postMessage(getWorkflowLaunchConfigMessage());
+      try {
+        await postExecutorLaunchPresentationFromHost(webview, dataManager);
+      } catch {
+        webview.postMessage(getWorkflowLaunchConfigMessage());
+      }
       break;
     }
 
@@ -866,8 +871,13 @@ export async function handleWebviewMessage(
       try {
         const config = vscode.workspace.getConfiguration('openspec');
         await config.update('preferredAgentAdapter', adapterId, vscode.ConfigurationTarget.Global);
+        if (adapterId === 'clipboard') {
+          await config.update('workflowLaunchMode', 'clipboard', vscode.ConfigurationTarget.Global);
+        } else {
+          await config.update('workflowLaunchMode', 'adapter', vscode.ConfigurationTarget.Global);
+        }
         vscode.window.showInformationMessage(t('adapter.switched', { name: adapterId }));
-        webview.postMessage(getWorkflowLaunchConfigMessage());
+        await postExecutorLaunchPresentationFromHost(webview, dataManager);
       } catch (err) {
         logger.error('setPreferredAgentAdapter failed', err as Error);
         vscode.window.showErrorMessage(t('adapter.saveFailed'));
@@ -1052,7 +1062,8 @@ export async function handleWebviewMessage(
       });
 
       const launchConfig = getWorkflowLaunchConfig();
-      const effectiveAdapterId = getEffectiveWorkflowAdapterId(launchConfig);
+      const launchConfigView = toWorkflowLaunchConfigView(launchConfig);
+      const effectiveAdapterId = launchConfigView.effectiveAdapterId;
       logger.info(
         `[workflow] launchWorkflowAction: action=${action}, changeName=${changeName}, ` +
           `scopeId=${message.scopeId ?? '<none>'}, scopeRoot=${scopeRootPath}, ` +
@@ -1063,7 +1074,7 @@ export async function handleWebviewMessage(
           `effectiveAdapterId=${effectiveAdapterId ?? 'none'}`
       );
 
-      if (!effectiveAdapterId) {
+      if (isCopyOnlyWorkflowMode(launchConfigView)) {
         const payload = buildWorkflowLaunchPayload({
           action,
           changeName,
@@ -1081,6 +1092,7 @@ export async function handleWebviewMessage(
       }
 
       const adapter = shouldForceCursorWorkflowRoute(launchConfig)
+        && launchConfig.preferredAgentAdapter !== 'clipboard'
         ? await getAdapterById('cursor')
         : await getCurrentAdapter();
       if (!adapter) {

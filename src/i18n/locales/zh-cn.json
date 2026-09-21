@@ -15,6 +15,10 @@
   "artifact.stateNoOutput": "该 artifact 当前没有可用输出文件。",
 
   "task.execute": "执行",
+  "task.next": "下一步",
+  "task.copy": "复制",
+  "task.working": "进行中…",
+  "task.blockedWaiting": "已阻塞：等待「{dep}」完成。",
   "task.executing": "执行中...",
   "task.lastSuccess": "上次执行成功",
   "task.lastFailed": "上次执行失败",

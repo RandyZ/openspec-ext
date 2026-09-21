@@ -11,6 +11,7 @@ import { setLocale } from '../i18n';
 import type { ChangeDetailTabId, InteractiveWorkflowAction } from '../shared/interactiveWorkflow';
 import type { ChangeWorkflowSnapshot } from '../shared/changeWorkflow';
 import { isChangeDetailContext, isProjectPageContext } from './types/messages';
+import type { ExecutorLaunchPresentation } from '../shared/executorLaunchPresentation';
 
 export type AppMessageRoute =
   | 'sidebar'
@@ -66,6 +67,7 @@ function AppContent() {
   const [panelScopeSource, setPanelScopeSource] = useState<string | undefined>(undefined);
   const [panelSpecId, setPanelSpecId] = useState<string | null>(null);
   const [panelSpecContent, setPanelSpecContent] = useState<string | null>(null);
+  const [panelExecutorPresentation, setPanelExecutorPresentation] = useState<ExecutorLaunchPresentation | null>(null);
 
   useEffect(() => { initWebviewLocale(); }, []);
 
@@ -88,6 +90,7 @@ function AppContent() {
         setPanelProjectLabel(msg.project?.label);
         setPanelPlanningRoot(msg.scope?.rootPath);
         setPanelScopeSource(msg.scope?.source);
+        setPanelExecutorPresentation(msg.executorLaunchPresentation ?? null);
         if (msg.interactiveAction) {
           setInteractiveAction(undefined);
           setTimeout(() => setInteractiveAction(msg.interactiveAction), 0);
@@ -117,6 +120,7 @@ function AppContent() {
         setPanelProjectLabel(undefined);
         setPanelPlanningRoot(undefined);
         setPanelScopeSource(undefined);
+        setPanelExecutorPresentation(null);
         dispatch({ type: 'SET_PAGE_CONTEXT', payload: msg });
       } else if (msg.type === 'setContext') {
         setPanelChangeName(null);
@@ -126,6 +130,7 @@ function AppContent() {
         setPanelProjectLabel(undefined);
         setPanelPlanningRoot(undefined);
         setPanelScopeSource(undefined);
+        setPanelExecutorPresentation(null);
         dispatch({ type: 'CLEAR_PAGE_CONTEXT' });
       } else if (route === 'specContent' && !panelChangeName) {
         setPanelSpecId(msg.specId);
@@ -148,6 +153,7 @@ function AppContent() {
           planningRoot={panelPlanningRoot}
           scopeSource={panelScopeSource}
           scopeId={panelScopeId}
+          initialExecutorPresentation={panelExecutorPresentation}
         />
       );
   }

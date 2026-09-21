@@ -6,8 +6,12 @@ import { InteractiveAgentTerminalManager } from '../services/interactiveAgentTer
 import {
   handleWebviewMessage,
   getWebviewContent,
-  getWorkflowLaunchConfigMessage,
 } from './webviewMessageHandler';
+import {
+  createExecutorLaunchPresentation,
+  postExecutorLaunchPresentationFromHost,
+} from '../services/executorLaunchPresentation';
+import type { ExecutorLaunchPresentation } from '../../shared/executorLaunchPresentation';
 import type { ChangeDetailTabId, InteractiveWorkflowAction } from '../../shared/interactiveWorkflow';
 import {
   isChangeWorkflowSnapshot,
@@ -231,10 +235,20 @@ export class ChangeDetailPanelManager {
       storeId?: string;
     };
     workflowSnapshot?: ChangeWorkflowSnapshot;
+    executorLaunchPresentation?: ExecutorLaunchPresentation;
   }> {
     const debug = vscode.workspace.getConfiguration('openspec').get<boolean>('debug') ?? false;
     const scope = this.resolveScopeForOptions(options);
     const scopeView = this.toScopeView(scope);
+    let executorLaunchPresentation: ExecutorLaunchPresentation | undefined;
+    try {
+      executorLaunchPresentation = await createExecutorLaunchPresentation(this.dataManager);
+    } catch (error) {
+      logger.warn('Failed to resolve executor launch presentation for change detail setContext', error as Error);
+    }
+    const presentationPayload = executorLaunchPresentation
+      ? { executorLaunchPresentation }
+      : {};
     try {
       const workflow = await this.getExistingArtifactIds(
         changeName,
@@ -254,6 +268,7 @@ export class ChangeDetailPanelManager {
         ...(options?.binding ? { binding: options.binding } : {}),
         ...(scopeView ? { scope: scopeView } : {}),
         ...(workflow.workflowSnapshot ? { workflowSnapshot: workflow.workflowSnapshot } : {}),
+        ...presentationPayload,
       };
     } catch {
       return {
@@ -267,6 +282,7 @@ export class ChangeDetailPanelManager {
         ...(options?.binding ? { binding: options.binding } : {}),
         ...(scopeView ? { scope: scopeView } : {}),
         ...(options?.workflowSnapshot ? { workflowSnapshot: options.workflowSnapshot } : {}),
+        ...presentationPayload,
       };
     }
   }
@@ -293,6 +309,9 @@ export class ChangeDetailPanelManager {
       this.buildSetContextPayload(changeName, boundOptions).then((payload) =>
         this.panels.get(key) === existing && existing.webview.postMessage(payload)
       );
+      void postExecutorLaunchPresentationFromHost(existing.webview, this.dataManager).catch((error) => {
+        logger.warn('Failed to push executor launch presentation to reused change detail panel', error as Error);
+      });
       if (this.onAfterOpen) {
         this.onAfterOpen();
       }
@@ -327,6 +346,9 @@ export class ChangeDetailPanelManager {
       this.buildSetContextPayload(changeName, boundOptions).then((payload) =>
         this.panels.get(key) === panel && panel.webview.postMessage(payload)
       );
+      void postExecutorLaunchPresentationFromHost(panel.webview, this.dataManager).catch((error) => {
+        logger.warn('Failed to push executor launch presentation to change detail panel', error as Error);
+      });
     }, INITIAL_SET_CONTEXT_DELAY_MS);
 
     panel.webview.onDidReceiveMessage(
@@ -342,6 +364,9 @@ export class ChangeDetailPanelManager {
           this.buildSetContextPayload(pending.changeName, pending.options).then((payload) =>
             this.panels.get(key) === panel && panel.webview.postMessage(payload)
           );
+          void postExecutorLaunchPresentationFromHost(panel.webview, this.dataManager).catch((error) => {
+            logger.warn('Failed to push executor launch presentation after first panel message', error as Error);
+          });
         }
         try {
           await handleWebviewMessage(
@@ -403,9 +428,10 @@ export class ChangeDetailPanelManager {
   }
 
   public postWorkflowLaunchConfig(): void {
-    const message = getWorkflowLaunchConfigMessage();
     for (const panel of this.panels.values()) {
-      panel.webview.postMessage(message);
+      void postExecutorLaunchPresentationFromHost(panel.webview, this.dataManager).catch((error) => {
+        logger.warn('Failed to push executor launch presentation to change detail panel', error as Error);
+      });
     }
   }
 }
