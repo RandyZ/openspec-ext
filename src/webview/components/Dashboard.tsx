@@ -369,6 +369,7 @@ export const Dashboard: React.FC = () => {
     name: string;
     message?: string;
   } | null>(null);
+  const [isRetryingCli, setIsRetryingCli] = useState(false);
 
   const { data, loading, loadingReason, pendingScopeId, activity, error } = state;
   const projectSidebar = state.projectSidebar;
@@ -439,6 +440,7 @@ export const Dashboard: React.FC = () => {
           setWorkflowLaunchConfig(message.data.workflowLaunchConfig);
         }
       } else if (message.type === 'dashboardData' && !projectFirst) {
+        setIsRetryingCli(false);
         dispatch({ type: 'SET_DATA', payload: message.data, cache: message.cache });
         if (message.debug !== undefined) {
           dispatch({ type: 'SET_DEBUG', payload: message.debug });
@@ -460,6 +462,7 @@ export const Dashboard: React.FC = () => {
       } else if (message.type === 'error') {
         dispatch({ type: 'SET_ERROR', payload: message.message });
       } else if (message.type === 'cliActivationDiagnostic') {
+        setIsRetryingCli(false);
         dispatch({
           type: 'SET_CLI_DIAGNOSTIC',
           payload: { diagnostic: message.diagnostic, mode: message.mode },
@@ -674,7 +677,11 @@ export const Dashboard: React.FC = () => {
 
   const handleCliDiagnosticAction = (action: string) => {
     if (action === 'open-settings') postMessage(sendMessage.openCliPathSettings());
-    if (action === 'retry') postMessage(sendMessage.retryCliDetection());
+    if (action === 'retry') {
+      if (isRetryingCli) return;
+      setIsRetryingCli(true);
+      postMessage(sendMessage.retryCliDetection());
+    }
     if (action === 'copy-diagnostics') postMessage(sendMessage.copyCliDiagnostic());
     if (action === 'open-docs') postMessage(sendMessage.openCliInstallDocs());
   };
@@ -756,6 +763,7 @@ export const Dashboard: React.FC = () => {
           <CliActivationDiagnosticCard
             diagnostic={projectDiagnostic.diagnostic}
             mode={projectDiagnostic.mode}
+            isRetrying={isRetryingCli}
             onAction={handleCliDiagnosticAction}
           />
         )}

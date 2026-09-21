@@ -533,7 +533,7 @@ vi.mock('../../../src/webview/hooks/useVscode', () => ({
 const diagnostic = {
   category: 'cli-not-found',
   message: 'OpenSpec CLI unavailable',
-  recoveryActions: ['open-docs', 'open-settings', 'retry', 'copy-diagnostics'],
+  recoveryActions: ['retry', 'open-settings', 'copy-diagnostics', 'open-docs'],
   safeDetails: ['extension host PATH: failed ENOENT'],
   copyText: 'category=cli-not-found',
   canRetry: true,
@@ -558,10 +558,12 @@ describe('Dashboard CLI diagnostic states', () => {
       </AppProvider>
     );
 
-    expect(html).toContain('OpenSpec CLI unavailable');
+    expect(html).toContain('OpenSpec CLI not found');
     expect(html).toContain('extension host PATH: failed ENOENT');
+    expect(html).toContain('Retry');
     expect(html).toContain('Open Settings');
     expect(html).toContain('Copy Diagnostics');
+    expect(html).toContain('Open Docs →');
     expect(html).not.toContain('Failed to load dashboard data');
     expect(html).not.toContain('No active changes');
   });
@@ -597,8 +599,8 @@ describe('Dashboard CLI diagnostic states', () => {
     );
 
     expect(html).toContain('cached-change');
-    expect(html).toContain('stale');
-    expect(html).toContain('OpenSpec CLI unavailable');
+    expect(html).toContain('Showing cached data');
+    expect(html).toContain('OpenSpec CLI not found');
   });
 
   it('keeps workspace initialization errors separate from CLI diagnostics', () => {
@@ -1011,8 +1013,8 @@ describe('project page contract', () => {
     );
 
     expect(html).toContain('active-change');
-    expect(html).toContain('OpenSpec CLI unavailable');
-    expect(html).toContain('stale');
+    expect(html).toContain('OpenSpec CLI not found');
+    expect(html).toContain('Showing cached data');
     expect(html).not.toContain('Failed to load data. Try refreshing.');
   });
 
@@ -1023,7 +1025,7 @@ describe('project page contract', () => {
       cliDiagnostic: diagnostic,
     });
 
-    expect(html).toContain('OpenSpec CLI unavailable');
+    expect(html).toContain('OpenSpec CLI not found');
     expect(html).toContain('Copy Diagnostics');
   });
 
@@ -1033,7 +1035,7 @@ describe('project page contract', () => {
       { projectSidebar: null, cliDiagnostic: { diagnostic, mode: 'blocking' } },
     );
 
-    expect(html).toContain('OpenSpec CLI unavailable');
+    expect(html).toContain('OpenSpec CLI not found');
     expect(html).toContain('Copy Diagnostics');
     expect(html).not.toContain('No active changes');
   });

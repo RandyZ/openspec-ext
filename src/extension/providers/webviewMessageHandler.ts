@@ -1230,8 +1230,12 @@ export async function handleWebviewMessage(
 
     case 'retryCliDetection': {
       try {
+        const hadDiagnostic = Boolean(dataManager.getCliDiagnostic());
         const data = await dataManager.refresh();
         webview.postMessage({ type: 'dashboardData', data, debug: getDebug() });
+        if (hadDiagnostic && !dataManager.getCliDiagnostic()) {
+          void vscode.window.showInformationMessage(t('cliDiagnostic.restoredToast'));
+        }
       } catch (err) {
         const diagnostic = dataManager.getCliDiagnostic();
         if (diagnostic) {
@@ -1267,6 +1271,7 @@ export async function handleWebviewMessage(
       const diagnostic = dataManager.getCliDiagnostic();
       if (diagnostic) {
         await vscode.env.clipboard.writeText(diagnostic.copyText);
+        void vscode.window.showInformationMessage(t('cliDiagnostic.copiedToast'));
       }
       break;
     }

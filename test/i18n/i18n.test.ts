@@ -134,9 +134,17 @@ describe('i18n', () => {
       const requiredKeys = [
         'cliDiagnostic.actionOpenSettings',
         'cliDiagnostic.actionRetry',
+        'cliDiagnostic.actionRetryChecking',
         'cliDiagnostic.actionCopyDiagnostics',
         'cliDiagnostic.actionOpenDocs',
+        'cliDiagnostic.title.cliNotFound',
+        'cliDiagnostic.title.configuredPathInvalid',
+        'cliDiagnostic.title.spawnFailed',
+        'cliDiagnostic.title.timeout',
+        'cliDiagnostic.guidance',
         'cliDiagnostic.staleWarning',
+        'cliDiagnostic.copiedToast',
+        'cliDiagnostic.restoredToast',
         'cli.copyDiagnostics',
         'cli.versionUnsupported',
       ];

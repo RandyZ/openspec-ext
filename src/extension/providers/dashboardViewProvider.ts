@@ -876,17 +876,22 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       const diagnostic = this.dataManager.getCliDiagnostic();
       if (diagnostic) {
         await vscode.env.clipboard.writeText(diagnostic.copyText);
+        void vscode.window.showInformationMessage(t('cliDiagnostic.copiedToast'));
       }
       return;
     }
     if (message.type === 'retryCliDetection') {
       try {
+        const hadDiagnostic = Boolean(this.dataManager.getCliDiagnostic?.());
         const data = await this.dataManager.refresh();
         if (this.isProjectFirst()) {
           await this.reloadProjectSidebarData(webview);
         } else {
           webview.postMessage({ type: 'dashboardData', data, debug: vscode.workspace.getConfiguration('openspec').get<boolean>('debug') ?? false });
           this.postCliActivationDiagnostic(webview, 'warning');
+        }
+        if (hadDiagnostic && !this.dataManager.getCliDiagnostic?.()) {
+          void vscode.window.showInformationMessage(t('cliDiagnostic.restoredToast'));
         }
       } catch (err) {
         logger.error('Retry CLI detection failed', err as Error);
