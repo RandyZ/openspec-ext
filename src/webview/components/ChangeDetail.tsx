@@ -16,6 +16,7 @@ import {
 } from '../../shared/changeWorkflow';
 import type { WorkflowLaunchConfigView } from '../utils/workflowLaunchLabels';
 import { getWorkflowLaunchModeHint } from '../utils/workflowLaunchLabels';
+import { normalizeAgentAdaptersState } from '../utils/agentAdaptersState';
 import { resolveUiWorkflowLaunchConfig } from '../utils/resolveUiWorkflowLaunchConfig';
 import type {
   ChangeDetailTabId,
@@ -157,9 +158,17 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   };
 
   const isArchived = archivedLocally || changeName.startsWith('archive:');
+  const availableAdapterIds = useMemo(
+    () => agentAdapters.available.map((adapter) => adapter.id),
+    [agentAdapters.available],
+  );
   const uiWorkflowLaunchConfig = useMemo(
-    () => resolveUiWorkflowLaunchConfig(workflowLaunchConfig, agentAdapters.currentId),
-    [workflowLaunchConfig, agentAdapters.currentId],
+    () => resolveUiWorkflowLaunchConfig(
+      workflowLaunchConfig,
+      agentAdapters.currentId,
+      availableAdapterIds,
+    ),
+    [workflowLaunchConfig, agentAdapters.currentId, availableAdapterIds],
   );
   const tasksLaunchModeHint = getWorkflowLaunchModeHint(uiWorkflowLaunchConfig);
   const resolvedWorkflowActions = useMemo(
@@ -404,10 +413,10 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         setLoading(false);
         setContent(null);
       } else if (msg.type === 'agentAdapters') {
-        setAgentAdapters({
-          available: msg.available ?? [],
-          currentId: msg.currentId ?? null,
-        });
+        setAgentAdapters(normalizeAgentAdaptersState(
+          msg.available ?? [],
+          msg.currentId ?? null,
+        ));
       } else if (msg.type === 'taskExecutionFinished' && msg.changeName === changeName) {
         setExecutingTaskIndex(null);
         if (msg.executionState && typeof msg.executionState === 'object') {
@@ -462,6 +471,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
 
   useEffect(() => {
     postMessage(sendMessage.getWorkflowLaunchConfig());
+    postMessage(sendMessage.getAgentAdapters());
   }, [postMessage]);
 
   useEffect(() => {
@@ -483,7 +493,6 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
 
   useEffect(() => {
     if (activeTab === 'tasks') {
-      postMessage(sendMessage.getAgentAdapters());
       postMessage(sendMessage.getTaskExecutionState(changeName, scopeId));
     }
   }, [activeTab, changeName, postMessage, scopeId]);
@@ -774,10 +783,14 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
                       const id = e.target.value;
                       if (id) {
                         postMessage(sendMessage.setPreferredAgentAdapter(id));
-                        setAgentAdapters((prev) => ({ ...prev, currentId: id }));
+                        setAgentAdapters((prev) => normalizeAgentAdaptersState(prev.available, id));
                         setWorkflowLaunchConfig((prev) =>
                           prev
-                            ? resolveUiWorkflowLaunchConfig(prev, id)
+                            ? resolveUiWorkflowLaunchConfig(
+                              prev,
+                              id,
+                              prev.available.map((adapter) => adapter.id),
+                            )
                             : prev,
                         );
                       }

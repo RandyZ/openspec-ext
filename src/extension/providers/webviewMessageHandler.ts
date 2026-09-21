@@ -866,7 +866,14 @@ export async function handleWebviewMessage(
       try {
         const config = vscode.workspace.getConfiguration('openspec');
         await config.update('preferredAgentAdapter', adapterId, vscode.ConfigurationTarget.Global);
+        if (adapterId === 'clipboard') {
+          await config.update('workflowLaunchMode', 'clipboard', vscode.ConfigurationTarget.Global);
+        } else {
+          await config.update('workflowLaunchMode', 'adapter', vscode.ConfigurationTarget.Global);
+        }
         vscode.window.showInformationMessage(t('adapter.switched', { name: adapterId }));
+        const info = await dataManager.getAgentAdaptersInfo();
+        webview.postMessage({ type: 'agentAdapters', ...info });
         webview.postMessage(getWorkflowLaunchConfigMessage());
       } catch (err) {
         logger.error('setPreferredAgentAdapter failed', err as Error);
