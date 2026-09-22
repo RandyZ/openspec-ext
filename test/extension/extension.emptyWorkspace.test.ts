@@ -137,10 +137,10 @@ describe('activate without a workspace', () => {
   it.each([
     ['undefined', undefined],
     ['empty', []],
-  ])('shows the lightweight empty state for %s workspace folders', async (_name, folders) => {
+  ])('shows the agent unavailable dashboard for %s workspace folders', async (_name, folders) => {
     const vscode = await import('vscode');
     vscode.workspace.workspaceFolders = folders as any;
-    mocks.getOpenSpecWorkspaceRoot.mockResolvedValue(null);
+    mocks.getOpenSpecProjectRoots.mockResolvedValue([]);
     const { activate } = await import('@extension/extension');
 
     await activate(createContext() as any);
@@ -154,8 +154,25 @@ describe('activate without a workspace', () => {
     );
   });
 
+  it('registers agent unavailable dashboard when workspace has no OpenSpec config', async () => {
+    const vscode = await import('vscode');
+    vscode.workspace.workspaceFolders = [
+      { uri: { fsPath: '/work/plain-app' }, name: 'plain-app', index: 0 },
+    ];
+    mocks.getOpenSpecProjectRoots.mockResolvedValue([]);
+    const { activate } = await import('@extension/extension');
+
+    await activate(createContext() as any);
+
+    expect(mocks.dataManagerConstructor).not.toHaveBeenCalled();
+    expect(mocks.registerWebviewViewProvider).toHaveBeenCalledWith(
+      'openspec.dashboard',
+      expect.any(Object),
+    );
+  });
+
   it('registers every declared OpenSpec command with one safe focus handler', async () => {
-    mocks.getOpenSpecWorkspaceRoot.mockResolvedValue(null);
+    mocks.getOpenSpecProjectRoots.mockResolvedValue([]);
     const context = createContext();
     const { activate } = await import('@extension/extension');
 
@@ -206,6 +223,7 @@ describe('activate without a workspace', () => {
     vscode.workspace.workspaceFolders = [
       { uri: { fsPath: '/work/app' }, name: 'app', index: 0 },
     ];
+    mocks.getOpenSpecProjectRoots.mockResolvedValue([{ path: '/work/app', label: 'app' }]);
     mocks.getOpenSpecWorkspaceRoot.mockResolvedValue('/work/app');
     mocks.dataManagerInitialize.mockRejectedValue(new Error('OpenSpec CLI not found'));
     const { activate } = await import('@extension/extension');

@@ -24,8 +24,8 @@ const executableConfig: WorkflowLaunchConfigView = {
 describe('task next button labels', () => {
   beforeEach(() => setLocale('en'));
 
-  it('shows Next for executable launch mode', () => {
-    expect(getTaskNextButtonLabel(executableConfig)).toBe('Next');
+  it('shows Next with Agent for executable launch mode', () => {
+    expect(getTaskNextButtonLabel(executableConfig)).toBe('Next with Agent');
   });
 
   it('shows Copy for copy-only launch mode', () => {
@@ -41,7 +41,7 @@ describe('task next button labels (zh-cn)', () => {
   beforeEach(() => setLocale('zh-cn'));
 
   it('shows localized Next and Copy labels', () => {
-    expect(getTaskNextButtonLabel(executableConfig)).toBe('下一步');
+    expect(getTaskNextButtonLabel(executableConfig)).toBe('让 Agent 继续');
     expect(getTaskNextButtonLabel(copyOnlyConfig)).toBe('复制');
     expect(getTaskNextButtonLabel(executableConfig, { working: true })).toBe('进行中…');
   });

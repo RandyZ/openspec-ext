@@ -50,7 +50,7 @@ describe('buildExecutorLaunchPresentation', () => {
       'cursor',
     );
 
-    expect(getTaskNextButtonLabel(presentation.uiWorkflowLaunchConfig)).toBe('Next');
+    expect(getTaskNextButtonLabel(presentation.uiWorkflowLaunchConfig)).toBe('Next with Agent');
     expect(getWorkflowActionButtonLabel('Continue planning', presentation.uiWorkflowLaunchConfig)).toBe('Open Cursor · Continue planning');
   });
 });

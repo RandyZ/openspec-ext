@@ -1,11 +1,13 @@
 import React, { useMemo, useCallback, useState } from 'react';
 import { TaskCheckbox } from './TaskCheckbox';
-import { parseTasksMarkdown, ParsedTask } from '../utils/parseTasks';
+import { parseTasksMarkdown, countTaskProgress } from '../utils/parseTasks';
+import type { ParsedTask } from '../utils/parseTasks';
 import { t } from '../../i18n';
 import type { WorkflowLaunchConfigView } from '../../shared/workflowLaunchConfig';
 import {
   getPrimaryBlockingDependency,
   getRecommendedTaskIndex,
+  isTaskActionable,
   isTaskBlockedByDependencies,
   type TaskDependencyPolicy,
 } from '../../shared/taskExecutionUi';
@@ -60,6 +62,7 @@ export const TaskList: React.FC<TaskListProps> = ({
 }) => {
   const [blockedNoticeTaskIndex, setBlockedNoticeTaskIndex] = useState<number | null>(null);
   const tasks = useMemo(() => parseTasksMarkdown(content), [content]);
+  const progress = useMemo(() => countTaskProgress(content), [content]);
   const recommendedTaskIndex = useMemo(
     () => getRecommendedTaskIndex(tasks, taskDependencyPolicy),
     [tasks, taskDependencyPolicy],
@@ -97,122 +100,149 @@ export const TaskList: React.FC<TaskListProps> = ({
   }
 
   return (
-    <ul
-      className="task-list"
-      style={{
-        listStyle: 'none',
-        margin: 0,
-        padding: '8px 0',
-      }}
-    >
-      {tasks.map((task) => {
-        const isExecuting = executingTaskIndex === task.taskIndex;
-        const isBlocked = !task.done && isTaskBlockedByDependencies(tasks, task.taskIndex, taskDependencyPolicy);
-        const blockedReason = isBlocked ? getBlockedReason(tasks, task.taskIndex) : null;
-        const isRecommended = !task.done && task.taskIndex === recommendedTaskIndex;
-        const showAction = onExecuteTask && !isArchived && !task.done;
-        const labelLaunchConfig = executorUiLaunchConfig ?? workflowLaunchConfig;
-        const buttonLabel = getTaskNextButtonLabel(labelLaunchConfig, { working: isExecuting });
-        const isPrimary = isRecommended && !isBlocked && !isExecuting;
-        const buttonTitle = isBlocked
-          ? blockedReason ?? undefined
-          : isExecuting
-            ? buttonLabel
-            : undefined;
+    <div className="task-list-container">
+      <div
+        className="task-list-header"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '4px 0 8px',
+          gap: '12px',
+        }}
+      >
+        <span className="text-sm font-medium">{t('task.sectionTitle')}</span>
+        <span
+          className="task-progress"
+          data-task-progress={`${progress.completed}/${progress.total}`}
+          style={{
+            fontSize: '12px',
+            color: 'var(--vscode-descriptionForeground)',
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
+          {t('task.progress', { done: progress.completed, total: progress.total })}
+        </span>
+      </div>
+      <ul
+        className="task-list"
+        style={{
+          listStyle: 'none',
+          margin: 0,
+          padding: '0 0 8px',
+        }}
+      >
+        {tasks.map((task) => {
+          const isExecuting = executingTaskIndex === task.taskIndex;
+          const actionable = isTaskActionable(tasks, task.taskIndex);
+          const isBlocked = !task.done && isTaskBlockedByDependencies(tasks, task.taskIndex, taskDependencyPolicy);
+          const blockedReason = isBlocked ? getBlockedReason(tasks, task.taskIndex) : null;
+          const isRecommended = !task.done && task.taskIndex === recommendedTaskIndex;
+          const showAction = onExecuteTask && !isArchived && !task.done && actionable;
+          const labelLaunchConfig = executorUiLaunchConfig ?? workflowLaunchConfig;
+          const buttonLabel = getTaskNextButtonLabel(labelLaunchConfig, { working: isExecuting });
+          const isPrimary = isRecommended && !isBlocked && !isExecuting;
+          const buttonTitle = isBlocked
+            ? blockedReason ?? undefined
+            : isExecuting
+              ? buttonLabel
+              : undefined;
 
-        return (
-          <li
-            key={`${task.lineIndex}-${task.taskIndex}`}
-            style={{
-              marginBottom: '6px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              width: '100%',
-            }}
-          >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <TaskCheckbox
-                checked={task.done}
-                onToggle={() => handleToggle(task)}
-                label={task.text}
-                indent={task.indent}
-                disabled={isArchived}
-                animate
-              />
-            </div>
-            <div style={{ flexShrink: 0, marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              {executionState[task.taskIndex] && (
-                <span
-                  title={executionState[task.taskIndex].success ? t('task.lastSuccess') : t('task.lastFailed')}
-                  style={{
-                    fontSize: '11px',
-                    color: executionState[task.taskIndex].success
-                      ? 'var(--vscode-testing-iconPassed)'
-                      : 'var(--vscode-errorForeground)',
-                  }}
-                >
-                  {formatExecutionTime(executionState[task.taskIndex].timestamp)}{' '}
-                  {executionState[task.taskIndex].success ? '✓' : '✗'}
-                </span>
-              )}
-              {showAction && (
-                <>
-                  {isBlocked && (
-                    <span
-                      className="codicon codicon-warning"
-                      title={blockedReason ?? undefined}
-                      aria-hidden="true"
-                      style={{
-                        color: 'var(--vscode-editorWarning-foreground, #cca700)',
-                        fontSize: '14px',
-                      }}
-                    />
-                  )}
-                  <button
-                    type="button"
-                    aria-disabled={isBlocked || isExecuting}
-                    disabled={isExecuting}
-                    title={buttonTitle}
-                    onClick={() => handleExecuteClick(task, isBlocked, blockedReason)}
+          return (
+            <li
+              key={`${task.lineIndex}-${task.taskIndex}`}
+              style={{
+                marginBottom: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                width: '100%',
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <TaskCheckbox
+                  checked={task.done}
+                  inProgress={task.inProgress}
+                  onToggle={() => handleToggle(task)}
+                  label={task.text}
+                  indent={task.indent}
+                  disabled={isArchived}
+                  animate
+                />
+              </div>
+              <div style={{ flexShrink: 0, marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {executionState[task.taskIndex] && (
+                  <span
+                    title={executionState[task.taskIndex].success ? t('task.lastSuccess') : t('task.lastFailed')}
                     style={{
-                      padding: '4px 12px',
-                      fontSize: '12px',
-                      fontWeight: 500,
-                      cursor: isBlocked ? 'not-allowed' : isExecuting ? 'wait' : 'pointer',
-                      border: '1px solid var(--vscode-button-border, transparent)',
-                      borderRadius: '4px',
-                      background: isPrimary
-                        ? 'var(--vscode-button-background)'
-                        : isExecuting
-                          ? 'var(--vscode-button-background)'
-                          : 'var(--vscode-button-secondaryBackground)',
-                      color: isPrimary || isExecuting
-                        ? 'var(--vscode-button-foreground)'
-                        : 'var(--vscode-button-secondaryForeground)',
-                      opacity: isBlocked ? 0.65 : isExecuting ? 0.8 : 1,
+                      fontSize: '11px',
+                      color: executionState[task.taskIndex].success
+                        ? 'var(--vscode-testing-iconPassed)'
+                        : 'var(--vscode-errorForeground)',
                     }}
                   >
-                    {buttonLabel}
-                  </button>
-                </>
-              )}
-              {blockedNoticeTaskIndex === task.taskIndex && blockedReason && (
-                <span
-                  role="status"
-                  style={{
-                    fontSize: '11px',
-                    color: 'var(--vscode-editorWarning-foreground, #cca700)',
-                    maxWidth: '180px',
-                  }}
-                >
-                  {blockedReason}
-                </span>
-              )}
-            </div>
-          </li>
-        );
-      })}
-    </ul>
+                    {formatExecutionTime(executionState[task.taskIndex].timestamp)}{' '}
+                    {executionState[task.taskIndex].success ? '✓' : '✗'}
+                  </span>
+                )}
+                {showAction && (
+                  <>
+                    {isBlocked && (
+                      <span
+                        className="codicon codicon-warning"
+                        title={blockedReason ?? undefined}
+                        aria-hidden="true"
+                        style={{
+                          color: 'var(--vscode-editorWarning-foreground, #cca700)',
+                          fontSize: '14px',
+                        }}
+                      />
+                    )}
+                    <button
+                      type="button"
+                      aria-disabled={isBlocked || isExecuting}
+                      disabled={isExecuting}
+                      title={buttonTitle}
+                      onClick={() => handleExecuteClick(task, isBlocked, blockedReason)}
+                      style={{
+                        padding: '4px 12px',
+                        fontSize: '12px',
+                        fontWeight: 500,
+                        cursor: isBlocked ? 'not-allowed' : isExecuting ? 'wait' : 'pointer',
+                        border: '1px solid var(--vscode-button-border, transparent)',
+                        borderRadius: '4px',
+                        background: isPrimary
+                          ? 'var(--vscode-button-background)'
+                          : isExecuting
+                            ? 'var(--vscode-button-background)'
+                            : 'var(--vscode-button-secondaryBackground)',
+                        color: isPrimary || isExecuting
+                          ? 'var(--vscode-button-foreground)'
+                          : 'var(--vscode-button-secondaryForeground)',
+                        opacity: isBlocked ? 0.65 : isExecuting ? 0.8 : 1,
+                      }}
+                    >
+                      {buttonLabel}
+                    </button>
+                  </>
+                )}
+                {blockedNoticeTaskIndex === task.taskIndex && blockedReason && (
+                  <span
+                    role="status"
+                    style={{
+                      fontSize: '11px',
+                      color: 'var(--vscode-editorWarning-foreground, #cca700)',
+                      maxWidth: '180px',
+                    }}
+                  >
+                    {blockedReason}
+                  </span>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 };

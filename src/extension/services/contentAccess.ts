@@ -9,6 +9,7 @@ export interface Task {
   lineIndex: number;
   indent: number;
   done: boolean;
+  inProgress?: boolean;
   text: string;
   originalLine: string;
 }

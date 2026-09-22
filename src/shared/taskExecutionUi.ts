@@ -2,6 +2,7 @@ export interface TaskLike {
   taskIndex: number;
   indent: number;
   done: boolean;
+  inProgress?: boolean;
   text: string;
 }
 
@@ -39,16 +40,23 @@ export function getIncompletePrecedingTasks(
     .filter((task) => !task.done && task.taskIndex !== parentIndex);
 }
 
+/** CLI-actionable nodes: leaves, or parents explicitly marked in-progress ([~]). */
+export function isTaskActionable(tasks: readonly TaskLike[], taskIndex: number): boolean {
+  const task = tasks[taskIndex];
+  if (!task || task.done) return false;
+  const descendants = getDescendantTaskIndices(tasks, taskIndex);
+  if (descendants.length === 0) return true;
+  if (task.inProgress) return true;
+  return !descendants.some((index) => !tasks[index].done);
+}
+
 export function isTaskBlockedByDependencies(
   tasks: readonly TaskLike[],
   taskIndex: number,
   policy: TaskDependencyPolicy = 'block',
 ): boolean {
   if (policy !== 'block') return false;
-  const descendants = getDescendantTaskIndices(tasks, taskIndex);
-  if (descendants.some((index) => !tasks[index].done)) {
-    return false;
-  }
+  if (!isTaskActionable(tasks, taskIndex)) return true;
   return getIncompletePrecedingTasks(tasks, taskIndex).length > 0;
 }
 
@@ -59,6 +67,7 @@ export function getRecommendedTaskIndex(
 ): number | null {
   for (const task of tasks) {
     if (task.done) continue;
+    if (!isTaskActionable(tasks, task.taskIndex)) continue;
     if (isTaskBlockedByDependencies(tasks, task.taskIndex, policy)) continue;
     return task.taskIndex;
   }

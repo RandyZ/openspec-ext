@@ -128,6 +128,14 @@ describe('FileManagerService', () => {
       expect(tasks[0].done).toBe(false);
       expect(tasks[1].done).toBe(true);
     });
+
+    it('parses in-progress [~] markers as incomplete', () => {
+      const fm = new FileManagerService(openspecDir);
+      const tasks = fm.parseTasksMarkdown('- [~] Working\n');
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].done).toBe(false);
+      expect(tasks[0].inProgress).toBe(true);
+    });
   });
 
   describe('Content Access interface (listDeltaSpecIds, listArchivedChanges, listSpecsFromChanges)', () => {

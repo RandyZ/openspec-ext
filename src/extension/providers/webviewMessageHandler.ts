@@ -1432,6 +1432,48 @@ export async function handleWebviewMessage(
   }
 }
 
+export async function handleAgentUnavailableMessage(
+  webview: vscode.Webview,
+  message: WebviewMessage,
+  workspacePath?: string,
+): Promise<void> {
+  const { copyInitCommand, launchAgentInit, openWorkspaceFolder } = await import('./agentUnavailableActions');
+
+  switch (message.type) {
+    case 'getWorkflowLaunchConfig':
+      webview.postMessage(getWorkflowLaunchConfigMessage());
+      break;
+    case 'fillChat': {
+      const prompt = typeof message.prompt === 'string' && message.prompt.trim()
+        ? message.prompt
+        : undefined;
+      if (!prompt) break;
+      await launchAgentInit(workspacePath);
+      break;
+    }
+    case 'copyToClipboard': {
+      const text = typeof message.text === 'string' ? message.text : '';
+      if (text === 'openspec init') {
+        await copyInitCommand();
+        break;
+      }
+      if (text.trim()) {
+        await vscode.env.clipboard.writeText(text);
+        void vscode.window.showInformationMessage(t('clipboard.copiedGeneral'));
+      }
+      break;
+    }
+    case 'openWorkspaceFolder':
+      await openWorkspaceFolder();
+      break;
+    case 'openCliInstallDocs':
+      await vscode.env.openExternal(vscode.Uri.parse('https://github.com/Fission-AI/OpenSpec#quick-start'));
+      break;
+    default:
+      logger.warn(`Agent unavailable view ignored message type: ${(message as WebviewMessage).type}`);
+  }
+}
+
 export function getWorkflowLaunchConfigMessage() {
   const config = getWorkflowLaunchConfig();
   return {

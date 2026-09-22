@@ -9,7 +9,7 @@ import { InteractiveAgentTerminalManager } from './services/interactiveAgentTerm
 import { OpenSpecCacheService } from './services/openSpecCacheService';
 import { createProjectContext, ProjectDataGateway } from './services/projectDataGateway';
 import { setLocale, t } from '../i18n';
-import { EmptyWorkspaceViewProvider } from './providers/emptyWorkspaceViewProvider';
+import { AgentUnavailableViewProvider } from './providers/agentUnavailableViewProvider';
 
 let dataManager: DataManager | null = null;
 
@@ -20,14 +20,22 @@ export async function activate(context: vscode.ExtensionContext) {
   logger.info(`OpenSpec extension is activating... (locale: ${detectedLocale})`);
 
   try {
-    const workspaceRoot = await getOpenSpecWorkspaceRoot();
-    if (!workspaceRoot) {
-      logger.info('No workspace folder found; registering the empty dashboard state');
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    const projectRoots = workspaceFolders?.length
+      ? await getOpenSpecProjectRoots()
+      : [];
+    if (!workspaceFolders?.length || projectRoots.length === 0) {
+      const unavailableRoot = workspaceFolders?.[0]?.uri.fsPath;
+      logger.info(
+        projectRoots.length === 0 && workspaceFolders?.length
+          ? 'Workspace has no OpenSpec root; registering agent unavailable dashboard'
+          : 'No workspace folder found; registering agent unavailable dashboard',
+      );
       context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(
           DashboardViewProvider.viewType,
-          new EmptyWorkspaceViewProvider()
-        )
+          new AgentUnavailableViewProvider(context.extensionPath, unavailableRoot),
+        ),
       );
       const commands = context.extension.packageJSON.contributes?.commands ?? [];
       for (const contribution of commands) {
@@ -42,12 +50,15 @@ export async function activate(context: vscode.ExtensionContext) {
       }
       return;
     }
+    const workspaceRoot = await getOpenSpecWorkspaceRoot();
+    if (!workspaceRoot) {
+      throw new Error('OpenSpec workspace root could not be resolved');
+    }
     logger.info(`[archived] activate: using workspaceRoot=${workspaceRoot}`);
 
     // Discover ALL OpenSpec project roots so multi-folder workspaces expose every
     // project (e.g. FastGPT + Server_DotNetCore) in the root selector. The
     // activation root stays the 'local' scope; additional roots become 'declared'.
-    const projectRoots = await getOpenSpecProjectRoots();
     const projectFolder = vscode.workspace.workspaceFolders?.find(
       (folder) => folder.uri.fsPath === workspaceRoot
     );
