@@ -65,7 +65,7 @@ export function createAgentUnavailableInitialState(workspacePath?: string): AppS
     changesExplorer: null,
     specsExplorer: null,
     page: 'agentUnavailable',
-    projectFirst: true,
+    projectFirst: false,
     loading: false,
     pendingScopeId: undefined,
     activity: { kind: 'idle' },

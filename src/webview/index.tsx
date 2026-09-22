@@ -4,7 +4,7 @@ import './index.css';
 import { App } from './App';
 import { createAgentUnavailableInitialState } from './context/AppContext';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
-import { readWebviewBootstrap } from '../shared/webviewBootstrap';
+import { readInlineWebviewBootstrap, readWebviewBootstrap } from '../shared/webviewBootstrap';
 import {
   WEBVIEW_EXECUTOR_ADAPTERS_MARKER,
   WEBVIEW_EXECUTOR_FN_MARKER,
@@ -28,7 +28,7 @@ import {
 ];
 
 const rootElement = document.getElementById('root')!;
-const bootstrap = readWebviewBootstrap(rootElement);
+const bootstrap = readWebviewBootstrap(rootElement) ?? readInlineWebviewBootstrap();
 const initialState = bootstrap?.view === 'agentUnavailable'
   ? createAgentUnavailableInitialState(bootstrap.workspacePath)
   : undefined;

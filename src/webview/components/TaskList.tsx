@@ -189,11 +189,12 @@ export const TaskList: React.FC<TaskListProps> = ({
                   <>
                     {isBlocked && (
                       <span
-                        className="codicon codicon-warning"
+                        className="codicon codicon-lock"
+                        data-task-blocked-indicator="true"
                         title={blockedReason ?? undefined}
                         aria-hidden="true"
                         style={{
-                          color: 'var(--vscode-editorWarning-foreground, #cca700)',
+                          color: 'var(--vscode-descriptionForeground)',
                           fontSize: '14px',
                         }}
                       />

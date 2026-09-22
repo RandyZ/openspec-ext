@@ -24,7 +24,14 @@ import {
   handleWebviewMessage,
   getWebviewContent,
   getWorkflowLaunchConfigMessage,
+  postAgentUnavailableContext,
 } from './webviewMessageHandler';
+import { configureAgentUnavailableWebview } from './agentUnavailableWebview';
+import {
+  getPrimaryWorkspacePath,
+  workspaceHasOpenSpecRoot,
+  workspaceHasOpenSpecRootSync,
+} from '../services/openspecRootGate';
 
 type ProjectPageCache = Pick<OpenSpecCacheService, 'readProjectPage' | 'writeProjectPage'>;
 type PendingExplorerContext = { message: ExtensionMessage; sent: boolean };
@@ -115,6 +122,19 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     _token: vscode.CancellationToken
   ): void | Thenable<void> {
     this._view = webviewView;
+
+    if (!workspaceHasOpenSpecRootSync()) {
+      configureAgentUnavailableWebview(
+        webviewView.webview,
+        this.extensionPath,
+        getPrimaryWorkspacePath(),
+      );
+      webviewView.onDidDispose(() => {
+        this._view = undefined;
+      });
+      logger.info('Dashboard view resolved as agent unavailable (no OpenSpec root)');
+      return;
+    }
 
     webviewView.webview.options = {
       enableScripts: true,
@@ -792,6 +812,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     }
 
     if (message.type === 'getProjectSidebarData' && this.isProjectFirst()) {
+      if (!(await workspaceHasOpenSpecRoot())) {
+        postAgentUnavailableContext(webview, getPrimaryWorkspacePath());
+        return;
+      }
       if (explorerContextConsumed) return;
       const surface = webview === this.dashboardPanel?.webview ? 'dashboard' : 'sidebar';
       await this.postCachedProjectSidebarData(webview, surface);

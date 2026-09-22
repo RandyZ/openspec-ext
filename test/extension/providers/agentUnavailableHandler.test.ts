@@ -59,6 +59,23 @@ describe('agent unavailable webview handler', () => {
     ]);
   });
 
+  it('posts agent unavailable context for getProjectSidebarData', async () => {
+    const messages: unknown[] = [];
+    const webview = { postMessage: vi.fn((msg) => messages.push(msg)) };
+
+    await handleAgentUnavailableMessage(
+      webview as never,
+      { type: 'getProjectSidebarData' },
+      '/tmp/ws-b-empty',
+    );
+
+    expect(messages[0]).toEqual({
+      type: 'setContext',
+      view: 'agentUnavailable',
+      workspacePath: '/tmp/ws-b-empty',
+    });
+  });
+
   it('posts agent unavailable context for webviewReady', async () => {
     const messages: unknown[] = [];
     const webview = { postMessage: vi.fn((msg) => messages.push(msg)) };

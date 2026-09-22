@@ -6,6 +6,7 @@ describe('taskMarkdown', () => {
     expect(parseTaskLine('- [ ] Todo')?.marker).toBe('open');
     expect(parseTaskLine('- [x] Done')?.done).toBe(true);
     expect(parseTaskLine('- [~] Working')?.inProgress).toBe(true);
+    expect(parseTaskLine('- [～] Fullwidth tilde')?.inProgress).toBe(true);
     expect(parseTaskLine('- [~] Working')?.done).toBe(false);
   });
 

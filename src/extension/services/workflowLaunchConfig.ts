@@ -25,6 +25,7 @@ const PREFERRED_AGENT_ADAPTERS = new Set<PreferredAgentAdapter>([
   'clipboard',
   'cursor',
   'vscode-copilot',
+  'vscode-chat',
   'claude-code',
   'opencode',
 ]);

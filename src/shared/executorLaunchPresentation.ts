@@ -56,6 +56,22 @@ export function normalizeExecutorAdapterId(
     return currentAdapterId as PreferredAgentAdapter;
   }
 
+  if (
+    configPreferredAdapter === 'cursor'
+    && !available.includes('cursor')
+    && available.includes('vscode-chat')
+  ) {
+    return 'vscode-chat';
+  }
+
+  if (
+    configPreferredAdapter === 'cursor'
+    && !available.includes('cursor')
+    && available.includes('vscode-copilot')
+  ) {
+    return 'vscode-copilot';
+  }
+
   if (available.length === 1) {
     return available[0] as PreferredAgentAdapter;
   }
@@ -86,6 +102,13 @@ export function resolveUiWorkflowLaunchConfig(
 
   const available = availableAdapterIds ?? [];
   if (available.length === 0) {
+    if (config.workflowLaunchMode === 'adapter' && config.preferredAgentAdapter !== 'clipboard') {
+      return toWorkflowLaunchConfigView({
+        ...config,
+        workflowLaunchMode: 'adapter',
+        preferredAgentAdapter: config.preferredAgentAdapter,
+      });
+    }
     return toWorkflowLaunchConfigView({
       workflowLaunchMode: 'clipboard',
       preferredAgentAdapter: 'clipboard',
@@ -102,6 +125,13 @@ export function resolveUiWorkflowLaunchConfig(
   );
 
   if (executorId === 'clipboard') {
+    if (config.workflowLaunchMode === 'adapter' && config.preferredAgentAdapter !== 'clipboard') {
+      return toWorkflowLaunchConfigView({
+        ...config,
+        workflowLaunchMode: 'adapter',
+        preferredAgentAdapter: config.preferredAgentAdapter,
+      });
+    }
     return toWorkflowLaunchConfigView({
       workflowLaunchMode: 'clipboard',
       preferredAgentAdapter: 'clipboard',

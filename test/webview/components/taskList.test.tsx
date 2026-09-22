@@ -146,6 +146,8 @@ describe('TaskList next actions', () => {
 
     expect(html).toContain('Blocked: waiting on &quot;First task&quot;.');
     expect(html).toContain('aria-disabled="true"');
+    expect(html).toContain('data-task-blocked-indicator="true"');
+    expect(html).not.toContain('data-task-warning-dot="true"');
   });
 
   it('does not render next actions for archived changes', () => {

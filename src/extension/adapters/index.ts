@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { IAgentExecutorAdapter } from '../services/agentExecutor.types';
 import { clipboardAdapter } from './clipboard-adapter';
 import { cursorAdapter } from './cursor-adapter';
+import { vscodeChatAdapter } from './vscode-chat-adapter';
 import { vscodeCopilotAdapter } from './vscode-copilot-adapter';
 import { claudeCodeAdapter } from './claude-code-adapter';
 import { opencodeAdapter } from './opencode-adapter';
@@ -9,6 +10,7 @@ import { getWorkflowLaunchConfig } from '../services/workflowLaunchConfig';
 
 const registeredAdapters: IAgentExecutorAdapter[] = [
   vscodeCopilotAdapter,
+  vscodeChatAdapter,
   claudeCodeAdapter,
   opencodeAdapter,
   cursorAdapter,
@@ -37,9 +39,21 @@ export async function getCurrentAdapter(): Promise<IAgentExecutorAdapter | null>
   if (preferredId) {
     const found = available.find((a) => a.id === preferredId);
     if (found) return found;
+    if (preferredId === 'cursor') {
+      const vscodeHostAdapter = available.find((a) => a.id === 'vscode-copilot' || a.id === 'vscode-chat');
+      if (vscodeHostAdapter) return vscodeHostAdapter;
+    }
   }
 
-  return available[0];
+  const nonClipboard = available.find((a) => a.id !== 'clipboard');
+  return nonClipboard ?? available[0];
 }
 
-export { clipboardAdapter, cursorAdapter, vscodeCopilotAdapter, claudeCodeAdapter, opencodeAdapter };
+export {
+  clipboardAdapter,
+  cursorAdapter,
+  vscodeChatAdapter,
+  vscodeCopilotAdapter,
+  claudeCodeAdapter,
+  opencodeAdapter,
+};

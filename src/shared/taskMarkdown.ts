@@ -10,14 +10,15 @@ export interface ParsedTaskLine {
   text: string;
 }
 
-const TASK_LINE_REGEX = /^(\s*)- \[([ xX~])\] (.+)$/;
+/** Supports ASCII tilde (~) and fullwidth tilde (～) for in-progress markers. */
+const TASK_LINE_REGEX = /^(\s*)- \[([ xX~～])\] (.+)$/;
 
 export function parseTaskLine(line: string): ParsedTaskLine | null {
   const lineForMatch = line.replace(/\r$/, '');
   const match = lineForMatch.match(TASK_LINE_REGEX);
   if (!match) return null;
   const markerChar = match[2];
-  const marker: TaskMarker = markerChar === '~'
+  const marker: TaskMarker = markerChar === '~' || markerChar === '～'
     ? 'inProgress'
     : markerChar.toLowerCase() === 'x'
       ? 'done'

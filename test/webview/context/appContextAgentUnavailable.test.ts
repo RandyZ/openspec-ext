@@ -10,6 +10,7 @@ describe('createAgentUnavailableInitialState', () => {
     expect(state.page).toBe('agentUnavailable');
     expect(state.loading).toBe(false);
     expect(state.agentUnavailableWorkspacePath).toBe('/tmp/ws-b-empty');
+    expect(state.projectFirst).toBe(false);
   });
 
   it('SET_AGENT_UNAVAILABLE clears loading and dashboard data', () => {

@@ -1,13 +1,6 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { logger } from '../utils/logger';
-import { getCurrentAdapter } from '../adapters';
-import { buildAgentInitPrompt, OPENSPEC_INIT_COMMAND } from '../../shared/agentInit';
-import {
-  getWebviewContent,
-  handleAgentUnavailableMessage,
-  postAgentUnavailableContext,
-} from './webviewMessageHandler';
+import { configureAgentUnavailableWebview } from './agentUnavailableWebview';
 
 export class AgentUnavailableViewProvider implements vscode.WebviewViewProvider {
   constructor(
@@ -16,31 +9,8 @@ export class AgentUnavailableViewProvider implements vscode.WebviewViewProvider 
   ) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
-    const { webview } = webviewView;
-    webview.options = {
-      enableScripts: true,
-      localResourceRoots: [vscode.Uri.file(path.join(this.extensionPath, 'dist'))],
-    };
-    webview.html = getWebviewContent(webview, this.extensionPath, {
-      view: 'agentUnavailable',
-      ...(this.workspacePath ? { workspacePath: this.workspacePath } : {}),
-    });
-
-    webview.onDidReceiveMessage(async (message) => {
-      try {
-        await handleAgentUnavailableMessage(webview, message, this.workspacePath);
-      } catch (error) {
-        logger.error('Agent unavailable webview message failed', error as Error);
-      }
-    });
-
-    void this.postInitialContext(webview);
+    configureAgentUnavailableWebview(webviewView.webview, this.extensionPath, this.workspacePath);
     logger.info('Agent unavailable dashboard view resolved');
-  }
-
-  private async postInitialContext(webview: vscode.Webview): Promise<void> {
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    postAgentUnavailableContext(webview, this.workspacePath);
   }
 }
 

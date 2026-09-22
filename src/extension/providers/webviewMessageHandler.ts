@@ -30,9 +30,14 @@ import type {
   InteractiveWorkflowState,
 } from '../../shared/interactiveWorkflow';
 import {
+  buildInlineBootstrapScript,
   buildWebviewRootAttributes,
   type WebviewBootstrap,
 } from '../../shared/webviewBootstrap';
+import {
+  getPrimaryWorkspacePath,
+  workspaceHasOpenSpecRoot,
+} from '../services/openspecRootGate';
 import type { OpenSpecScope } from '../services/openspecScope';
 import {
   createWorkflowRequestId,
@@ -211,6 +216,10 @@ export async function handleWebviewMessage(
 
   switch (message.type) {
     case 'getDashboardData': {
+      if (!(await workspaceHasOpenSpecRoot())) {
+        postAgentUnavailableContext(webview, getPrimaryWorkspacePath());
+        break;
+      }
       const data = await dataManager.getDashboardData();
       webview.postMessage({ type: 'dashboardData', data, debug: getDebug() });
       break;
@@ -1457,7 +1466,9 @@ export async function handleAgentUnavailableMessage(
 
   switch (message.type) {
     case 'getDashboardData':
+    case 'getProjectSidebarData':
     case 'webviewReady':
+    case 'refresh':
       postAgentUnavailableContext(webview, workspacePath);
       break;
     case 'getWorkflowLaunchConfig':
@@ -1613,18 +1624,20 @@ export function getWebviewContent(
   );
   const lang = vscode.env.language || 'en';
   const rootAttributes = buildWebviewRootAttributes(bootstrap);
+  const inlineBootstrap = buildInlineBootstrapScript(bootstrap);
 
   return `<!DOCTYPE html>
 <html lang="${lang}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource};">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource} 'unsafe-inline';">
   <title>OpenSpec Dashboard</title>
   <link rel="stylesheet" href="${styleUri}">
 </head>
 <body>
   <div id="root"${rootAttributes}></div>
+  ${inlineBootstrap}
   <script type="module" src="${scriptUri}"></script>
 </body>
 </html>`;

@@ -25,10 +25,28 @@ export function buildWebviewRootAttributes(bootstrap?: WebviewBootstrap): string
 
 export function readWebviewBootstrap(root: HTMLElement | null): WebviewBootstrap | null {
   if (!root || root.dataset.openspecView !== 'agentUnavailable') {
-    return null;
+    return readInlineWebviewBootstrap();
   }
   return {
     view: 'agentUnavailable',
     ...(root.dataset.workspacePath ? { workspacePath: root.dataset.workspacePath } : {}),
   };
+}
+
+export function readInlineWebviewBootstrap(): WebviewBootstrap | null {
+  const candidate = (globalThis as typeof globalThis & {
+    __OPENSPEC_BOOTSTRAP__?: WebviewBootstrap;
+  }).__OPENSPEC_BOOTSTRAP__;
+  if (candidate?.view === 'agentUnavailable') {
+    return candidate;
+  }
+  return null;
+}
+
+export function buildInlineBootstrapScript(bootstrap?: WebviewBootstrap): string {
+  if (!bootstrap || bootstrap.view !== 'agentUnavailable') {
+    return '';
+  }
+  const payload = JSON.stringify(bootstrap).replace(/</g, '\\u003c');
+  return `<script>window.__OPENSPEC_BOOTSTRAP__=${payload};</script>`;
 }

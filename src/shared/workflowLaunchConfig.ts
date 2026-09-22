@@ -4,6 +4,7 @@ export type PreferredAgentAdapter =
   | 'clipboard'
   | 'cursor'
   | 'vscode-copilot'
+  | 'vscode-chat'
   | 'claude-code'
   | 'opencode';
 
@@ -78,6 +79,14 @@ export function resolveWorkflowLaunchConfig(
 
 export function isCopyOnlyWorkflowMode(config: WorkflowLaunchConfigView): boolean {
   return config.effectiveAdapterId == null || config.effectiveAdapterId === 'clipboard';
+}
+
+/** Label/intent: adapter mode with a non-clipboard preferred adapter uses Agent verbs. */
+export function shouldUseAgentWorkflowLabels(config: WorkflowLaunchConfigView): boolean {
+  if (config.workflowLaunchMode === 'adapter' && config.preferredAgentAdapter !== 'clipboard') {
+    return true;
+  }
+  return !isCopyOnlyWorkflowMode(config);
 }
 
 export function getEffectiveWorkflowAdapterId(

@@ -1,6 +1,6 @@
 import { t } from '../../i18n';
 import type { WorkflowLaunchConfigView } from '../../shared/workflowLaunchConfig';
-import { isCopyOnlyWorkflowMode } from '../../shared/workflowLaunchConfig';
+import { isCopyOnlyWorkflowMode, shouldUseAgentWorkflowLabels } from '../../shared/workflowLaunchConfig';
 
 export type { WorkflowLaunchConfigView } from '../../shared/workflowLaunchConfig';
 
@@ -13,7 +13,7 @@ export function getWorkflowActionButtonLabel(
     return t('workflow.launching');
   }
 
-  if (!config || isCopyOnlyWorkflowMode(config)) {
+  if (!config || !shouldUseAgentWorkflowLabels(config)) {
     return t('workflow.button.copy', { action: actionLabel });
   }
 
@@ -38,7 +38,7 @@ export function getWorkflowActionTitle(
   actionLabel: string,
   config?: WorkflowLaunchConfigView | null,
 ): string {
-  if (!config || isCopyOnlyWorkflowMode(config)) {
+  if (!config || !shouldUseAgentWorkflowLabels(config)) {
     return t('workflow.title.copy', { action: actionLabel });
   }
 
@@ -63,7 +63,7 @@ export function getWorkflowLaunchModeHint(
   config?: WorkflowLaunchConfigView | null,
 ): string | null {
   if (!config) return null;
-  if (isCopyOnlyWorkflowMode(config)) {
+  if (!shouldUseAgentWorkflowLabels(config)) {
     return t('workflow.modeHint.copyOnly');
   }
   if (config.effectiveAdapterId === 'cursor') {

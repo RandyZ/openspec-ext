@@ -6,6 +6,7 @@ import {
 } from '../../shared/executorLaunchPresentation';
 import {
   isCopyOnlyWorkflowMode,
+  shouldUseAgentWorkflowLabels,
   toWorkflowLaunchConfigView,
   type WorkflowLaunchConfigView,
 } from '../../shared/workflowLaunchConfig';
@@ -65,21 +66,33 @@ export function shouldPersistNormalizedExecutor(
 export type ExecutorUiModeLabel = 'copy' | 'cursor' | 'other';
 
 export function getExecutorUiModeLabel(config: WorkflowLaunchConfigView): ExecutorUiModeLabel {
-  if (isCopyOnlyWorkflowMode(config)) return 'copy';
+  if (!shouldUseAgentWorkflowLabels(config)) return 'copy';
   if (config.effectiveAdapterId === 'cursor') return 'cursor';
   return 'other';
 }
 
-export function shouldForceCopyOnlyAdapters(adapters: AgentAdaptersState): boolean {
+export function shouldForceCopyOnlyAdapters(
+  adapters: AgentAdaptersState,
+  workflowLaunchConfig?: WorkflowLaunchConfigView,
+): boolean {
+  if (workflowLaunchConfig?.workflowLaunchMode === 'adapter') {
+    const hasLaunchAdapter = adapters.available.some((adapter) => adapter.id !== 'clipboard');
+    if (hasLaunchAdapter) {
+      return false;
+    }
+    if (workflowLaunchConfig.preferredAgentAdapter !== 'clipboard') {
+      return false;
+    }
+  }
   if (adapters.available.length === 1 && adapters.available[0]?.id === 'clipboard') {
     return true;
   }
-  if (adapters.currentId === 'clipboard') {
+  if (adapters.currentId === 'clipboard' && workflowLaunchConfig?.workflowLaunchMode !== 'adapter') {
     return true;
   }
   const availableIds = adapters.available.map((adapter) => adapter.id);
   if (adapters.currentId && !availableIds.includes(adapters.currentId)) {
-    return true;
+    return workflowLaunchConfig?.workflowLaunchMode !== 'adapter';
   }
   return false;
 }
@@ -93,7 +106,10 @@ export function resolveExecutorUiLaunchConfig(
   }
 
   const normalizedAdapters = normalizePresentationAdapters(presentation);
-  if (normalizedAdapters.available.length === 0 || shouldForceCopyOnlyAdapters(normalizedAdapters)) {
+  if (
+    normalizedAdapters.available.length === 0
+    || shouldForceCopyOnlyAdapters(normalizedAdapters, presentation.workflowLaunchConfig)
+  ) {
     const built = buildExecutorLaunchPresentation(
       presentation.workflowLaunchConfig,
       normalizedAdapters.available.length > 0

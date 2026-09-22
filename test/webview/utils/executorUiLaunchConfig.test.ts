@@ -43,7 +43,7 @@ describe('executorUiLaunchConfig', () => {
     expect(getExecutorUiModeLabel(uiConfig)).toBe('copy');
   });
 
-  it('forces Copy when settings=cursor but runtime adapters are clipboard-only with mismatched currentId', () => {
+  it('keeps Agent labels when settings=adapter/cursor even if runtime adapters are clipboard-only', () => {
     setLocale('en');
     const uiConfig = resolveExecutorUiLaunchConfig({
       agentAdapters: clipboardOnlyAdapters,
@@ -51,11 +51,35 @@ describe('executorUiLaunchConfig', () => {
       uiWorkflowLaunchConfig: cursorSettingsConfig,
     });
 
-    expect(uiConfig.effectiveAdapterId).toBe('clipboard');
-    expect(getTaskNextButtonLabel(uiConfig)).toBe('Copy');
-    expect(getWorkflowActionButtonLabel('Continue planning', uiConfig)).toBe('Copy Continue planning');
-    expect(getWorkflowLaunchModeHint(uiConfig)).toBe('Copies command');
-    expect(getExecutorUiModeLabel(uiConfig)).toBe('copy');
+    expect(uiConfig.workflowLaunchMode).toBe('adapter');
+    expect(uiConfig.preferredAgentAdapter).toBe('cursor');
+    expect(getTaskNextButtonLabel(uiConfig)).toBe('Next with Agent');
+    expect(getWorkflowActionButtonLabel('Continue planning', uiConfig)).toBe('Open Cursor · Continue planning');
+    expect(getExecutorUiModeLabel(uiConfig)).toBe('cursor');
+  });
+
+  it('uses Agent labels when VS Code chat adapter is available', () => {
+    setLocale('en');
+    const uiConfig = resolveExecutorUiLaunchConfig({
+      agentAdapters: {
+        available: [
+          { id: 'vscode-chat', displayName: 'VS Code Chat' },
+          { id: 'clipboard', displayName: 'Clipboard (copy to clipboard)' },
+        ],
+        currentId: 'vscode-chat',
+      },
+      workflowLaunchConfig: cursorSettingsConfig,
+      uiWorkflowLaunchConfig: cursorSettingsConfig,
+    });
+
+    expect(getTaskNextButtonLabel(uiConfig)).toBe('Next with Agent');
+    expect(resolveExecutorSelectValue({
+      available: [
+        { id: 'vscode-chat', displayName: 'VS Code Chat' },
+        { id: 'clipboard', displayName: 'Clipboard (copy to clipboard)' },
+      ],
+      currentId: 'vscode-chat',
+    })).toBe('vscode-chat');
   });
 
   it('forces Copy when adapters list is empty on init message', () => {
@@ -71,7 +95,7 @@ describe('executorUiLaunchConfig', () => {
     expect(getWorkflowLaunchModeHint(uiConfig)).toBe('Copies command');
   });
 
-  it('maps clipboard-only currentId=clipboard to Copy labels', () => {
+  it('maps clipboard-only currentId=clipboard to Agent labels when adapter mode prefers cursor', () => {
     setLocale('en');
     const uiConfig = resolveExecutorUiLaunchConfig({
       agentAdapters: { ...clipboardOnlyAdapters, currentId: 'clipboard' },
@@ -79,8 +103,8 @@ describe('executorUiLaunchConfig', () => {
       uiWorkflowLaunchConfig: cursorSettingsConfig,
     });
 
-    expect(getExecutorUiModeLabel(uiConfig)).toBe('copy');
-    expect(getWorkflowLaunchModeHint(uiConfig)).not.toBe('Runs in Cursor');
+    expect(getExecutorUiModeLabel(uiConfig)).toBe('cursor');
+    expect(getWorkflowLaunchModeHint(uiConfig)).toBe('Runs in Cursor');
   });
 
   it('resolves select value to clipboard when currentId is illegal', () => {

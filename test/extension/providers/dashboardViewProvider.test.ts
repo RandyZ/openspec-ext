@@ -23,6 +23,12 @@ vi.mock('fs/promises', async (importOriginal) => {
   return { ...actual, realpath: vi.fn(async (value: unknown) => value) };
 });
 
+vi.mock('@extension/services/openspecRootGate', () => ({
+  workspaceHasOpenSpecRoot: vi.fn(async () => true),
+  workspaceHasOpenSpecRootSync: vi.fn(() => true),
+  getPrimaryWorkspacePath: vi.fn(() => '/tmp/project'),
+}));
+
 vi.mock('@extension/adapters', () => ({
   getCurrentAdapter: vi.fn(async () => ({
     id: 'cursor',
