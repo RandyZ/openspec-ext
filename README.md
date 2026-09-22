@@ -151,7 +151,7 @@ Open Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`):
 ---
 <!-- Below: development/contributing only; above: user-facing (packaged as extension README) -->
 
-[![Version](https://img.shields.io/badge/version-0.2.2-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.2.3-blue)](CHANGELOG.md)
 [![Open VSX](https://img.shields.io/badge/Open%20VSX-available-green)](https://open-vsx.org/extension/randysss/openspec-workflow)
 
 ## 🏗️ Architecture
@@ -205,7 +205,7 @@ pnpm run watch      # Watch mode
 
 ### Publishing
 
-Open VSX **0.2.2** is published; VS Code Marketplace listing is in progress. To package locally or publish to Open VSX (and eventually VS Code Marketplace), see **[docs/PUBLISHING.md](docs/PUBLISHING.md)** for publisher setup, tokens, and release steps.
+Open VSX **0.2.2** is published; **0.2.3** is prepared in-repo pending release. VS Code Marketplace listing is in progress. To package locally or publish to Open VSX (and eventually VS Code Marketplace), see **[docs/PUBLISHING.md](docs/PUBLISHING.md)** for publisher setup, tokens, and release steps.
 
 ### Project Structure
 
@@ -253,7 +253,7 @@ pnpm test              # Run unit tests (Vitest)
 
 ## 📊 Progress
 
-**Current**: v0.2.2 — project-first sidebar, lifecycle dashboard, Worksets, and bilingual user guides.
+**Current**: v0.2.3 — P0 usability release (CLI recovery, smart launch defaults, task Next/Copy actions).
 
 See [CHANGELOG.md](CHANGELOG.md) for release history. Historical MVP planning artifacts live under [openspec/changes/archive/2026-02-11-vscode-extension-mvp/](openspec/changes/archive/2026-02-11-vscode-extension-mvp/).
 
@@ -326,6 +326,6 @@ MIT — see [LICENSE](LICENSE)
 
 ***
 
-**Version**: 0.2.2  
+**Version**: 0.2.3  
 **Last Updated**: 2026-09  
-**Status**: 🟢 Released on Open VSX; VS Code Marketplace publishing in progress
+**Status**: 🟡 0.2.3 prepared in-repo; Open VSX 0.2.2 live; VS Code Marketplace publishing in progress

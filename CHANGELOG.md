@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-09-22
+
+### Added
+
+- P0-1: CLI discovery and first-screen recovery (diagnostic card; Retry primary; Settings / Copy Diagnostics / Docs).
+- P0-2: Default executable strategy (Launch vs copy-only; do not default to agentCli on Cursor; degrade to copy with visible feedback when launch fails).
+- P0-3: Change detail Tasks row Next/Copy; dependency blocked shows reason; Executor dropdown drives row/header labels (Clipboard→Copy, Cursor→Next).
+
+### Changed
+
+- Marketplace display name aligned to OpenSpec Workflow.
+
 ## [0.2.2] - 2026-09-08
 
 ### Fixed
@@ -123,7 +135,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Workspace and bundled path resolution for extension resources.
 
-[Unreleased]: https://github.com/RandyZ/openspec-ext/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/RandyZ/openspec-ext/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/RandyZ/openspec-ext/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/RandyZ/openspec-ext/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/RandyZ/openspec-ext/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/RandyZ/openspec-ext/compare/v0.1.4...v0.2.0
