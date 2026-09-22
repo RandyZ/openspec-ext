@@ -1,0 +1,4 @@
+{
+  "openspec.workflowLaunchMode": "adapter",
+  "openspec.preferredAgentAdapter": "vscode-copilot"
+}

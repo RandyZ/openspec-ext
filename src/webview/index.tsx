@@ -4,6 +4,7 @@ import './index.css';
 import { App } from './App';
 import { mountAgentUnavailableApp } from './agentUnavailableEntry';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
+import { getVsCodeApi } from './hooks/useVscode';
 import { readInlineWebviewBootstrap, readWebviewBootstrap } from '../shared/webviewBootstrap';
 import {
   WEBVIEW_EXECUTOR_ADAPTERS_MARKER,
@@ -42,7 +43,7 @@ if (bootstrap?.view === 'agentUnavailable') {
   );
 
   try {
-    window.acquireVsCodeApi().postMessage({ type: 'webviewReady' });
+    getVsCodeApi().postMessage({ type: 'webviewReady' });
   } catch {
     // Standalone webview dev server has no VS Code API.
   }

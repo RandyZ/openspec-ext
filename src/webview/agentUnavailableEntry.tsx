@@ -5,6 +5,7 @@ import { AgentUnavailableCard } from './components/AgentUnavailableCard';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { setLocale } from '../i18n';
 import type { WebviewBootstrap } from '../shared/webviewBootstrap';
+import { getVsCodeApi } from './hooks/useVscode';
 
 export function AgentUnavailableRoot({ workspacePath }: { workspacePath?: string }) {
   useEffect(() => {
@@ -29,7 +30,7 @@ export function mountAgentUnavailableApp(
   );
 
   try {
-    window.acquireVsCodeApi().postMessage({ type: 'webviewReady' });
+    getVsCodeApi().postMessage({ type: 'webviewReady' });
   } catch {
     // Standalone dev server.
   }
