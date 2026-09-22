@@ -29,6 +29,15 @@ import type {
   InteractiveWorkflowAction,
   InteractiveWorkflowState,
 } from '../../shared/interactiveWorkflow';
+import {
+  buildInlineBootstrapScript,
+  buildWebviewRootAttributes,
+  type WebviewBootstrap,
+} from '../../shared/webviewBootstrap';
+import {
+  getPrimaryWorkspacePath,
+  workspaceHasOpenSpecRoot,
+} from '../services/openspecRootGate';
 import type { OpenSpecScope } from '../services/openspecScope';
 import {
   createWorkflowRequestId,
@@ -207,6 +216,10 @@ export async function handleWebviewMessage(
 
   switch (message.type) {
     case 'getDashboardData': {
+      if (!(await workspaceHasOpenSpecRoot())) {
+        postAgentUnavailableContext(webview, getPrimaryWorkspacePath());
+        break;
+      }
       const data = await dataManager.getDashboardData();
       webview.postMessage({ type: 'dashboardData', data, debug: getDebug() });
       break;
@@ -1432,6 +1445,66 @@ export async function handleWebviewMessage(
   }
 }
 
+export function postAgentUnavailableContext(
+  webview: vscode.Webview,
+  workspacePath?: string,
+): void {
+  webview.postMessage({
+    type: 'setContext',
+    view: 'agentUnavailable',
+    ...(workspacePath ? { workspacePath } : {}),
+  });
+  webview.postMessage(getWorkflowLaunchConfigMessage());
+}
+
+export async function handleAgentUnavailableMessage(
+  webview: vscode.Webview,
+  message: WebviewMessage,
+  workspacePath?: string,
+): Promise<void> {
+  const { copyInitCommand, launchAgentInit, openWorkspaceFolder } = await import('./agentUnavailableActions');
+
+  switch (message.type) {
+    case 'getDashboardData':
+    case 'getProjectSidebarData':
+    case 'webviewReady':
+    case 'refresh':
+      postAgentUnavailableContext(webview, workspacePath);
+      break;
+    case 'getWorkflowLaunchConfig':
+      webview.postMessage(getWorkflowLaunchConfigMessage());
+      break;
+    case 'fillChat': {
+      const prompt = typeof message.prompt === 'string' && message.prompt.trim()
+        ? message.prompt
+        : undefined;
+      if (!prompt) break;
+      await launchAgentInit(workspacePath);
+      break;
+    }
+    case 'copyToClipboard': {
+      const text = typeof message.text === 'string' ? message.text : '';
+      if (text === 'openspec init') {
+        await copyInitCommand();
+        break;
+      }
+      if (text.trim()) {
+        await vscode.env.clipboard.writeText(text);
+        void vscode.window.showInformationMessage(t('clipboard.copiedGeneral'));
+      }
+      break;
+    }
+    case 'openWorkspaceFolder':
+      await openWorkspaceFolder();
+      break;
+    case 'openCliInstallDocs':
+      await vscode.env.openExternal(vscode.Uri.parse('https://github.com/Fission-AI/OpenSpec#quick-start'));
+      break;
+    default:
+      logger.warn(`Agent unavailable view ignored message type: ${(message as WebviewMessage).type}`);
+  }
+}
+
 export function getWorkflowLaunchConfigMessage() {
   const config = getWorkflowLaunchConfig();
   return {
@@ -1538,7 +1611,11 @@ async function handleInteractiveWorkflowAction(params: {
 /**
  * Generate HTML content for webview (shared by sidebar and panel).
  */
-export function getWebviewContent(webview: vscode.Webview, extensionPath: string): string {
+export function getWebviewContent(
+  webview: vscode.Webview,
+  extensionPath: string,
+  bootstrap?: WebviewBootstrap,
+): string {
   const scriptUri = webview.asWebviewUri(
     vscode.Uri.file(path.join(extensionPath, 'dist', 'webview', 'index.js'))
   );
@@ -1546,18 +1623,21 @@ export function getWebviewContent(webview: vscode.Webview, extensionPath: string
     vscode.Uri.file(path.join(extensionPath, 'dist', 'webview', 'index.css'))
   );
   const lang = vscode.env.language || 'en';
+  const rootAttributes = buildWebviewRootAttributes(bootstrap);
+  const inlineBootstrap = buildInlineBootstrapScript(bootstrap);
 
   return `<!DOCTYPE html>
 <html lang="${lang}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource};">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource} 'unsafe-inline';">
   <title>OpenSpec Dashboard</title>
   <link rel="stylesheet" href="${styleUri}">
 </head>
 <body>
-  <div id="root"></div>
+  <div id="root"${rootAttributes}></div>
+  ${inlineBootstrap}
   <script type="module" src="${scriptUri}"></script>
 </body>
 </html>`;

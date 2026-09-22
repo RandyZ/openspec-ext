@@ -2,16 +2,17 @@
  * Parse task lines from tasks.md content.
  * Matches the same format as FileManagerService.parseTasksMarkdown.
  */
+import { parseTaskLine } from '../../shared/taskMarkdown';
+
 export interface ParsedTask {
   taskIndex: number;
   lineIndex: number;
   indent: number;
   done: boolean;
+  inProgress: boolean;
   text: string;
   originalLine: string;
 }
-
-const TASK_LINE_REGEX = /^(\s*)- \[([ xX])\] (.+)$/;
 
 export function parseTasksMarkdown(content: string): ParsedTask[] {
   const lines = content.split('\n');
@@ -20,17 +21,16 @@ export function parseTasksMarkdown(content: string): ParsedTask[] {
 
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
     const line = lines[lineIndex];
-    // CRLF: line may end with \r; keep in sync with FileManagerService.parseTasksMarkdown
-    const lineForMatch = line.replace(/\r$/, '');
-    const match = lineForMatch.match(TASK_LINE_REGEX);
-    if (match) {
+    const parsed = parseTaskLine(line);
+    if (parsed) {
       tasks.push({
         taskIndex,
         lineIndex,
-        indent: match[1].length,
-        done: match[2].toLowerCase() === 'x',
-        text: match[3],
-        originalLine: lineForMatch,
+        indent: parsed.indent,
+        done: parsed.done,
+        inProgress: parsed.inProgress,
+        text: parsed.text,
+        originalLine: line.replace(/\r$/, ''),
       });
       taskIndex++;
     }
@@ -38,3 +38,5 @@ export function parseTasksMarkdown(content: string): ParsedTask[] {
 
   return tasks;
 }
+
+export { countTaskProgress } from '../../shared/taskMarkdown';

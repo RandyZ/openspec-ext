@@ -94,6 +94,7 @@
             "clipboard",
             "cursor",
             "vscode-copilot",
+            "vscode-chat",
             "claude-code",
             "opencode"
           ],

@@ -19,7 +19,7 @@ export type DashboardActivity =
   | { kind: 'scope-action'; action: 'setup' | 'register' }
   | { kind: 'warning'; message: string };
 
-export type AppPage = 'dashboard' | 'sidebar' | 'changesExplorer' | 'specsExplorer' | 'loading';
+export type AppPage = 'dashboard' | 'sidebar' | 'changesExplorer' | 'specsExplorer' | 'agentUnavailable' | 'loading';
 
 // State shape
 export interface AppState {
@@ -39,6 +39,7 @@ export interface AppState {
   selectedChange: string | null;
   debug: boolean;
   cliDiagnostic: { diagnostic: CliActivationDiagnosticView; mode: 'blocking' | 'warning' } | null;
+  agentUnavailableWorkspacePath?: string;
 }
 
 // Action types
@@ -54,7 +55,28 @@ export type AppAction =
   | { type: 'CLEAR_ERROR' }
   | { type: 'SELECT_CHANGE'; payload: string | null }
   | { type: 'SET_DEBUG'; payload: boolean }
-  | { type: 'SET_CLI_DIAGNOSTIC'; payload: { diagnostic: CliActivationDiagnosticView; mode: 'blocking' | 'warning' } | null };
+  | { type: 'SET_CLI_DIAGNOSTIC'; payload: { diagnostic: CliActivationDiagnosticView; mode: 'blocking' | 'warning' } | null }
+  | { type: 'SET_AGENT_UNAVAILABLE'; payload: { workspacePath?: string } | null };
+
+export function createAgentUnavailableInitialState(workspacePath?: string): AppState {
+  return {
+    data: null,
+    projectSidebar: null,
+    changesExplorer: null,
+    specsExplorer: null,
+    page: 'agentUnavailable',
+    projectFirst: false,
+    loading: false,
+    pendingScopeId: undefined,
+    activity: { kind: 'idle' },
+    stale: false,
+    error: null,
+    selectedChange: null,
+    debug: false,
+    cliDiagnostic: null,
+    agentUnavailableWorkspacePath: workspacePath,
+  };
+}
 
 // Initial state
 const initialState: AppState = {
@@ -211,6 +233,9 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'CLEAR_PAGE_CONTEXT':
+      if (state.page === 'agentUnavailable') {
+        return state;
+      }
       return {
         ...state,
         data: null,
@@ -257,6 +282,19 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         loadingReason: undefined,
         pendingScopeId: undefined,
         activity: action.payload ? { kind: 'warning', message: action.payload.diagnostic.message } : { kind: 'idle' },
+      };
+
+    case 'SET_AGENT_UNAVAILABLE':
+      return {
+        ...state,
+        page: action.payload ? 'agentUnavailable' : state.page,
+        agentUnavailableWorkspacePath: action.payload?.workspacePath,
+        loading: false,
+        loadingReason: undefined,
+        data: null,
+        cliDiagnostic: null,
+        error: null,
+        activity: { kind: 'idle' },
       };
 
     default:

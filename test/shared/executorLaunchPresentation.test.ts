@@ -24,7 +24,7 @@ const clipboardOnlyAvailable = [
 ];
 
 describe('buildExecutorLaunchPresentation', () => {
-  it('initial clipboard-only host resolves to Copy without user interaction', () => {
+  it('initial clipboard-only host keeps adapter intent labels without user interaction', () => {
     setLocale('en');
     const presentation = buildExecutorLaunchPresentation(
       cursorSettingsConfig,
@@ -33,10 +33,10 @@ describe('buildExecutorLaunchPresentation', () => {
     );
 
     expect(presentation.agentAdapters.currentId).toBe('clipboard');
-    expect(presentation.uiWorkflowLaunchConfig.effectiveAdapterId).toBe('clipboard');
-    expect(getTaskNextButtonLabel(presentation.uiWorkflowLaunchConfig)).toBe('Copy');
-    expect(getWorkflowActionButtonLabel('Continue planning', presentation.uiWorkflowLaunchConfig)).toBe('Copy Continue planning');
-    expect(getWorkflowLaunchModeHint(presentation.uiWorkflowLaunchConfig)).toBe('Copies command');
+    expect(presentation.uiWorkflowLaunchConfig.effectiveAdapterId).toBe('cursor');
+    expect(getTaskNextButtonLabel(presentation.uiWorkflowLaunchConfig)).toBe('Next with Agent');
+    expect(getWorkflowActionButtonLabel('Continue planning', presentation.uiWorkflowLaunchConfig)).toBe('Open Cursor · Continue planning');
+    expect(getWorkflowLaunchModeHint(presentation.uiWorkflowLaunchConfig)).toBe('Runs in Cursor');
   });
 
   it('cursor executor with both adapters available resolves to Next', () => {
@@ -50,7 +50,7 @@ describe('buildExecutorLaunchPresentation', () => {
       'cursor',
     );
 
-    expect(getTaskNextButtonLabel(presentation.uiWorkflowLaunchConfig)).toBe('Next');
+    expect(getTaskNextButtonLabel(presentation.uiWorkflowLaunchConfig)).toBe('Next with Agent');
     expect(getWorkflowActionButtonLabel('Continue planning', presentation.uiWorkflowLaunchConfig)).toBe('Open Cursor · Continue planning');
   });
 });
@@ -67,10 +67,10 @@ describe('normalizeAgentAdaptersState', () => {
 });
 
 describe('resolveUiWorkflowLaunchConfig', () => {
-  it('maps executor=clipboard to Copy labels', () => {
+  it('maps executor=clipboard to Agent labels when adapter mode prefers cursor', () => {
     setLocale('en');
     const uiConfig = resolveUiWorkflowLaunchConfig(cursorSettingsConfig, 'clipboard');
-    expect(getTaskNextButtonLabel(uiConfig)).toBe('Copy');
+    expect(getTaskNextButtonLabel(uiConfig)).toBe('Next with Agent');
   });
 });
 
@@ -82,21 +82,21 @@ describe('normalizeExecutorAdapterId', () => {
 });
 
 describe('b663c24 regression: settings cursor + runtime clipboard only', () => {
-  it('settings-only resolution with empty adapters defaults to Copy (never cursor launch)', () => {
+  it('settings-only resolution keeps Agent labels even when runtime adapters are clipboard-only', () => {
     setLocale('en');
     const settingsOnly = resolveUiWorkflowLaunchConfig(cursorSettingsConfig, null, []);
-    expect(getTaskNextButtonLabel(settingsOnly)).toBe('Copy');
-    expect(getWorkflowActionButtonLabel('Continue planning', settingsOnly)).toBe('Copy Continue planning');
+    expect(getTaskNextButtonLabel(settingsOnly)).toBe('Next with Agent');
+    expect(getWorkflowActionButtonLabel('Continue planning', settingsOnly)).toBe('Open Cursor · Continue planning');
 
     const presentation = buildExecutorLaunchPresentation(
       cursorSettingsConfig,
       clipboardOnlyAvailable,
       'cursor',
     );
-    expect(getTaskNextButtonLabel(presentation.uiWorkflowLaunchConfig)).toBe('Copy');
+    expect(getTaskNextButtonLabel(presentation.uiWorkflowLaunchConfig)).toBe('Next with Agent');
     expect(getWorkflowActionButtonLabel('Continue planning', presentation.uiWorkflowLaunchConfig)).toBe(
-      'Copy Continue planning',
+      'Open Cursor · Continue planning',
     );
-    expect(getWorkflowLaunchModeHint(presentation.uiWorkflowLaunchConfig)).toBe('Copies command');
+    expect(getWorkflowLaunchModeHint(presentation.uiWorkflowLaunchConfig)).toBe('Runs in Cursor');
   });
 });

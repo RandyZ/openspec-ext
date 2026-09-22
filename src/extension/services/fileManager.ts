@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { parseTaskLine } from '../../shared/taskMarkdown';
 import { logger } from '../utils/logger';
 import type { IOpenSpecContentAccess } from './contentAccess';
 import type { ArchivedChangeInfo, SpecInfo } from './types';
@@ -136,16 +137,15 @@ export class FileManagerService implements IOpenSpecContentAccess {
     let lineIndex = 0;
 
     for (const line of lines) {
-      // CRLF: after split('\n') lines may end with \r; . does not match \r in JS, so (.+)$ fails.
-      const lineForMatch = line.replace(/\r$/, '');
-      const match = lineForMatch.match(/^(\s*)- \[([ xX])\] (.+)$/);
-      if (match) {
+      const parsed = parseTaskLine(line);
+      if (parsed) {
         tasks.push({
           lineIndex,
-          indent: match[1].length,
-          done: match[2].toLowerCase() === 'x',
-          text: match[3],
-          originalLine: lineForMatch,
+          indent: parsed.indent,
+          done: parsed.done,
+          inProgress: parsed.inProgress,
+          text: parsed.text,
+          originalLine: line.replace(/\r$/, ''),
         });
       }
       lineIndex++;
@@ -193,11 +193,11 @@ export class FileManagerService implements IOpenSpecContentAccess {
 
       let taskCount = -1;
       for (let i = 0; i < lines.length; i++) {
-        if (/^(\s*)- \[([ xX])\]/.test(lines[i])) {
+        if (/^(\s*)- \[([ xX~])\]/.test(lines[i])) {
           taskCount++;
           if (taskCount === taskIndex) {
             // Toggle the checkbox
-            lines[i] = lines[i].replace(/\[([ xX])\]/, (_, char) => {
+            lines[i] = lines[i].replace(/\[([ xX~])\]/, (_, char) => {
               return char.toLowerCase() === 'x' ? '[ ]' : '[x]';
             });
             break;
@@ -229,7 +229,7 @@ export class FileManagerService implements IOpenSpecContentAccess {
         if (childIndices.length === 0) continue;
         if (childIndices.some((c) => !tasks[c].done)) continue;
         const lineIdx = tasks[i].lineIndex;
-        lines[lineIdx] = lines[lineIdx].replace(/\[([ xX])\]/, '[x]');
+        lines[lineIdx] = lines[lineIdx].replace(/\[([ xX~])\]/, '[x]');
         tasks[i].done = true;
         changed = true;
       }

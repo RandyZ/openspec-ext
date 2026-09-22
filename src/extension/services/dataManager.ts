@@ -9,7 +9,7 @@ import { FileWatcherService } from './fileWatcher';
 import { TaskExecutorService } from './taskExecutorService';
 import { StateReader } from './stateReader';
 import type { IOpenSpecContentAccess } from './contentAccess';
-import { getAvailableAdapters, getCurrentAdapter } from '../adapters';
+import { getCurrentAdapter, listExecutorAdapterOptions } from '../adapters';
 import { ChangeInfo, ChangeDetails, SpecInfo, ArchivedChangeInfo } from './types';
 import { extractProposalWhy } from './proposalWhy';
 import type { CliActivationDiagnostic } from './cliActivationDiagnostic';
@@ -1223,10 +1223,10 @@ export class DataManager {
    * Get available agent adapters and current selection for UI.
    */
   async getAgentAdaptersInfo(): Promise<AgentAdapterInfo> {
-    const available = await getAvailableAdapters();
+    const available = await listExecutorAdapterOptions();
     const current = await getCurrentAdapter();
     return {
-      available: available.map((a) => ({ id: a.id, displayName: a.displayName })),
+      available,
       currentId: current?.id ?? null,
     };
   }

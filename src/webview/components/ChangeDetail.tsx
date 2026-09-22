@@ -4,6 +4,7 @@ import { sendMessage, type ArtifactOutputDescriptor } from '../types/messages';
 import { ActionBar } from './ActionBar';
 import { ArtifactViewer } from './ArtifactViewer';
 import { TaskList } from './TaskList';
+import { countTaskProgress } from '../utils/parseTasks';
 import { ConfirmDialog } from './ui/ConfirmDialog';
 import { VerifyArchivePanel } from './VerifyArchivePanel';
 import { IconButton } from './ui/IconButton';
@@ -381,11 +382,9 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         setLoading(false);
         setError(null);
         if (msg.artifactType === 'tasks' && msg.content) {
-          const lines = msg.content.split('\n');
-          const taskLines = lines.filter((line: string) => /^\s*-\s*\[[ x]\]/.test(line));
-          const doneLines = taskLines.filter((line: string) => /^\s*-\s*\[x\]/i.test(line));
-          setTotalTasks(taskLines.length);
-          setCompletedTasks(doneLines.length);
+          const { completed, total } = countTaskProgress(msg.content);
+          setTotalTasks(total);
+          setCompletedTasks(completed);
         }
       } else if (msg.type === 'workflowActionReceipt'
         && msg.changeName === changeName

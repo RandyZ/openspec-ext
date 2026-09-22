@@ -2,16 +2,18 @@ import { describe, expect, it } from 'vitest';
 import {
   getIncompletePrecedingTasks,
   getRecommendedTaskIndex,
+  isTaskActionable,
   isTaskBlockedByDependencies,
   type TaskLike,
 } from '../../src/shared/taskExecutionUi';
 
-function tasks(lines: Array<[boolean, string, number?]>): TaskLike[] {
-  return lines.map(([done, text, indent = 0], taskIndex) => ({
+function tasks(lines: Array<[boolean, string, number?, boolean?]>): TaskLike[] {
+  return lines.map(([done, text, indent = 0, inProgress = false], taskIndex) => ({
     taskIndex,
     done,
     text,
     indent,
+    inProgress,
   }));
 }
 
@@ -33,13 +35,48 @@ describe('taskExecutionUi', () => {
     expect(getRecommendedTaskIndex(parsed, 'block')).toBe(0);
   });
 
-  it('does not block parent tasks that still have incomplete descendants', () => {
+  it('blocks parent tasks from Next until descendants complete, including in-progress parents', () => {
     const parsed = tasks([
       [false, 'Parent', 0],
       [false, 'Child', 2],
     ]);
-    expect(isTaskBlockedByDependencies(parsed, 0, 'block')).toBe(false);
+    expect(isTaskActionable(parsed, 0)).toBe(false);
+    expect(isTaskBlockedByDependencies(parsed, 0, 'block')).toBe(true);
+    expect(getRecommendedTaskIndex(parsed, 'block')).toBe(1);
+
+    const inProgressParent = tasks([
+      [false, 'Parent', 0, true],
+      [false, 'Child', 2],
+    ]);
+    expect(isTaskActionable(inProgressParent, 0)).toBe(false);
+    expect(isTaskBlockedByDependencies(inProgressParent, 0, 'block')).toBe(true);
+    expect(getRecommendedTaskIndex(inProgressParent, 'block')).toBe(1);
+  });
+
+  it('blocks in-progress parents with incomplete same-indent followers', () => {
+    const flatParent = tasks([
+      [false, 'Parent', 0, true],
+      [false, 'Child', 0],
+    ]);
+    expect(isTaskActionable(flatParent, 0)).toBe(false);
+    expect(isTaskActionable(flatParent, 1)).toBe(true);
+  });
+
+  it('keeps leaf in-progress tasks actionable', () => {
+    const parsed = tasks([
+      [false, 'Working task', 0, true],
+    ]);
+    expect(isTaskActionable(parsed, 0)).toBe(true);
     expect(getRecommendedTaskIndex(parsed, 'block')).toBe(0);
+  });
+
+  it('does not block same-indent followers of an in-progress predecessor', () => {
+    const flatParent = tasks([
+      [false, 'Parent', 0, true],
+      [false, 'Child', 0],
+    ]);
+    expect(isTaskBlockedByDependencies(flatParent, 1, 'block')).toBe(false);
+    expect(getRecommendedTaskIndex(flatParent, 'block')).toBe(1);
   });
 
   it('excludes the direct parent from incomplete preceding checks', () => {

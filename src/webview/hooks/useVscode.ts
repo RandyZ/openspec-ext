@@ -15,10 +15,8 @@ interface VsCodeApi {
 
 let vscodeApi: VsCodeApi | undefined;
 
-/**
- * Get or initialize VSCode API
- */
-function getVsCodeApi(): VsCodeApi {
+/** Get or initialize VSCode API (singleton — acquireVsCodeApi may run once per webview). */
+export function getVsCodeApi(): VsCodeApi {
   if (!vscodeApi) {
     vscodeApi = window.acquireVsCodeApi();
   }

@@ -24,7 +24,7 @@ const copyOnlyConfig: WorkflowLaunchConfigView = {
 };
 
 describe('TaskList next actions', () => {
-  it('renders Next on incomplete tasks and hides actions on completed tasks', () => {
+  it('renders Next with Agent on incomplete tasks and hides actions on completed tasks', () => {
     setLocale('en');
     const html = renderToStaticMarkup(
       <TaskList
@@ -36,8 +36,60 @@ describe('TaskList next actions', () => {
       />,
     );
 
-    expect(html.match(/Next/g)?.length).toBe(2);
+    expect(html).toContain('1/3');
+    expect(html.match(/Next with Agent/g)?.length).toBe(1);
     expect(html).not.toContain('Done task</span><button');
+  });
+
+  it('shows in-progress marker with warning dot and keeps leaf tasks actionable', () => {
+    setLocale('en');
+    const html = renderToStaticMarkup(
+      <TaskList
+        content={'- [~] Working task'}
+        changeName="demo"
+        workflowLaunchConfig={executableConfig}
+        onToggleTask={vi.fn()}
+        onExecuteTask={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain('0/1');
+    expect(html).toContain('Next with Agent');
+    expect(html).toContain('data-task-in-progress="true"');
+    expect(html).toContain('data-task-warning-dot="true"');
+  });
+
+  it('does not show Next on in-progress parent tasks while nested children remain incomplete', () => {
+    setLocale('en');
+    const html = renderToStaticMarkup(
+      <TaskList
+        content={'- [~] Parent\n  - [ ] Child'}
+        changeName="demo"
+        workflowLaunchConfig={executableConfig}
+        onToggleTask={vi.fn()}
+        onExecuteTask={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain('data-task-warning-dot="true"');
+    expect(html.match(/Next with Agent/g)?.length).toBe(1);
+    expect(html).toContain('Child');
+  });
+
+  it('does not show Next on parent tasks while nested children remain incomplete', () => {
+    setLocale('en');
+    const html = renderToStaticMarkup(
+      <TaskList
+        content={'- [ ] Parent\n  - [ ] Child'}
+        changeName="demo"
+        workflowLaunchConfig={executableConfig}
+        onToggleTask={vi.fn()}
+        onExecuteTask={vi.fn()}
+      />,
+    );
+
+    expect(html.match(/Next with Agent/g)?.length).toBe(1);
+    expect(html).toContain('Child');
   });
 
   it('uses Copy when effective adapter is clipboard even if cursor launch mode is explicit', () => {
@@ -60,7 +112,7 @@ describe('TaskList next actions', () => {
     );
 
     expect(html).toContain('Copy');
-    expect(html).not.toContain('>Next<');
+    expect(html).not.toContain('Next with Agent');
   });
 
   it('uses Copy label in copy-only mode', () => {
@@ -76,10 +128,10 @@ describe('TaskList next actions', () => {
     );
 
     expect(html).toContain('Copy');
-    expect(html).not.toContain('>Next<');
+    expect(html).not.toContain('Next with Agent');
   });
 
-  it('disables blocked tasks and surfaces the blocking dependency reason', () => {
+  it('hides next actions on blocked tasks while keeping the first task actionable', () => {
     setLocale('en');
     const html = renderToStaticMarkup(
       <TaskList
@@ -92,8 +144,25 @@ describe('TaskList next actions', () => {
       />,
     );
 
-    expect(html).toContain('Blocked: waiting on &quot;First task&quot;.');
-    expect(html).toContain('aria-disabled="true"');
+    expect(html.match(/Next with Agent/g)?.length).toBe(1);
+    expect(html).not.toContain('data-task-blocked-indicator="true"');
+    expect(html).not.toContain('data-task-warning-dot="true"');
+  });
+
+  it('does not show Next on flat in-progress parent rows while a sibling remains incomplete', () => {
+    setLocale('en');
+    const html = renderToStaticMarkup(
+      <TaskList
+        content={'- [ ~ ] Parent\n- [ ] Child'}
+        changeName="demo"
+        workflowLaunchConfig={executableConfig}
+        onToggleTask={vi.fn()}
+        onExecuteTask={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain('data-task-warning-dot="true"');
+    expect(html.match(/Next with Agent/g)?.length).toBe(1);
   });
 
   it('does not render next actions for archived changes', () => {
@@ -109,7 +178,7 @@ describe('TaskList next actions', () => {
       />,
     );
 
-    expect(html).not.toContain('Next');
+    expect(html).not.toContain('Next with Agent');
     expect(html).not.toContain('Copy');
   });
 });

@@ -29,7 +29,7 @@ const workflowSnapshot = {
 };
 
 describe('Change detail executor-driven labels', () => {
-  it('renders Copy labels for ActionBar and TaskList when host exposes only clipboard (no user action)', () => {
+  it('renders Agent labels when adapter mode prefers cursor even if only clipboard adapter is available', () => {
     setLocale('en');
     const presentation = buildExecutorLaunchPresentation(
       cursorSettingsConfig,
@@ -64,56 +64,37 @@ describe('Change detail executor-driven labels', () => {
       />,
     );
 
-    expect(actionBarHtml).toContain('Copy Continue planning');
-    expect(actionBarHtml).not.toContain('Open Cursor');
-    expect(taskListHtml).toContain('Copy');
-    expect(taskListHtml).not.toContain('>Next<');
+    expect(actionBarHtml).toContain('Open Cursor · Continue planning');
+    expect(taskListHtml).toContain('Next with Agent');
+    expect(taskListHtml).not.toContain('>Copy<');
   });
 
-  it('forbids Next/Open Cursor when settings=cursor but runtime adapters are clipboard-only', () => {
+  it('shows VS Code chat adapter labels when chat adapter is available', () => {
     setLocale('en');
-    const uiConfig = resolveExecutorUiLaunchConfig({
-      agentAdapters: {
-        available: [{ id: 'clipboard', displayName: 'Clipboard (copy to clipboard)' }],
-        currentId: 'cursor',
+    const presentation = buildExecutorLaunchPresentation(
+      {
+        ...cursorSettingsConfig,
+        preferredAgentAdapter: 'vscode-chat',
+        effectiveAdapterId: 'vscode-chat',
       },
-      workflowLaunchConfig: cursorSettingsConfig,
-      uiWorkflowLaunchConfig: cursorSettingsConfig,
-    });
-    expect(getWorkflowLaunchModeHint(uiConfig)).toBe('Copies command');
-
-    const resolvedActions = resolveWorkflowActions(workflowSnapshot, {
-      completedTasks: 0,
-      totalTasks: 2,
-      isArchived: false,
-      hasDeltaSpecs: false,
-    });
-
-    const actionBarHtml = renderToStaticMarkup(
-      <ActionBar
-        changeName="demo"
-        isArchived={false}
-        resolvedActions={resolvedActions}
-        executorUiLaunchConfig={uiConfig}
-        onAction={vi.fn()}
-        onCopyFf={vi.fn()}
-        onCopyApply={vi.fn()}
-      />,
+      [
+        { id: 'vscode-chat', displayName: 'VS Code Chat' },
+        { id: 'clipboard', displayName: 'Clipboard (copy to clipboard)' },
+      ],
+      'vscode-chat',
     );
+
     const taskListHtml = renderToStaticMarkup(
       <TaskList
-        content={'- [ ] First task\n- [ ] Blocked task'}
+        content={'- [ ] First task'}
         changeName="demo"
-        executorUiLaunchConfig={uiConfig}
+        executorUiLaunchConfig={presentation.uiWorkflowLaunchConfig}
         onToggleTask={vi.fn()}
         onExecuteTask={vi.fn()}
       />,
     );
 
-    expect(actionBarHtml).not.toContain('Open Cursor');
-    expect(actionBarHtml).not.toContain('Runs in Cursor');
-    expect(taskListHtml).not.toContain('>Next<');
-    expect(taskListHtml).toContain('Copy');
+    expect(taskListHtml).toContain('Next with Agent');
   });
 
   it('renders Next labels when cursor executor is available and selected', () => {

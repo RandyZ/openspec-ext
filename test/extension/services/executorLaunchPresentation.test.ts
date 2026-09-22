@@ -20,7 +20,7 @@ describe('createExecutorLaunchPresentation', () => {
     });
   });
 
-  it('returns copy-only ui config when only clipboard adapter is available', async () => {
+  it('keeps adapter intent when only clipboard adapter is available at runtime', async () => {
     const dataManager = {
       getAgentAdaptersInfo: vi.fn().mockResolvedValue({
         available: [{ id: 'clipboard', displayName: 'Clipboard (copy to clipboard)' }],
@@ -31,7 +31,7 @@ describe('createExecutorLaunchPresentation', () => {
     const presentation = await createExecutorLaunchPresentation(dataManager as any);
 
     expect(presentation.agentAdapters.currentId).toBe('clipboard');
-    expect(presentation.uiWorkflowLaunchConfig.effectiveAdapterId).toBe('clipboard');
-    expect(presentation.uiWorkflowLaunchConfig.workflowLaunchMode).toBe('clipboard');
+    expect(presentation.uiWorkflowLaunchConfig.workflowLaunchMode).toBe('adapter');
+    expect(presentation.uiWorkflowLaunchConfig.preferredAgentAdapter).toBe('cursor');
   });
 });

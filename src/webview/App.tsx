@@ -7,6 +7,7 @@ import { ChangeDetail } from './components/ChangeDetail';
 import { SpecViewer } from './components/SpecViewer';
 import { ChangesExplorer } from './components/ChangesExplorer';
 import { SpecsExplorer } from './components/SpecsExplorer';
+import { AgentUnavailableCard } from './components/AgentUnavailableCard';
 import { setLocale } from '../i18n';
 import type { ChangeDetailTabId, InteractiveWorkflowAction } from '../shared/interactiveWorkflow';
 import type { ChangeWorkflowSnapshot } from '../shared/changeWorkflow';
@@ -18,6 +19,7 @@ export type AppMessageRoute =
   | 'dashboard'
   | 'changesExplorer'
   | 'specsExplorer'
+  | 'agentUnavailable'
   | 'changeDetail'
   | 'specContent'
   | 'unknown';
@@ -30,6 +32,9 @@ export function resolveAppMessageRoute(message: unknown): AppMessageRoute {
     return 'unknown';
   }
   const candidate = message as { type?: unknown; view?: unknown; specId?: unknown };
+  if (candidate.type === 'setContext' && candidate.view === 'agentUnavailable') {
+    return 'agentUnavailable';
+  }
   if (isChangeDetailContext(message)) {
     return 'changeDetail';
   }
@@ -122,6 +127,19 @@ function AppContent() {
         setPanelScopeSource(undefined);
         setPanelExecutorPresentation(null);
         dispatch({ type: 'SET_PAGE_CONTEXT', payload: msg });
+      } else if (route === 'agentUnavailable') {
+        setPanelChangeName(null);
+        setPanelSpecId(null);
+        setPanelSpecContent(null);
+        setPanelWorkflowSnapshot(undefined);
+        setPanelProjectLabel(undefined);
+        setPanelPlanningRoot(undefined);
+        setPanelScopeSource(undefined);
+        setPanelExecutorPresentation(null);
+        dispatch({
+          type: 'SET_AGENT_UNAVAILABLE',
+          payload: { workspacePath: typeof msg.workspacePath === 'string' ? msg.workspacePath : undefined },
+        });
       } else if (msg.type === 'setContext') {
         setPanelChangeName(null);
         setPanelSpecId(null);
@@ -162,6 +180,10 @@ function AppContent() {
   }
   if (state.selectedChange) {
     return <ChangeDetail changeName={state.selectedChange} debug={state.debug} />;
+  }
+
+  if (state.page === 'agentUnavailable') {
+    return <AgentUnavailableCard workspacePath={state.agentUnavailableWorkspacePath} />;
   }
 
   switch (state.page) {

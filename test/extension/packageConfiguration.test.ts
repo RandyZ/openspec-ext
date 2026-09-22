@@ -21,7 +21,7 @@ describe('OpenSpec package configuration', () => {
   it('declares preferredAgentAdapter as a finite enum defaulting to clipboard', () => {
     expect(properties['openspec.preferredAgentAdapter']).toMatchObject({
       type: 'string',
-      enum: ['clipboard', 'cursor', 'vscode-copilot', 'claude-code', 'opencode'],
+      enum: ['clipboard', 'cursor', 'vscode-copilot', 'vscode-chat', 'claude-code', 'opencode'],
       default: 'clipboard',
     });
   });

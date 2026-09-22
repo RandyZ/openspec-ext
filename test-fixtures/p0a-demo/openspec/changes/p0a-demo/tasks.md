@@ -1,0 +1,4 @@
+- [ ~ ] Parent in progress
+  - [ ] Nested child
+- [ ] Blocked leaf after open sibling
+- [ ] Another open task

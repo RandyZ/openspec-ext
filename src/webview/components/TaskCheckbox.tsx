@@ -3,6 +3,7 @@ import { renderTaskLabelMarkdown } from '../utils/taskLabelMarkdown';
 
 export interface TaskCheckboxProps {
   checked: boolean;
+  inProgress?: boolean;
   onToggle: () => void;
   label: string;
   indent: number;
@@ -10,10 +11,11 @@ export interface TaskCheckboxProps {
   animate?: boolean;
 }
 
-const INDENT_PX = 16;
+const INDENT_PX = 18;
 
 export const TaskCheckbox: React.FC<TaskCheckboxProps> = ({
   checked,
+  inProgress = false,
   onToggle,
   label,
   indent,
@@ -25,6 +27,12 @@ export const TaskCheckbox: React.FC<TaskCheckboxProps> = ({
   return (
     <label
       className="task-checkbox"
+      onClick={(event) => {
+        if (inProgress && !disabled) {
+          event.preventDefault();
+          onToggle();
+        }
+      }}
       style={{
         display: 'flex',
         alignItems: 'flex-start',
@@ -35,24 +43,70 @@ export const TaskCheckbox: React.FC<TaskCheckboxProps> = ({
         transition: animate ? 'opacity 0.15s ease' : undefined,
       }}
     >
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={onToggle}
-        disabled={disabled}
-        style={{
-          marginTop: '3px',
-          flexShrink: 0,
-          width: '16px',
-          height: '16px',
-          accentColor: 'var(--vscode-checkbox-selectBackground)',
-        }}
-      />
+      {inProgress ? (
+        <span
+          data-task-in-progress="true"
+          aria-hidden="true"
+          style={{
+            marginTop: '2px',
+            flexShrink: 0,
+            width: '16px',
+            height: '16px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            position: 'relative',
+          }}
+        >
+          <span
+            style={{
+              width: '14px',
+              height: '14px',
+              borderRadius: '2px',
+              border: '1px solid var(--vscode-checkbox-border, var(--vscode-contrastBorder, #888))',
+              background: 'transparent',
+              boxSizing: 'border-box',
+            }}
+          />
+          <span
+            data-task-warning-dot="true"
+            style={{
+              position: 'absolute',
+              right: '-2px',
+              bottom: '-2px',
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              background: 'var(--vscode-editorWarning-foreground, #e3b341)',
+              border: '1px solid var(--vscode-editor-background, #1e1e1e)',
+              boxSizing: 'border-box',
+            }}
+          />
+        </span>
+      ) : (
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={onToggle}
+          disabled={disabled}
+          style={{
+            marginTop: '3px',
+            flexShrink: 0,
+            width: '16px',
+            height: '16px',
+            accentColor: checked
+              ? 'var(--vscode-testing-iconPassed, var(--vscode-checkbox-selectBackground))'
+              : 'var(--vscode-checkbox-selectBackground)',
+          }}
+        />
+      )}
       <span
         className="markdown-body task-inline-md"
         style={{
           flex: 1,
-          color: 'var(--vscode-foreground)',
+          color: checked
+            ? 'var(--vscode-testing-iconPassed, var(--vscode-foreground))'
+            : 'var(--vscode-foreground)',
           fontSize: '13px',
           lineHeight: 1.5,
           textDecoration: checked ? 'line-through' : undefined,

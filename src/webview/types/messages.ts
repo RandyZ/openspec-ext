@@ -44,6 +44,7 @@ export type LoadingReason =
 // Message types from webview to extension
 export type WebviewMessage =
   | { type: 'getDashboardData' }
+  | { type: 'webviewReady' }
   | { type: 'getProjectSidebarData' }
   | { type: 'selectWorksetProject'; worksetName: string; memberPath: string }
   | { type: 'selectCurrentProject' }
@@ -128,6 +129,7 @@ export type WebviewMessage =
   | { type: 'openCliPathSettings' }
   | { type: 'copyCliDiagnostic' }
   | { type: 'openCliInstallDocs' }
+  | { type: 'openWorkspaceFolder' }
   | { type: 'selectScope'; scopeId: string }
   | { type: 'selectWorksetStore'; worksetName: string; memberPath: string }
   | { type: 'selectProjectDefaultRoot' }
@@ -214,6 +216,7 @@ export type ExtensionMessage =
   | { type: 'setContext'; view: 'dashboard'; data: ProjectSidebarData }
   | { type: 'setContext'; view: 'changesExplorer'; data: ProjectChangesExplorerData }
   | { type: 'setContext'; view: 'specsExplorer'; data: ProjectSpecsExplorerData }
+  | { type: 'setContext'; view: 'agentUnavailable'; workspacePath?: string }
   | { type: 'archivedChanges'; items: ArchivedChangeInfo[]; scopeId?: string }
   | { type: 'agentAdapters'; available: { id: string; displayName: string }[]; currentId: string | null }
   | {
@@ -456,6 +459,10 @@ export function isChangeDetailContext(
 export const sendMessage = {
   getDashboardData: (): WebviewMessage => ({
     type: 'getDashboardData',
+  }),
+
+  webviewReady: (): WebviewMessage => ({
+    type: 'webviewReady',
   }),
 
   getProjectSidebarData: (): WebviewMessage => ({
@@ -745,6 +752,10 @@ export const sendMessage = {
 
   openCliInstallDocs: (): WebviewMessage => ({
     type: 'openCliInstallDocs',
+  }),
+
+  openWorkspaceFolder: (): WebviewMessage => ({
+    type: 'openWorkspaceFolder',
   }),
 
   selectScope: (scopeId: string): WebviewMessage => ({

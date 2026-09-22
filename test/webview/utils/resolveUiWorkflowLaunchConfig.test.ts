@@ -15,10 +15,10 @@ const cursorLaunchConfig: WorkflowLaunchConfigView = {
 };
 
 describe('resolveUiWorkflowLaunchConfig re-export', () => {
-  it('maps executor=clipboard to Copy labels', () => {
+  it('keeps Agent labels when adapter mode prefers cursor even if runtime executor is clipboard', () => {
     setLocale('en');
     const uiConfig = resolveUiWorkflowLaunchConfig(cursorLaunchConfig, 'clipboard');
-    expect(getTaskNextButtonLabel(uiConfig)).toBe('Copy');
-    expect(getWorkflowActionButtonLabel('Continue planning', uiConfig)).toBe('Copy Continue planning');
+    expect(getTaskNextButtonLabel(uiConfig)).toBe('Next with Agent');
+    expect(getWorkflowActionButtonLabel('Continue planning', uiConfig)).toBe('Open Cursor · Continue planning');
   });
 });
