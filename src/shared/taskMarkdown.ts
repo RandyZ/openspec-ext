@@ -10,19 +10,23 @@ export interface ParsedTaskLine {
   text: string;
 }
 
-/** Supports ASCII tilde (~) and fullwidth tilde (～) for in-progress markers. */
-const TASK_LINE_REGEX = /^(\s*)- \[([ xX~～])\] (.+)$/;
+/** Supports `[~]`, `[ ~ ]`, and fullwidth tilde (～) for in-progress markers. */
+const TASK_LINE_REGEX = /^(\s*)- \[([^\]]+)\] (.+)$/;
+
+function parseTaskMarker(raw: string): TaskMarker | null {
+  const compact = raw.replace(/\s+/g, '');
+  if (compact === '~' || compact === '～') return 'inProgress';
+  if (compact.toLowerCase() === 'x') return 'done';
+  if (compact === '') return 'open';
+  return null;
+}
 
 export function parseTaskLine(line: string): ParsedTaskLine | null {
   const lineForMatch = line.replace(/\r$/, '');
   const match = lineForMatch.match(TASK_LINE_REGEX);
   if (!match) return null;
-  const markerChar = match[2];
-  const marker: TaskMarker = markerChar === '~' || markerChar === '～'
-    ? 'inProgress'
-    : markerChar.toLowerCase() === 'x'
-      ? 'done'
-      : 'open';
+  const marker = parseTaskMarker(match[2]);
+  if (!marker) return null;
   return {
     indent: match[1].length,
     marker,

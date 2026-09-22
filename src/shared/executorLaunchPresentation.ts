@@ -72,6 +72,14 @@ export function normalizeExecutorAdapterId(
     return 'vscode-copilot';
   }
 
+  if (
+    configPreferredAdapter === 'vscode-copilot'
+    && !available.includes('vscode-copilot')
+    && available.includes('vscode-chat')
+  ) {
+    return 'vscode-chat';
+  }
+
   if (available.length === 1) {
     return available[0] as PreferredAgentAdapter;
   }

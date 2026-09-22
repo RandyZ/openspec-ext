@@ -35,9 +35,36 @@ export function getIncompletePrecedingTasks(
   taskIndex: number,
 ): TaskLike[] {
   const parentIndex = getParentTaskIndex(tasks, taskIndex);
+  const currentIndent = tasks[taskIndex]?.indent;
+  const immediatePredecessorIndex = taskIndex > 0 ? taskIndex - 1 : -1;
   return tasks
     .slice(0, taskIndex)
-    .filter((task) => !task.done && task.taskIndex !== parentIndex);
+    .filter((task) => {
+      if (task.done) return false;
+      if (task.taskIndex === parentIndex) return false;
+      if (
+        task.taskIndex === immediatePredecessorIndex
+        && task.inProgress
+        && currentIndent != null
+        && task.indent === currentIndent
+      ) {
+        return false;
+      }
+      return true;
+    });
+}
+
+function hasIncompleteSameIndentFollowers(
+  tasks: readonly TaskLike[],
+  taskIndex: number,
+): boolean {
+  const indent = tasks[taskIndex]?.indent;
+  if (indent == null) return false;
+  for (let j = taskIndex + 1; j < tasks.length; j++) {
+    if (tasks[j].indent < indent) break;
+    if (tasks[j].indent === indent && !tasks[j].done) return true;
+  }
+  return false;
 }
 
 /** CLI-actionable nodes: leaf tasks, or parents whose descendants are all complete. */
@@ -45,8 +72,13 @@ export function isTaskActionable(tasks: readonly TaskLike[], taskIndex: number):
   const task = tasks[taskIndex];
   if (!task || task.done) return false;
   const descendants = getDescendantTaskIndices(tasks, taskIndex);
-  if (descendants.length === 0) return true;
-  return !descendants.some((index) => !tasks[index].done);
+  if (descendants.length > 0) {
+    return !descendants.some((index) => !tasks[index].done);
+  }
+  if (task.inProgress && hasIncompleteSameIndentFollowers(tasks, taskIndex)) {
+    return false;
+  }
+  return true;
 }
 
 export function isTaskBlockedByDependencies(

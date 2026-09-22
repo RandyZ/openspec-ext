@@ -85,6 +85,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   private explicitProjectStoreId?: string;
   /** Single-flight lock: at most one Workset creation may run at a time. */
   private worksetCreateInFlight = false;
+  private readonly agentUnavailableWebviews = new WeakSet<vscode.Webview>();
 
   constructor(
     private dataManager: DataManager,
@@ -101,6 +102,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     this.projectPageCache = projectPageCache
       ?? (dataManager as unknown as { cacheService?: ProjectPageCache }).cacheService;
     this.refreshSubscription = this.dataManager.onRefresh((data) => {
+      if (!workspaceHasOpenSpecRootSync()) {
+        void this.syncOpenSpecRootAvailability();
+        return;
+      }
       if (this.isProjectFirst()) {
         if (this.skipNextProjectRefreshCallback) {
           this.skipNextProjectRefreshCallback = false;
@@ -162,6 +167,33 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   dispose(): void {
     this.refreshSubscription?.dispose();
     this.refreshSubscription = undefined;
+  }
+
+  /** Reconcile sidebar HTML when workspace folders change without window reload. */
+  public async syncOpenSpecRootAvailability(): Promise<void> {
+    const hasRoot = await workspaceHasOpenSpecRoot();
+    const webviews = [this._view?.webview, this.dashboardPanel?.webview].filter(
+      (webview): webview is vscode.Webview => webview != null,
+    );
+    if (!hasRoot) {
+      const workspacePath = getPrimaryWorkspacePath();
+      for (const webview of webviews) {
+        this.markAgentUnavailable(webview, workspacePath);
+      }
+      return;
+    }
+    if (webviews.some((webview) => this.agentUnavailableWebviews.has(webview))) {
+      logger.info('OpenSpec root restored while dashboard was unavailable; reload the window to resume');
+    }
+  }
+
+  private markAgentUnavailable(webview: vscode.Webview, workspacePath?: string): void {
+    configureAgentUnavailableWebview(
+      webview,
+      this.extensionPath,
+      workspacePath ?? getPrimaryWorkspacePath(),
+    );
+    this.agentUnavailableWebviews.add(webview);
   }
 
   private postDashboardData(
@@ -764,6 +796,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     suppressProjectSidebar = false,
     onProjectSidebarReady?: () => void,
   ): Promise<void> {
+    if (this.agentUnavailableWebviews.has(webview) || !workspaceHasOpenSpecRootSync()) {
+      if (!workspaceHasOpenSpecRootSync()) {
+        this.markAgentUnavailable(webview, getPrimaryWorkspacePath());
+      }
+      return;
+    }
     if (suppressProjectSidebar && message.type === 'getProjectSidebarData') {
       onProjectSidebarReady?.();
       return;
@@ -812,8 +850,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     }
 
     if (message.type === 'getProjectSidebarData' && this.isProjectFirst()) {
-      if (!(await workspaceHasOpenSpecRoot())) {
-        postAgentUnavailableContext(webview, getPrimaryWorkspacePath());
+      if (!workspaceHasOpenSpecRootSync()) {
+        this.markAgentUnavailable(webview, getPrimaryWorkspacePath());
         return;
       }
       if (explorerContextConsumed) return;
@@ -823,6 +861,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     if (message.type === 'refresh' && this.isProjectFirst()) {
+      if (!workspaceHasOpenSpecRootSync()) {
+        this.markAgentUnavailable(webview, getPrimaryWorkspacePath());
+        return;
+      }
       this.skipNextProjectRefreshCallback = true;
       try {
         await this.dataManager.refresh();

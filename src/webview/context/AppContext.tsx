@@ -233,6 +233,9 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'CLEAR_PAGE_CONTEXT':
+      if (state.page === 'agentUnavailable') {
+        return state;
+      }
       return {
         ...state,
         data: null,

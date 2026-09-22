@@ -11,6 +11,10 @@ import type {
   ProjectSpecsExplorerData,
 } from '../../../src/webview/types/messages';
 import type { OpenSpecRootBinding, ProjectContext } from '@extension/services/types';
+import {
+  workspaceHasOpenSpecRoot,
+  workspaceHasOpenSpecRootSync,
+} from '@extension/services/openspecRootGate';
 
 const adapterFillChat = vi.hoisted(() => vi.fn());
 
@@ -788,6 +792,8 @@ describe('DashboardViewProvider', () => {
   beforeEach(() => {
     vi.useRealTimers();
     vi.clearAllMocks();
+    vi.mocked(workspaceHasOpenSpecRoot).mockResolvedValue(true);
+    vi.mocked(workspaceHasOpenSpecRootSync).mockReturnValue(true);
   });
 
   it('posts cached dashboard data before fresh initial refresh data', async () => {

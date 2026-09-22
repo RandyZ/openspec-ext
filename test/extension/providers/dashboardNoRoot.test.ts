@@ -22,6 +22,30 @@ describe('DashboardViewProvider without OpenSpec root', () => {
     vi.clearAllMocks();
   });
 
+  it('syncOpenSpecRootAvailability reconfigures active sidebar webviews', async () => {
+    const provider = new DashboardViewProvider(
+      {
+        onRefresh: vi.fn(() => ({ dispose: vi.fn() })),
+      } as never,
+      '/ext',
+    );
+    const webview = {
+      options: {},
+      html: '',
+      onDidReceiveMessage: vi.fn(),
+      postMessage: vi.fn(),
+    };
+    (provider as unknown as { _view?: { webview: typeof webview } })._view = { webview };
+
+    await provider.syncOpenSpecRootAvailability();
+
+    expect(configureAgentUnavailableWebview).toHaveBeenCalledWith(
+      webview,
+      '/ext',
+      '/tmp/ws-b-empty',
+    );
+  });
+
   it('configures agent unavailable webview instead of loading dashboard data', () => {
     const provider = new DashboardViewProvider(
       {

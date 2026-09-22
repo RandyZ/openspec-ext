@@ -8,6 +8,7 @@ describe('taskMarkdown', () => {
     expect(parseTaskLine('- [~] Working')?.inProgress).toBe(true);
     expect(parseTaskLine('- [～] Fullwidth tilde')?.inProgress).toBe(true);
     expect(parseTaskLine('- [~] Working')?.done).toBe(false);
+    expect(parseTaskLine('- [ ~ ] Spaced tilde')?.inProgress).toBe(true);
   });
 
   it('counts progress with in-progress tasks as incomplete', () => {

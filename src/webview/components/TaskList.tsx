@@ -138,7 +138,7 @@ export const TaskList: React.FC<TaskListProps> = ({
           const isBlocked = !task.done && isTaskBlockedByDependencies(tasks, task.taskIndex, taskDependencyPolicy);
           const blockedReason = isBlocked ? getBlockedReason(tasks, task.taskIndex) : null;
           const isRecommended = !task.done && task.taskIndex === recommendedTaskIndex;
-          const showAction = onExecuteTask && !isArchived && !task.done && actionable;
+          const showAction = onExecuteTask && !isArchived && !task.done && actionable && !isBlocked;
           const labelLaunchConfig = executorUiLaunchConfig ?? workflowLaunchConfig;
           const buttonLabel = getTaskNextButtonLabel(labelLaunchConfig, { working: isExecuting });
           const isPrimary = isRecommended && !isBlocked && !isExecuting;

@@ -37,7 +37,7 @@ describe('TaskList next actions', () => {
     );
 
     expect(html).toContain('1/3');
-    expect(html.match(/Next with Agent/g)?.length).toBe(2);
+    expect(html.match(/Next with Agent/g)?.length).toBe(1);
     expect(html).not.toContain('Done task</span><button');
   });
 
@@ -131,7 +131,7 @@ describe('TaskList next actions', () => {
     expect(html).not.toContain('Next with Agent');
   });
 
-  it('disables blocked tasks and surfaces the blocking dependency reason', () => {
+  it('hides next actions on blocked tasks while keeping the first task actionable', () => {
     setLocale('en');
     const html = renderToStaticMarkup(
       <TaskList
@@ -144,10 +144,25 @@ describe('TaskList next actions', () => {
       />,
     );
 
-    expect(html).toContain('Blocked: waiting on &quot;First task&quot;.');
-    expect(html).toContain('aria-disabled="true"');
-    expect(html).toContain('data-task-blocked-indicator="true"');
+    expect(html.match(/Next with Agent/g)?.length).toBe(1);
+    expect(html).not.toContain('data-task-blocked-indicator="true"');
     expect(html).not.toContain('data-task-warning-dot="true"');
+  });
+
+  it('does not show Next on flat in-progress parent rows while a sibling remains incomplete', () => {
+    setLocale('en');
+    const html = renderToStaticMarkup(
+      <TaskList
+        content={'- [ ~ ] Parent\n- [ ] Child'}
+        changeName="demo"
+        workflowLaunchConfig={executableConfig}
+        onToggleTask={vi.fn()}
+        onExecuteTask={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain('data-task-warning-dot="true"');
+    expect(html.match(/Next with Agent/g)?.length).toBe(1);
   });
 
   it('does not render next actions for archived changes', () => {

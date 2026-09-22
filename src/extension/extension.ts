@@ -31,11 +31,26 @@ export async function activate(context: vscode.ExtensionContext) {
           ? 'Workspace has no OpenSpec root; registering agent unavailable dashboard'
           : 'No workspace folder found; registering agent unavailable dashboard',
       );
+      const agentUnavailableProvider = new AgentUnavailableViewProvider(
+        context.extensionPath,
+        unavailableRoot,
+      );
       context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(
           DashboardViewProvider.viewType,
-          new AgentUnavailableViewProvider(context.extensionPath, unavailableRoot),
+          agentUnavailableProvider,
         ),
+      );
+      context.subscriptions.push(
+        vscode.workspace.onDidChangeWorkspaceFolders(async () => {
+          const folders = vscode.workspace.workspaceFolders;
+          const roots = folders?.length ? await getOpenSpecProjectRoots() : [];
+          if (roots.length > 0) {
+            vscode.window.showInformationMessage(t('extension.reloadRecommended'));
+            return;
+          }
+          agentUnavailableProvider.refreshForWorkspaceChange();
+        }),
       );
       const commands = context.extension.packageJSON.contributes?.commands ?? [];
       for (const contribution of commands) {
@@ -133,6 +148,12 @@ export async function activate(context: vscode.ExtensionContext) {
         dashboardViewProvider.postWorkflowLaunchConfig();
         changeDetailPanelManager.postWorkflowLaunchConfig();
       })
+    );
+
+    context.subscriptions.push(
+      vscode.workspace.onDidChangeWorkspaceFolders(() => {
+        void dashboardViewProvider.syncOpenSpecRootAvailability();
+      }),
     );
 
     // Register commands
