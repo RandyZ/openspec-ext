@@ -58,6 +58,26 @@ export type AppAction =
   | { type: 'SET_CLI_DIAGNOSTIC'; payload: { diagnostic: CliActivationDiagnosticView; mode: 'blocking' | 'warning' } | null }
   | { type: 'SET_AGENT_UNAVAILABLE'; payload: { workspacePath?: string } | null };
 
+export function createAgentUnavailableInitialState(workspacePath?: string): AppState {
+  return {
+    data: null,
+    projectSidebar: null,
+    changesExplorer: null,
+    specsExplorer: null,
+    page: 'agentUnavailable',
+    projectFirst: true,
+    loading: false,
+    pendingScopeId: undefined,
+    activity: { kind: 'idle' },
+    stale: false,
+    error: null,
+    selectedChange: null,
+    debug: false,
+    cliDiagnostic: null,
+    agentUnavailableWorkspacePath: workspacePath,
+  };
+}
+
 // Initial state
 const initialState: AppState = {
   data: null,

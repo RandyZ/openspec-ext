@@ -5,8 +5,8 @@ import { getCurrentAdapter } from '../adapters';
 import { buildAgentInitPrompt, OPENSPEC_INIT_COMMAND } from '../../shared/agentInit';
 import {
   getWebviewContent,
-  getWorkflowLaunchConfigMessage,
   handleAgentUnavailableMessage,
+  postAgentUnavailableContext,
 } from './webviewMessageHandler';
 
 export class AgentUnavailableViewProvider implements vscode.WebviewViewProvider {
@@ -21,7 +21,10 @@ export class AgentUnavailableViewProvider implements vscode.WebviewViewProvider 
       enableScripts: true,
       localResourceRoots: [vscode.Uri.file(path.join(this.extensionPath, 'dist'))],
     };
-    webview.html = getWebviewContent(webview, this.extensionPath);
+    webview.html = getWebviewContent(webview, this.extensionPath, {
+      view: 'agentUnavailable',
+      ...(this.workspacePath ? { workspacePath: this.workspacePath } : {}),
+    });
 
     webview.onDidReceiveMessage(async (message) => {
       try {
@@ -37,12 +40,7 @@ export class AgentUnavailableViewProvider implements vscode.WebviewViewProvider 
 
   private async postInitialContext(webview: vscode.Webview): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 100));
-    webview.postMessage({
-      type: 'setContext',
-      view: 'agentUnavailable',
-      ...(this.workspacePath ? { workspacePath: this.workspacePath } : {}),
-    });
-    webview.postMessage(getWorkflowLaunchConfigMessage());
+    postAgentUnavailableContext(webview, this.workspacePath);
   }
 }
 

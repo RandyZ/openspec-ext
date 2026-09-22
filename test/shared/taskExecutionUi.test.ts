@@ -35,7 +35,7 @@ describe('taskExecutionUi', () => {
     expect(getRecommendedTaskIndex(parsed, 'block')).toBe(0);
   });
 
-  it('blocks parent tasks from Next until descendants complete unless marked in-progress', () => {
+  it('blocks parent tasks from Next until descendants complete, including in-progress parents', () => {
     const parsed = tasks([
       [false, 'Parent', 0],
       [false, 'Child', 2],
@@ -44,12 +44,21 @@ describe('taskExecutionUi', () => {
     expect(isTaskBlockedByDependencies(parsed, 0, 'block')).toBe(true);
     expect(getRecommendedTaskIndex(parsed, 'block')).toBe(1);
 
-    const explicitParent = tasks([
+    const inProgressParent = tasks([
       [false, 'Parent', 0, true],
       [false, 'Child', 2],
     ]);
-    expect(isTaskActionable(explicitParent, 0)).toBe(true);
-    expect(getRecommendedTaskIndex(explicitParent, 'block')).toBe(0);
+    expect(isTaskActionable(inProgressParent, 0)).toBe(false);
+    expect(isTaskBlockedByDependencies(inProgressParent, 0, 'block')).toBe(true);
+    expect(getRecommendedTaskIndex(inProgressParent, 'block')).toBe(1);
+  });
+
+  it('keeps leaf in-progress tasks actionable', () => {
+    const parsed = tasks([
+      [false, 'Working task', 0, true],
+    ]);
+    expect(isTaskActionable(parsed, 0)).toBe(true);
+    expect(getRecommendedTaskIndex(parsed, 'block')).toBe(0);
   });
 
   it('excludes the direct parent from incomplete preceding checks', () => {

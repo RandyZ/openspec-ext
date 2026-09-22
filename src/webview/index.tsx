@@ -2,7 +2,9 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import { App } from './App';
+import { createAgentUnavailableInitialState } from './context/AppContext';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
+import { readWebviewBootstrap } from '../shared/webviewBootstrap';
 import {
   WEBVIEW_EXECUTOR_ADAPTERS_MARKER,
   WEBVIEW_EXECUTOR_FN_MARKER,
@@ -25,12 +27,24 @@ import {
   'data-executor-ui-ready',
 ];
 
-const root = ReactDOM.createRoot(document.getElementById('root')!);
+const rootElement = document.getElementById('root')!;
+const bootstrap = readWebviewBootstrap(rootElement);
+const initialState = bootstrap?.view === 'agentUnavailable'
+  ? createAgentUnavailableInitialState(bootstrap.workspacePath)
+  : undefined;
+
+const root = ReactDOM.createRoot(rootElement);
 
 root.render(
   <React.StrictMode>
     <ErrorBoundary>
-      <App />
+      <App initialState={initialState} />
     </ErrorBoundary>
   </React.StrictMode>
 );
+
+try {
+  window.acquireVsCodeApi().postMessage({ type: 'webviewReady' });
+} catch {
+  // Standalone webview dev server has no VS Code API.
+}

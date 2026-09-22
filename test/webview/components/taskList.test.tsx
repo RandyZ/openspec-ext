@@ -41,7 +41,7 @@ describe('TaskList next actions', () => {
     expect(html).not.toContain('Done task</span><button');
   });
 
-  it('shows in-progress marker as incomplete and keeps it actionable', () => {
+  it('shows in-progress marker with warning dot and keeps leaf tasks actionable', () => {
     setLocale('en');
     const html = renderToStaticMarkup(
       <TaskList
@@ -55,7 +55,25 @@ describe('TaskList next actions', () => {
 
     expect(html).toContain('0/1');
     expect(html).toContain('Next with Agent');
-    expect(html).toContain('codicon-circle-filled');
+    expect(html).toContain('data-task-in-progress="true"');
+    expect(html).toContain('data-task-warning-dot="true"');
+  });
+
+  it('does not show Next on in-progress parent tasks while nested children remain incomplete', () => {
+    setLocale('en');
+    const html = renderToStaticMarkup(
+      <TaskList
+        content={'- [~] Parent\n  - [ ] Child'}
+        changeName="demo"
+        workflowLaunchConfig={executableConfig}
+        onToggleTask={vi.fn()}
+        onExecuteTask={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain('data-task-warning-dot="true"');
+    expect(html.match(/Next with Agent/g)?.length).toBe(1);
+    expect(html).toContain('Child');
   });
 
   it('does not show Next on parent tasks while nested children remain incomplete', () => {

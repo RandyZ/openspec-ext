@@ -40,13 +40,12 @@ export function getIncompletePrecedingTasks(
     .filter((task) => !task.done && task.taskIndex !== parentIndex);
 }
 
-/** CLI-actionable nodes: leaves, or parents explicitly marked in-progress ([~]). */
+/** CLI-actionable nodes: leaf tasks, or parents whose descendants are all complete. */
 export function isTaskActionable(tasks: readonly TaskLike[], taskIndex: number): boolean {
   const task = tasks[taskIndex];
   if (!task || task.done) return false;
   const descendants = getDescendantTaskIndices(tasks, taskIndex);
   if (descendants.length === 0) return true;
-  if (task.inProgress) return true;
   return !descendants.some((index) => !tasks[index].done);
 }
 

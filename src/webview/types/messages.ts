@@ -44,6 +44,7 @@ export type LoadingReason =
 // Message types from webview to extension
 export type WebviewMessage =
   | { type: 'getDashboardData' }
+  | { type: 'webviewReady' }
   | { type: 'getProjectSidebarData' }
   | { type: 'selectWorksetProject'; worksetName: string; memberPath: string }
   | { type: 'selectCurrentProject' }
@@ -458,6 +459,10 @@ export function isChangeDetailContext(
 export const sendMessage = {
   getDashboardData: (): WebviewMessage => ({
     type: 'getDashboardData',
+  }),
+
+  webviewReady: (): WebviewMessage => ({
+    type: 'webviewReady',
   }),
 
   getProjectSidebarData: (): WebviewMessage => ({

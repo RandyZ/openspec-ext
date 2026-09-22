@@ -29,6 +29,10 @@ import type {
   InteractiveWorkflowAction,
   InteractiveWorkflowState,
 } from '../../shared/interactiveWorkflow';
+import {
+  buildWebviewRootAttributes,
+  type WebviewBootstrap,
+} from '../../shared/webviewBootstrap';
 import type { OpenSpecScope } from '../services/openspecScope';
 import {
   createWorkflowRequestId,
@@ -1432,6 +1436,18 @@ export async function handleWebviewMessage(
   }
 }
 
+export function postAgentUnavailableContext(
+  webview: vscode.Webview,
+  workspacePath?: string,
+): void {
+  webview.postMessage({
+    type: 'setContext',
+    view: 'agentUnavailable',
+    ...(workspacePath ? { workspacePath } : {}),
+  });
+  webview.postMessage(getWorkflowLaunchConfigMessage());
+}
+
 export async function handleAgentUnavailableMessage(
   webview: vscode.Webview,
   message: WebviewMessage,
@@ -1440,6 +1456,10 @@ export async function handleAgentUnavailableMessage(
   const { copyInitCommand, launchAgentInit, openWorkspaceFolder } = await import('./agentUnavailableActions');
 
   switch (message.type) {
+    case 'getDashboardData':
+    case 'webviewReady':
+      postAgentUnavailableContext(webview, workspacePath);
+      break;
     case 'getWorkflowLaunchConfig':
       webview.postMessage(getWorkflowLaunchConfigMessage());
       break;
@@ -1580,7 +1600,11 @@ async function handleInteractiveWorkflowAction(params: {
 /**
  * Generate HTML content for webview (shared by sidebar and panel).
  */
-export function getWebviewContent(webview: vscode.Webview, extensionPath: string): string {
+export function getWebviewContent(
+  webview: vscode.Webview,
+  extensionPath: string,
+  bootstrap?: WebviewBootstrap,
+): string {
   const scriptUri = webview.asWebviewUri(
     vscode.Uri.file(path.join(extensionPath, 'dist', 'webview', 'index.js'))
   );
@@ -1588,6 +1612,7 @@ export function getWebviewContent(webview: vscode.Webview, extensionPath: string
     vscode.Uri.file(path.join(extensionPath, 'dist', 'webview', 'index.css'))
   );
   const lang = vscode.env.language || 'en';
+  const rootAttributes = buildWebviewRootAttributes(bootstrap);
 
   return `<!DOCTYPE html>
 <html lang="${lang}">
@@ -1599,7 +1624,7 @@ export function getWebviewContent(webview: vscode.Webview, extensionPath: string
   <link rel="stylesheet" href="${styleUri}">
 </head>
 <body>
-  <div id="root"></div>
+  <div id="root"${rootAttributes}></div>
   <script type="module" src="${scriptUri}"></script>
 </body>
 </html>`;

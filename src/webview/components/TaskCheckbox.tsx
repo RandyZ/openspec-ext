@@ -45,6 +45,7 @@ export const TaskCheckbox: React.FC<TaskCheckboxProps> = ({
     >
       {inProgress ? (
         <span
+          data-task-in-progress="true"
           aria-hidden="true"
           style={{
             marginTop: '2px',
@@ -68,13 +69,17 @@ export const TaskCheckbox: React.FC<TaskCheckboxProps> = ({
             }}
           />
           <span
-            className="codicon codicon-circle-filled"
+            data-task-warning-dot="true"
             style={{
               position: 'absolute',
-              right: '-1px',
-              bottom: '-1px',
-              fontSize: '7px',
-              color: 'var(--vscode-editorWarning-foreground, #cca700)',
+              right: '-2px',
+              bottom: '-2px',
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              background: 'var(--vscode-editorWarning-foreground, #e3b341)',
+              border: '1px solid var(--vscode-editor-background, #1e1e1e)',
+              boxSizing: 'border-box',
             }}
           />
         </span>
