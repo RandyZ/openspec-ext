@@ -46,6 +46,11 @@ import {
   tasksFetchCoordinatorKey,
 } from '../utils/changeDetailArtifactInvalidation';
 import { isArchiveNowAllowed } from '../utils/changeDetailArchiveGating';
+import {
+  readArtifactCacheStale,
+  shouldCompleteVerifyArchiveTasksFetch,
+} from '../utils/changeDetailTasksFetch';
+import type { WorkflowActionReceipt } from '../../shared/changeWorkflow';
 
 const MISSING_ARTIFACT_MESSAGE = t('artifact.missing');
 
@@ -473,17 +478,27 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         }
         setLoading(false);
         setError(null);
-        if (data.artifactType === 'tasks' && data.content) {
-          const { completed, total } = countTaskProgress(String(data.content));
+        const cacheStale = readArtifactCacheStale(data.cache);
+        if (data.artifactType === 'tasks' && typeof data.content === 'string') {
+          const { completed, total } = countTaskProgress(data.content);
           setTotalTasks(total);
           setCompletedTasks(completed);
+          if (cacheStale) {
+            setVerifyArchiveTasksLoading(true);
+          }
+        }
+        if (shouldCompleteVerifyArchiveTasksFetch({
+          artifactType: String(data.artifactType),
+          content: data.content,
+          cacheStale,
+        })) {
           setVerifyArchiveTasksLoading(false);
         }
       } else if (data.type === 'workflowActionReceipt'
         && data.changeName === changeName
         && workflowSnapshot
         && data.bindingKey === workflowSnapshot.bindingKey) {
-        workflowLaunchPending.handleReceipt(data as Parameters<typeof workflowLaunchPending.handleReceipt>[0]);
+        workflowLaunchPending.handleReceipt(data as unknown as WorkflowActionReceipt);
         if (data.status === 'running') {
           if (data.action === 'verify' || data.action === 'archive') {
             setPendingLaunchAction(data.action as WorkflowAction);
@@ -754,6 +769,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     if (!verifyArchiveTasksLoading) return;
     const timeout = window.setTimeout(() => {
       verifyArchiveTasksLoadedRef.current = null;
+      artifactFetchCoordinatorRef.current.forceRelease(tasksFetchCoordinatorKey(scopeId));
       requestArtifact('tasks');
     }, 15_000);
     return () => window.clearTimeout(timeout);

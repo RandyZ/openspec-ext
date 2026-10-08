@@ -5,6 +5,7 @@ BASELINE="${TSC_BASELINE_ERROR_COUNT:-13}"
 LOG="$(mktemp)"
 trap 'rm -f "$LOG"' EXIT
 
+# Must match local: npx tsc --noEmit -p tsconfig.typecheck.json
 npx tsc --noEmit -p tsconfig.typecheck.json >"$LOG" 2>&1 || true
 COUNT="$(rg -c 'error TS' "$LOG" || true)"
 COUNT="${COUNT:-0}"

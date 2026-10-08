@@ -71,4 +71,24 @@ describe('ArtifactFetchCoordinator', () => {
 
     vi.useRealTimers();
   });
+
+  it('forceRelease clears in-flight so a fallback retry can schedule', () => {
+    vi.useFakeTimers();
+    const fetchKey = 'scope::tasks';
+    const runs: string[] = [];
+    const coordinator = new ArtifactFetchCoordinator({ debounceMs: 10, isVisible: () => true });
+
+    coordinator.schedule(fetchKey, () => runs.push('initial'));
+    vi.advanceTimersByTime(10);
+    expect(coordinator.isInFlight(fetchKey)).toBe(true);
+
+    coordinator.forceRelease(fetchKey);
+    expect(coordinator.isInFlight(fetchKey)).toBe(false);
+
+    coordinator.schedule(fetchKey, () => runs.push('retry'));
+    vi.advanceTimersByTime(10);
+    expect(runs).toEqual(['initial', 'retry']);
+
+    vi.useRealTimers();
+  });
 });

@@ -98,6 +98,17 @@ export class ArtifactFetchCoordinator {
     }
   }
 
+  /** Release a stuck in-flight slot (e.g. host never responded) so a retry can run. */
+  forceRelease(key: string): void {
+    this.inFlight.delete(key);
+    this.rerunAfterComplete.delete(key);
+    const timer = this.debounceTimers.get(key);
+    if (timer) {
+      clearTimeout(timer);
+      this.debounceTimers.delete(key);
+    }
+  }
+
   reset(): void {
     for (const timer of this.debounceTimers.values()) {
       clearTimeout(timer);
