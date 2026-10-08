@@ -23,6 +23,7 @@ import {
   type AgentLaunchLayer,
   type AgentLaunchOutcome,
 } from './agentPanelLauncher';
+import { isCursorHost } from '../utils/isCursorHost';
 
 export type WorkflowAgentLaunchTarget =
   | 'clipboard'
@@ -47,9 +48,14 @@ export interface WorkflowAgentLaunchResult {
 
 const PANEL_ADAPTER_IDS = new Set(['cursor', 'vscode-copilot', 'vscode-chat']);
 
-function isCursorHost(): boolean {
-  return (vscode.env.appName ?? '').toLowerCase().includes('cursor')
-    || (vscode.env.uriScheme ?? '').toLowerCase() === 'cursor';
+function resolveLaunchTargetFromPayload(
+  payload: ReturnType<typeof buildWorkflowLaunchPayload>,
+  view: ReturnType<typeof toWorkflowLaunchConfigView>,
+): WorkflowAgentLaunchTarget {
+  if (view.cursorLaunchMode === 'agentCli') return 'agentCli';
+  if (isCopyOnlyWorkflowMode(view) || payload.target === 'clipboard') return 'clipboard';
+  if (payload.target === 'cursor') return 'agentPanel';
+  return 'externalAdapter';
 }
 
 function buildResolvedLaunchPayload(
@@ -123,10 +129,11 @@ export async function launchWorkflowAgentCommand(
     && now - lastWorkflowLaunch.at < LAUNCH_DEDUPE_MS
   ) {
     const payload = buildResolvedLaunchPayload(request.action, request.changeName);
+    const view = toWorkflowLaunchConfigView(getWorkflowLaunchConfig());
     return {
       success: true,
       command: payload.command,
-      target: 'agentPanel',
+      target: resolveLaunchTargetFromPayload(payload, view),
       outcome: 'prefilled',
       message: t('workflow.launchDeduped'),
     };

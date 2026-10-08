@@ -37,6 +37,7 @@ import {
   workspaceHasOpenSpecRoot,
 } from '../services/openspecRootGate';
 import type { OpenSpecScope } from '../services/openspecScope';
+import { isPathInWorkspaceFolders } from '../utils/workspaceFolders';
 import {
   createWorkflowRequestId,
   getWorkflowBindingKey,
@@ -1057,6 +1058,14 @@ export async function handleWebviewMessage(
       const changeName = message.changeName;
       if (typeof changeName !== 'string' || !changeName.trim()) break;
 
+      const launchStartedAt = Date.now();
+      const logWorkflowTiming = (phase: string, detail?: string) => {
+        logger.info(
+          `[workflow-timing] ${phase} +${Date.now() - launchStartedAt}ms`
+          + (detail ? ` ${detail}` : ''),
+        );
+      };
+
       // Resolve the effective root (scope-aware) so store-scoped workflows run against
       // the store root, not the workspace root.
       const { rootPath: scopeRootPath, scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
@@ -1078,9 +1087,34 @@ export async function handleWebviewMessage(
         ...(receiptMessage ? { message: receiptMessage } : {}),
       });
 
+      let launchStatusDisposable: vscode.Disposable | undefined;
+      try {
       if (correlated) {
         postReceipt('unknown', 'running');
-        vscode.window.setStatusBarMessage?.(t('workflow.launching'), 5000);
+        launchStatusDisposable = vscode.window.setStatusBarMessage?.(t('workflow.launching'), 0);
+      }
+      logWorkflowTiming('received', `action=${action} change=${changeName}`);
+
+      if (!isPathInWorkspaceFolders(scopeRootPath)) {
+        if (correlated) {
+          postLaunchValidationFailure(
+            webview,
+            {
+              requestId,
+              changeName,
+              bindingKey: message.bindingKey ?? 'unknown',
+              action,
+              target: 'unknown',
+              status: 'failed',
+              message: t('workflow.workspaceRootStale'),
+            },
+            `Workflow launch blocked: scope root not in workspace folders (${scopeRootPath})`,
+            t('workflow.workspaceRootStale'),
+          );
+        } else {
+          void vscode.window.showWarningMessage(t('workflow.workspaceRootStale'));
+        }
+        break;
       }
 
       const snapshotReader = dataManager as DataManager & {
@@ -1162,6 +1196,8 @@ export async function handleWebviewMessage(
         break;
       }
 
+      logWorkflowTiming('validated', `bindingKey=${receiptBindingKeyForPost}`);
+
       const launchConfig = getWorkflowLaunchConfig();
       const launchConfigView = toWorkflowLaunchConfigView(launchConfig);
       const effectiveAdapterId = launchConfigView.effectiveAdapterId;
@@ -1175,12 +1211,16 @@ export async function handleWebviewMessage(
           `effectiveAdapterId=${effectiveAdapterId ?? 'none'}`
       );
 
-      try {
+        logWorkflowTiming('launcher-start');
         const launchResult = await launchWorkflowAgentCommand({
           action: action as WorkflowAction,
           changeName,
           workspaceRoot: scopeRootPath,
         });
+        logWorkflowTiming(
+          `layer-${launchResult.layer ?? 'none'}-done`,
+          `target=${launchResult.target} outcome=${launchResult.outcome ?? 'n/a'} command=${launchResult.command}`,
+        );
         logger.info(
           `[workflow] agent launch: target=${launchResult.target}, layer=${launchResult.layer ?? 'n/a'}, ` +
             `outcome=${launchResult.outcome ?? 'n/a'}, command=${launchResult.command}`
@@ -1206,6 +1246,8 @@ export async function handleWebviewMessage(
       } catch (error) {
         logger.error('launchWorkflowAction failed', error as Error);
         postReceipt('unknown', 'failed', (error as Error).message);
+      } finally {
+        launchStatusDisposable?.dispose();
       }
       break;
     }

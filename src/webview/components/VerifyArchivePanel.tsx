@@ -6,6 +6,7 @@ export interface VerifyArchivePanelProps {
   isArchived: boolean;
   canArchiveNow?: boolean;
   archiveNowDisabledReason?: string;
+  pendingAction?: InteractiveWorkflowAction | null;
   onRun: (action: InteractiveWorkflowAction) => void;
   onArchiveNow?: () => void;
 }
@@ -48,6 +49,7 @@ export const VerifyArchivePanel: React.FC<VerifyArchivePanelProps> = ({
   isArchived,
   canArchiveNow = false,
   archiveNowDisabledReason,
+  pendingAction,
   onRun,
   onArchiveNow,
 }) => {
@@ -64,12 +66,14 @@ export const VerifyArchivePanel: React.FC<VerifyArchivePanelProps> = ({
       <WorkflowActionCard
         action="verify"
         disabled={false}
+        launching={pendingAction === 'verify'}
         onRun={onRun}
       />
 
       <WorkflowActionCard
         action="archive"
         disabled={isArchived}
+        launching={pendingAction === 'archive'}
         disabledMessage={isArchived ? t('verifyArchive.archiveDisabledArchived') : undefined}
         onRun={onRun}
       />
@@ -116,11 +120,13 @@ export const WorkflowActionCard: React.FC<{
   action: InteractiveWorkflowAction;
   disabled: boolean;
   disabledMessage?: string;
+  launching?: boolean;
   onRun: (action: InteractiveWorkflowAction) => void;
 }> = ({
   action,
   disabled,
   disabledMessage,
+  launching = false,
   onRun,
 }) => {
   const isVerify = action === 'verify';
@@ -146,7 +152,7 @@ export const WorkflowActionCard: React.FC<{
             cursor: disabled ? 'not-allowed' : 'pointer',
           }}
         >
-          {runLabel}
+          {launching ? t('workflow.launching') : runLabel}
         </button>
       </div>
     </section>

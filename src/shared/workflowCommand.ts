@@ -67,6 +67,26 @@ export function getWorkflowCommandTargetForAdapter(
   }
 }
 
+/** Webview-safe target when copying commands (no host env); mirrors Cursor hyphen rules. */
+export function resolveWorkflowCommandTargetForUi(config: {
+  effectiveAdapterId?: string | null;
+  cursorLaunchMode?: string;
+  workflowLaunchMode?: string;
+  preferredAgentAdapter?: string;
+} | null | undefined): WorkflowCommandTarget {
+  if (!config) return 'clipboard';
+  const copyOnly = config.effectiveAdapterId == null
+    || config.effectiveAdapterId === 'clipboard'
+    || (config.workflowLaunchMode === 'clipboard');
+  if (copyOnly) {
+    return config.effectiveAdapterId === 'cursor' ? 'cursor' : 'clipboard';
+  }
+  if (config.effectiveAdapterId === 'cursor' && config.cursorLaunchMode === 'clipboard') {
+    return 'cursor';
+  }
+  return getWorkflowCommandTargetForAdapter(config.effectiveAdapterId);
+}
+
 export function buildWorkflowLaunchPayload(
   request: WorkflowLaunchPayloadRequest
 ): WorkflowLaunchPayload {

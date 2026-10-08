@@ -9,6 +9,7 @@ import {
   getWorkflowCommandTargetForAdapter,
 } from '../../shared/workflowCommand';
 import { getWorkflowLaunchConfig } from './workflowLaunchConfig';
+import { isCursorHost } from '../utils/isCursorHost';
 
 export class TaskExecutorService {
   constructor(
@@ -90,7 +91,7 @@ export class TaskExecutorService {
     const clipboardPrompt = buildWorkflowCommand({
       action: 'apply',
       changeName,
-      target: 'clipboard',
+      target: isCursorHost() ? 'cursor' : 'clipboard',
     });
 
     if (mode === 'fillChat' && launchConfig.workflowLaunchMode === 'clipboard') {

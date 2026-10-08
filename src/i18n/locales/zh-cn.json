@@ -58,6 +58,8 @@
   "workflow.bindingValidationFailed": "无法校验此工作流对应的 Change 根目录。",
   "workflow.bindingRequestIncomplete": "工作流请求缺少绑定信息。请刷新后重试。",
   "workflow.launchDeduped": "该 change 的工作流已在启动中。",
+  "workflow.workspaceRootStale": "该 change 所属的项目文件夹已不在当前工作区。请重新加载窗口或重新添加文件夹后再试。",
+  "workflow.workspaceRebound": "工作区文件夹已变化，OpenSpec 已重新绑定到当前项目根目录。",
   "workflow.launchHelp": "工作流按钮会在 IDE Agent 面板预填 `/opsx-*` 命令。若只需复制，请在设置中选择「仅复制」。",
   "workflow.launching": "启动中…",
   "workflow.button.copy": "复制{action}",
@@ -214,7 +216,6 @@
 
   "dashboard.loading": "正在加载 OpenSpec 数据...",
   "dashboard.loadFailed": "加载数据失败，请尝试刷新。",
-  "dashboard.retryLoad": "重试",
   "dashboard.retryLoad": "重试",
   "dashboard.staleData": "正在刷新，当前显示缓存数据...",
   "dashboard.refreshing": "正在刷新 OpenSpec 数据...",

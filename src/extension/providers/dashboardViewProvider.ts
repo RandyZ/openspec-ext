@@ -32,6 +32,9 @@ import {
   workspaceHasOpenSpecRoot,
   workspaceHasOpenSpecRootSync,
 } from '../services/openspecRootGate';
+import { getOpenSpecProjectRoots } from '../utils/workspaceRoot';
+import { createProjectContext } from '../services/projectDataGateway';
+import { isPathInWorkspaceFolders } from '../utils/workspaceFolders';
 
 type ProjectPageCache = Pick<OpenSpecCacheService, 'readProjectPage' | 'writeProjectPage'>;
 type PendingExplorerContext = { message: ExtensionMessage; sent: boolean };
@@ -168,6 +171,42 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   dispose(): void {
     this.refreshSubscription?.dispose();
     this.refreshSubscription = undefined;
+  }
+
+  /**
+   * When workspace folders change, re-bind Project-first Dashboard to a root that
+   * still exists in the window (avoids launching against a removed folder).
+   */
+  public async syncProjectContextAfterWorkspaceChange(): Promise<void> {
+    if (!this.isProjectFirst() || !this.projectContext || !this.projectDataGateway) return;
+
+    const binding = this.currentProjectBinding;
+    if (binding && isPathInWorkspaceFolders(binding.rootPath)) {
+      return;
+    }
+
+    logger.warn(
+      'OpenSpec project binding is outside current workspace folders; re-resolving project context',
+    );
+    const roots = await getOpenSpecProjectRoots();
+    if (roots.length === 0) {
+      await this.syncOpenSpecRootAvailability();
+      return;
+    }
+
+    const nextRoot = roots[0];
+    this.projectContext = await createProjectContext(nextRoot.label, nextRoot.path);
+    this.cachedProjectSidebarData = undefined;
+    this.currentProjectBinding = undefined;
+    this.projectRequestGeneration += 1;
+
+    const webviews = [this._view?.webview, this.dashboardPanel?.webview].filter(
+      (webview): webview is vscode.Webview => webview != null,
+    );
+    for (const webview of webviews) {
+      void this.reloadProjectSidebarData(webview, webview === this.dashboardPanel?.webview ? 'dashboard' : 'sidebar');
+    }
+    void vscode.window.showInformationMessage(t('workflow.workspaceRebound'));
   }
 
   /** Reconcile sidebar HTML when workspace folders change without window reload. */

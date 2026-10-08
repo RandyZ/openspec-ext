@@ -1,7 +1,10 @@
 import {
   buildWorkflowCommand,
+  resolveWorkflowCommandTargetForUi,
   type WorkflowAction as WorkflowCommandAction,
+  type WorkflowCommandTarget,
 } from '../../shared/workflowCommand';
+import type { WorkflowLaunchConfigView } from '../../shared/workflowLaunchConfig';
 
 export type WorkflowStep =
   | 'proposal'
@@ -64,8 +67,10 @@ export function deriveWorkflowState(
   completedTasks: number,
   totalTasks: number,
   isArchived: boolean,
-  hasDeltaSpecs: boolean
+  hasDeltaSpecs: boolean,
+  workflowLaunchConfig?: WorkflowLaunchConfigView | null,
 ): WorkflowState {
+  const copyTarget: WorkflowCommandTarget = resolveWorkflowCommandTargetForUi(workflowLaunchConfig);
   if (isArchived) {
     return {
       steps: ALL_STEPS.map((step) => ({ step, status: 'done' as StepStatus })),
@@ -108,7 +113,7 @@ export function deriveWorkflowState(
     return { step, status: 'upcoming' as StepStatus };
   });
 
-  const nextAction = buildPrimaryAction(changeName, currentStep);
+  const nextAction = buildPrimaryAction(changeName, currentStep, copyTarget);
 
   const secondaryActions: WorkflowAction[] = [];
 
@@ -117,7 +122,7 @@ export function deriveWorkflowState(
     secondaryActions.push({
       label: 'FF',
       action: 'ff',
-      command: buildWorkflowCommand({ action: 'ff', changeName, target: 'clipboard' }),
+      command: buildWorkflowCommand({ action: 'ff', changeName, target: copyTarget }),
       variant: 'secondary',
     });
   }
@@ -130,7 +135,7 @@ export function deriveWorkflowState(
     secondaryActions.push({
       label: 'Sync Specs',
       action: 'sync',
-      command: buildWorkflowCommand({ action: 'sync', changeName, target: 'clipboard' }),
+      command: buildWorkflowCommand({ action: 'sync', changeName, target: copyTarget }),
       variant: 'secondary',
     });
   }
@@ -138,7 +143,11 @@ export function deriveWorkflowState(
   return { steps, currentStep, nextAction, secondaryActions };
 }
 
-function buildPrimaryAction(changeName: string, currentStep: WorkflowStep): WorkflowAction | null {
+function buildPrimaryAction(
+  changeName: string,
+  currentStep: WorkflowStep,
+  copyTarget: WorkflowCommandTarget,
+): WorkflowAction | null {
   switch (currentStep) {
     case 'proposal':
     case 'specs':
@@ -147,14 +156,14 @@ function buildPrimaryAction(changeName: string, currentStep: WorkflowStep): Work
       return {
         label: 'Continue planning',
         action: 'continue',
-        command: buildWorkflowCommand({ action: 'continue', changeName, target: 'clipboard' }),
+        command: buildWorkflowCommand({ action: 'continue', changeName, target: copyTarget }),
         variant: 'primary',
       };
     case 'apply':
       return {
         label: 'Apply',
         action: 'apply',
-        command: buildWorkflowCommand({ action: 'apply', changeName, target: 'clipboard' }),
+        command: buildWorkflowCommand({ action: 'apply', changeName, target: copyTarget }),
         variant: 'primary',
       };
     case 'verify':

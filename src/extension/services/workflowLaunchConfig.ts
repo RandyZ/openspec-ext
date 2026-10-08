@@ -7,6 +7,7 @@ import type {
   WorkflowLaunchMode,
 } from '../../shared/workflowLaunchConfig';
 import { resolveWorkflowLaunchConfig } from '../../shared/workflowLaunchConfig';
+import { isCursorHost } from '../utils/isCursorHost';
 export type {
   CursorLaunchMode,
   PreferredAgentAdapter,
@@ -70,10 +71,6 @@ export function getCursorAgentModel(): string {
 
   const legacyModel = readString('agentModel');
   return legacyModel || 'auto';
-}
-
-function isCursorHost(): boolean {
-  return (vscode.env.appName ?? '').toLowerCase().includes('cursor');
 }
 
 function readRawWorkflowLaunchConfig(): WorkflowLaunchConfigWithExplicit {

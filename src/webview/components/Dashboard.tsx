@@ -24,6 +24,7 @@ import { formatOpenSpecRootLabel } from '../utils/scopeLabels';
 import { t } from '../../i18n';
 import {
   buildWorkflowCommand,
+  resolveWorkflowCommandTargetForUi,
   type WorkflowAction,
 } from '../../shared/workflowCommand';
 import { buildChangeStatusCounts } from '../../shared/changeLifecycle';
@@ -37,6 +38,7 @@ import {
   type WorkflowLaunchConfigView,
 } from '../utils/workflowLaunchLabels';
 import type { CacheAction, CacheStatsView } from '../types/messages';
+import { useWorkflowLaunchPending } from '../hooks/useWorkflowLaunchPending';
 import {
   DEFAULT_CHANGES_VIEW_STATE,
   getChangesViewForRoot,
@@ -346,10 +348,8 @@ export const Dashboard: React.FC = () => {
   const [cacheActionMessage, setCacheActionMessage] = useState<string | null>(null);
   const [pendingCacheAction, setPendingCacheAction] = useState<CacheAction | null>(null);
   const [workflowReceipts, setWorkflowReceipts] = useState<WorkflowActionReceipt[]>([]);
+  const workflowLaunchPending = useWorkflowLaunchPending();
   const pendingWorkflowRequestsRef = useRef(new Map<string, { changeName: string; bindingKey: string }>());
-  const [workflowLaunchPendingKeys, setWorkflowLaunchPendingKeys] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
   const latestWorkflowRequestRef = useRef(new Map<string, string>());
   // Tracks the scope the current requirements cache was loaded under; reset on change.
   const lastScopeIdRef = useRef<string | undefined>(undefined);
@@ -496,14 +496,8 @@ export const Dashboard: React.FC = () => {
           ]);
           if (message.status !== 'running') {
             pendingWorkflowRequestsRef.current.delete(message.requestId);
-            const pendingKey = `${message.changeName}\u0000${message.bindingKey}`;
-            setWorkflowLaunchPendingKeys((previous) => {
-              if (!previous.has(pendingKey)) return previous;
-              const next = new Set(previous);
-              next.delete(pendingKey);
-              return next;
-            });
           }
+          workflowLaunchPending.handleReceipt(message as WorkflowActionReceipt);
         }
       } else if (message.type === 'cacheStats') {
         setCacheStats(message.stats ?? null);
@@ -622,21 +616,24 @@ export const Dashboard: React.FC = () => {
     ));
   };
 
+  const copyCommandTarget = resolveWorkflowCommandTargetForUi(workflowLaunchConfig);
+
   const handleCopyFf = (changeName: string) => {
-    postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({ action: 'ff', changeName, target: 'clipboard' })));
+    postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({ action: 'ff', changeName, target: copyCommandTarget })));
   };
 
   const handleCopyApply = (changeName: string) => {
-    postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({ action: 'apply', changeName, target: 'clipboard' })));
+    postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({ action: 'apply', changeName, target: copyCommandTarget })));
   };
 
   const handleLaunchWorkflow = (action: WorkflowAction, changeName: string, bindingKey?: string) => {
-    const requestId = createWorkflowRequestId('dashboard');
+    const requestId = bindingKey
+      ? workflowLaunchPending.registerLaunch(changeName, bindingKey, 'dashboard').requestId
+      : createWorkflowRequestId('dashboard');
     if (bindingKey) {
       const key = `${changeName}\u0000${bindingKey}`;
       pendingWorkflowRequestsRef.current.set(requestId, { changeName, bindingKey });
       latestWorkflowRequestRef.current.set(key, requestId);
-      setWorkflowLaunchPendingKeys((previous) => new Set(previous).add(key));
     }
     postMessage(sendMessage.launchWorkflowAction(
       action,
@@ -786,7 +783,7 @@ export const Dashboard: React.FC = () => {
                 }).recommended
                 : null;
               const pendingKey = `${change.name}\u0000${change.workflowSnapshot?.bindingKey ?? ''}`;
-              const isLaunchPending = workflowLaunchPendingKeys.has(pendingKey);
+              const isLaunchPending = workflowLaunchPending.pendingKeys.has(pendingKey);
               const ctaLabel = group.key === 'needs-attention'
                 ? t('verifyArchive.reviewArchive')
                 : group.key === 'ready-to-verify'
@@ -1036,7 +1033,7 @@ export const Dashboard: React.FC = () => {
                   onCopyFf={handleCopyFf}
                   onCopyApply={handleCopyApply}
                   onLaunchWorkflow={handleLaunchWorkflow}
-                  workflowLaunchPendingKeys={workflowLaunchPendingKeys}
+                  workflowLaunchPendingKeys={workflowLaunchPending.pendingKeys}
                   archivedItems={pendingScopeId ? [] : (data.archivedChanges ?? [])}
                   onOpenArchivedChange={handleOpenArchivedChange}
                   workflowLaunchConfig={workflowLaunchConfig}

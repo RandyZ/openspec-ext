@@ -9,7 +9,12 @@ import { ConfirmDialog } from './ui/ConfirmDialog';
 import { VerifyArchivePanel } from './VerifyArchivePanel';
 import { IconButton } from './ui/IconButton';
 import { t } from '../../i18n';
-import { buildWorkflowCommand, type WorkflowAction } from '../../shared/workflowCommand';
+import {
+  buildWorkflowCommand,
+  resolveWorkflowCommandTargetForUi,
+  type WorkflowAction,
+} from '../../shared/workflowCommand';
+import { WORKFLOW_LAUNCH_PENDING_TIMEOUT_MS } from '../hooks/useWorkflowLaunchPending';
 import {
   createWorkflowRequestId,
   resolveWorkflowActions,
@@ -390,14 +395,18 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         && msg.changeName === changeName
         && workflowSnapshot
         && msg.bindingKey === workflowSnapshot.bindingKey
-        && workflowReceipt?.requestId === msg.requestId) {
+        && (workflowReceipt?.requestId === msg.requestId || msg.status === 'running')) {
         setWorkflowReceipt({
           requestId: msg.requestId,
           bindingKey: msg.bindingKey,
           status: msg.status,
           message: msg.message,
         });
-        if (!['running'].includes(msg.status)) setPendingWorkflowAction(null);
+        if (msg.status === 'running') {
+          setPendingWorkflowAction(msg.action as WorkflowAction);
+        } else {
+          setPendingWorkflowAction(null);
+        }
       } else if (msg.type === 'artifactContentError' && msg.changeName === changeName) {
         setError(msg.message ?? 'Failed to load');
         setErrorCode(msg.code);
@@ -580,6 +589,16 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     postMessage(sendMessage.runCommand(commandId, verifyArgsJson.trim() || undefined, changeName));
   };
 
+  useEffect(() => {
+    if (!pendingWorkflowAction) return undefined;
+    const timer = window.setTimeout(() => {
+      setPendingWorkflowAction(null);
+    }, WORKFLOW_LAUNCH_PENDING_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [pendingWorkflowAction]);
+
+  const copyCommandTarget = resolveWorkflowCommandTargetForUi(executorUiLaunchConfig);
+
   const handleLaunchWorkflow = (
     action: 'explore' | 'continue' | 'ff' | 'apply' | 'verify' | 'archive' | 'sync'
   ) => {
@@ -675,10 +694,10 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         executorUiLaunchConfig={executorUiLaunchConfig}
         onAction={handleResolvedAction}
         onCopyFf={(name) =>
-          postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({ action: 'ff', changeName: name, target: 'clipboard' })))
+          postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({ action: 'ff', changeName: name, target: copyCommandTarget })))
         }
         onCopyApply={(name) =>
-          postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({ action: 'apply', changeName: name, target: 'clipboard' })))
+          postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({ action: 'apply', changeName: name, target: copyCommandTarget })))
         }
       />
 
@@ -746,6 +765,9 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
               isArchived={isArchived}
               canArchiveNow={canArchiveNow}
               archiveNowDisabledReason={archiveNowDisabledReason}
+              pendingAction={pendingWorkflowAction === 'verify' || pendingWorkflowAction === 'archive'
+                ? pendingWorkflowAction
+                : null}
               onRun={(action) => handleLaunchWorkflow(action)}
               onArchiveNow={handleArchiveNow}
             />

@@ -86,6 +86,23 @@ const matrix: MatrixRow[] = [
     },
   },
   {
+    name: 'Cursor explicit cursorLaunchMode=clipboard (copy-only launch)',
+    input: {
+      workflowLaunchMode: 'adapter',
+      preferredAgentAdapter: 'cursor',
+      cursorLaunchMode: 'clipboard',
+      cursorLaunchModeExplicit: true,
+    },
+    host: 'cursor',
+    expect: {
+      workflowLaunchMode: 'adapter',
+      preferredAgentAdapter: 'cursor',
+      cursorLaunchMode: 'clipboard',
+      effectiveAdapterId: 'cursor',
+      copyOnly: false,
+    },
+  },
+  {
     name: 'Cursor explicit copy-only workflowLaunchMode',
     input: {
       workflowLaunchModeExplicit: true,

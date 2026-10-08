@@ -104,11 +104,15 @@ async function tryCursorComposerCreateNew(
   });
 
   const sleep = deps.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
-  await sleep(COMPOSER_SUCCESS_WAIT_MS);
-  const afterIds = await readComposerPaneIds(executeCommand, cmds);
-  if (!composerIdsIncreased(beforeIds, afterIds)) {
-    return undefined;
-  }
+  void (async () => {
+    await sleep(COMPOSER_SUCCESS_WAIT_MS);
+    const afterIds = await readComposerPaneIds(executeCommand, cmds);
+    if (!composerIdsIncreased(beforeIds, afterIds)) {
+      logger.warn(
+        `composer.createNew did not confirm a new pane within ${COMPOSER_SUCCESS_WAIT_MS}ms (background check)`,
+      );
+    }
+  })();
 
   return {
     success: true,
@@ -216,18 +220,6 @@ export async function launchAgentPanelPrompt(
   if (isCursor) {
     const composerResult = await tryCursorComposerCreateNew(request, deps);
     if (composerResult) return composerResult;
-
-    const cmdsAfterComposer = await getAvailableCommands(deps);
-    if (cmdsAfterComposer.has('composer.createNew')) {
-      logger.warn(
-        'composer.createNew did not confirm a new pane; skipping chat.open fallback to avoid duplicate Agent tabs',
-      );
-      return {
-        success: true,
-        layer: 'composerCreateNew',
-        outcome: 'prefilled',
-      };
-    }
 
     const chatResult = await tryCursorChatOpen(request, deps);
     if (chatResult) return chatResult;

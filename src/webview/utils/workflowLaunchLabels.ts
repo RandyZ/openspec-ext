@@ -1,6 +1,6 @@
 import { t } from '../../i18n';
 import type { WorkflowLaunchConfigView } from '../../shared/workflowLaunchConfig';
-import { isCopyOnlyWorkflowMode, shouldUseAgentWorkflowLabels } from '../../shared/workflowLaunchConfig';
+import { shouldUseAgentWorkflowLabels } from '../../shared/workflowLaunchConfig';
 
 export type { WorkflowLaunchConfigView } from '../../shared/workflowLaunchConfig';
 
@@ -69,6 +69,9 @@ export function getWorkflowLaunchModeHint(
   if (config.effectiveAdapterId === 'cursor') {
     if (config.cursorLaunchMode === 'agentCli') {
       return t('workflow.modeHint.executableCursorCli');
+    }
+    if (config.cursorLaunchMode === 'clipboard') {
+      return t('workflow.modeHint.copyOnly');
     }
     return t('workflow.modeHint.executableCursor');
   }
