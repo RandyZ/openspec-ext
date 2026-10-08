@@ -40,8 +40,8 @@ export function useWorkflowLaunchPending(onTimeout?: () => void) {
     pendingRequestsRef.current.set(requestId, { changeName, bindingKey });
     latestRequestRef.current.set(key, requestId);
     setPendingKeys((previous) => new Set(previous).add(key));
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
         pendingStartedAtRef.current.set(key, Date.now());
       });
     });
@@ -91,8 +91,8 @@ export function useWorkflowLaunchPending(onTimeout?: () => void) {
       clearAfterMinVisible(startedAt);
       return;
     }
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
         const anchored = pendingStartedAtRef.current.get(key) ?? Date.now();
         if (!pendingStartedAtRef.current.has(key)) {
           pendingStartedAtRef.current.set(key, anchored);

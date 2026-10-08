@@ -13,8 +13,8 @@ describe('useWorkflowLaunchPending paint anchoring', () => {
       source.indexOf('const registerLaunch = useCallback('),
       source.indexOf('const handleReceipt = useCallback('),
     );
-    expect(registerBlock).toContain('requestAnimationFrame');
-    expect(registerBlock.match(/requestAnimationFrame/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(registerBlock).toContain('window.requestAnimationFrame');
+    expect(registerBlock.match(/window\.requestAnimationFrame/g)?.length).toBeGreaterThanOrEqual(2);
     expect(registerBlock).not.toMatch(/pendingStartedAtRef\.current\.set\(key, Date\.now\(\)\);\s*\n\s*const existing/);
   });
 
