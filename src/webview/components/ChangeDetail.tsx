@@ -40,6 +40,12 @@ import {
   artifactContentCacheKey,
   artifactFetchCoordinatorKey,
 } from '../utils/artifactFetchKeys';
+import {
+  completeArtifactFetchAndStoreContent,
+  handleTasksArtifactInvalidated,
+  tasksFetchCoordinatorKey,
+} from '../utils/changeDetailArtifactInvalidation';
+import { isArchiveNowAllowed } from '../utils/changeDetailArchiveGating';
 
 const MISSING_ARTIFACT_MESSAGE = t('artifact.missing');
 
@@ -172,6 +178,9 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   const [artifactStateMessage, setArtifactStateMessage] = useState<string | null>(null);
   const [pendingLaunchAction, setPendingLaunchAction] = useState<WorkflowAction | null>(null);
   const [verifyArchiveTasksLoading, setVerifyArchiveTasksLoading] = useState(false);
+  const verifyArchiveTasksLoadingRef = useRef(verifyArchiveTasksLoading);
+  verifyArchiveTasksLoadingRef.current = verifyArchiveTasksLoading;
+  const dispatchExtensionMessageRef = useRef<(msg: unknown) => void>(() => undefined);
   const [archivedLocally, setArchivedLocally] = useState(false);
   const [workflowReceipt, setWorkflowReceipt] = useState<{
     requestId: string;
@@ -221,7 +230,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
       (action) => action.action === 'archive' && action.highImpact === true
     )
   );
-  const canArchiveNow = resolverAllowsArchiveNow && !verifyArchiveTasksLoading;
+  const canArchiveNow = isArchiveNowAllowed(resolverAllowsArchiveNow, verifyArchiveTasksLoading);
   const archiveNowDisabledReason = isArchived
     ? t('verifyArchive.archiveDisabledArchived')
     : verifyArchiveTasksLoading
@@ -396,74 +405,88 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     requestArtifact('tasks');
   }, [activeTab, changeName, isArchived, scopeId]);
 
-  useEffect(() => {
-    const cleanup = onMessage((event: MessageEvent) => {
-      const msg = event.data;
-      if (msg.type === 'panelVisibility') {
-        const visible = msg.visible !== false;
-        const tasksFetchKey = artifactFetchCoordinatorKey(scopeId, 'tasks');
+  dispatchExtensionMessageRef.current = (msg: unknown) => {
+      const data = msg as Record<string, unknown>;
+      if (data.type === 'panelVisibility') {
+        const visible = data.visible !== false;
+        const tasksFetchKey = tasksFetchCoordinatorKey(scopeId);
         const tasksDirtyWhileHidden = visible
           && artifactFetchCoordinatorRef.current.isDirty(tasksFetchKey);
         artifactFetchCoordinatorRef.current.setPanelVisible(visible);
         if (visible && activeTabRef.current === 'verifyArchive') {
-          if (tasksDirtyWhileHidden || verifyArchiveTasksLoading) {
+          if (tasksDirtyWhileHidden || verifyArchiveTasksLoadingRef.current) {
             verifyArchiveTasksLoadedRef.current = null;
             setVerifyArchiveTasksLoading(true);
             requestArtifact('tasks');
           }
         }
-      } else if (msg.type === 'dashboardData'
-        && Array.isArray(msg.data?.archivedChanges)
-        && msg.data.archivedChanges.some((archived: { name?: string }) => archived.name === changeName)) {
+      } else if (data.type === 'dashboardData'
+        && Array.isArray((data.data as { archivedChanges?: { name?: string }[] } | undefined)?.archivedChanges)
+        && (data.data as { archivedChanges: { name?: string }[] }).archivedChanges.some(
+          (archived) => archived.name === changeName,
+        )) {
         setArchivedLocally(true);
-      } else if (msg.type === 'artifactContent' && msg.changeName === changeName) {
-        const fetchKey = artifactFetchCoordinatorKey(scopeId, msg.artifactType);
-        const storageKey = cacheKey(scopeId, msg.artifactType, msg.artifactPath);
-        artifactFetchCoordinatorRef.current.complete(fetchKey);
-        contentCacheRef.current.set(storageKey, msg.content ?? '');
-        setContent(msg.content ?? '');
+      } else if (data.type === 'artifactContent' && data.changeName === changeName) {
+        completeArtifactFetchAndStoreContent({
+          scopeId,
+          artifactType: String(data.artifactType),
+          artifactPath: typeof data.artifactPath === 'string' ? data.artifactPath : undefined,
+          content: String(data.content ?? ''),
+          coordinator: artifactFetchCoordinatorRef.current,
+          contentCache: contentCacheRef.current,
+        });
+        setContent(String(data.content ?? ''));
         setArtifactStateMessage(null);
-        if (Array.isArray(msg.outputs)) {
-          setArtifactOutputs((previous) => ({ ...previous, [msg.artifactType]: msg.outputs }));
+        if (Array.isArray(data.outputs)) {
+          const artifactType = String(data.artifactType);
+          setArtifactOutputs((previous) => ({
+            ...previous,
+            [artifactType]: data.outputs as ArtifactOutputDescriptor[],
+          }));
           setSelectedOutputPaths((previous) => ({
             ...previous,
-            [msg.artifactType]: reconcileSelectedOutputPath(
-              typeof msg.artifactPath === 'string'
-                ? msg.artifactPath
-                : previous[msg.artifactType],
-              msg.outputs,
+            [artifactType]: reconcileSelectedOutputPath(
+              typeof data.artifactPath === 'string'
+                ? data.artifactPath
+                : previous[artifactType],
+              data.outputs as ArtifactOutputDescriptor[],
             ),
           }));
-        } else if (typeof msg.artifactPath === 'string') {
-          setSelectedOutputPaths((previous) => ({ ...previous, [msg.artifactType]: msg.artifactPath }));
+        } else if (typeof data.artifactPath === 'string') {
+          setSelectedOutputPaths((previous) => ({
+            ...previous,
+            [String(data.artifactType)]: data.artifactPath as string,
+          }));
         }
         setLoading(false);
         setError(null);
-        if (msg.artifactType === 'tasks' && msg.content) {
-          const { completed, total } = countTaskProgress(msg.content);
+        if (data.artifactType === 'tasks' && data.content) {
+          const { completed, total } = countTaskProgress(String(data.content));
           setTotalTasks(total);
           setCompletedTasks(completed);
           setVerifyArchiveTasksLoading(false);
         }
-      } else if (msg.type === 'workflowActionReceipt'
-        && msg.changeName === changeName
+      } else if (data.type === 'workflowActionReceipt'
+        && data.changeName === changeName
         && workflowSnapshot
-        && msg.bindingKey === workflowSnapshot.bindingKey) {
-        workflowLaunchPending.handleReceipt(msg);
-        if (msg.status === 'running') {
-          if (msg.action === 'verify' || msg.action === 'archive') {
-            setPendingLaunchAction(msg.action);
+        && data.bindingKey === workflowSnapshot.bindingKey) {
+        workflowLaunchPending.handleReceipt(data as Parameters<typeof workflowLaunchPending.handleReceipt>[0]);
+        if (data.status === 'running') {
+          if (data.action === 'verify' || data.action === 'archive') {
+            setPendingLaunchAction(data.action as WorkflowAction);
           }
         } else {
           setWorkflowReceipt({
-            requestId: msg.requestId,
-            bindingKey: msg.bindingKey,
-            status: msg.status,
-            message: msg.message,
+            requestId: String(data.requestId),
+            bindingKey: String(data.bindingKey),
+            status: String(data.status),
+            message: typeof data.message === 'string' ? data.message : undefined,
           });
         }
-      } else if (msg.type === 'artifactContentError' && msg.changeName === changeName) {
-        const artifactType = msg.artifactType ?? activeTabRef.current;
+      } else if (data.type === 'artifactContentError' && data.changeName === changeName) {
+        const artifactType = typeof data.artifactType === 'string'
+          ? data.artifactType
+          : activeTabRef.current;
         const fetchKey = artifactFetchCoordinatorKey(
           scopeId,
           artifactType,
@@ -473,77 +496,83 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         if (artifactType === 'tasks') {
           setVerifyArchiveTasksLoading(false);
         }
-        if (msg.code === 'WORKSPACE_ROOT_STALE') {
-          setArtifactStateMessage(msg.message ?? t('workflow.workspaceRootStale'));
+        if (data.code === 'WORKSPACE_ROOT_STALE') {
+          setArtifactStateMessage(
+            typeof data.message === 'string' ? data.message : t('workflow.workspaceRootStale'),
+          );
           setLoading(false);
           setError(null);
-          setErrorCode(msg.code);
+          setErrorCode(String(data.code));
           setContent(null);
         } else {
-          setError(msg.message ?? 'Failed to load');
-          setErrorCode(msg.code);
+          setError(typeof data.message === 'string' ? data.message : 'Failed to load');
+          setErrorCode(typeof data.code === 'string' ? data.code : undefined);
           setLoading(false);
           setContent(null);
           setArtifactStateMessage(null);
         }
-      } else if (msg.type === 'deltaSpecList' && msg.changeName === changeName) {
-        setDeltaSpecIds(msg.specIds ?? []);
-        if (msg.specIds?.length) {
-          setSelectedSpecId(msg.specIds[0]);
+      } else if (data.type === 'deltaSpecList' && data.changeName === changeName) {
+        const specIds = Array.isArray(data.specIds) ? data.specIds as string[] : [];
+        setDeltaSpecIds(specIds);
+        if (specIds.length) {
+          setSelectedSpecId(specIds[0]);
           setLoading(true);
         } else {
           setLoading(false);
           setContent(null);
           setError(null);
         }
-      } else if (msg.type === 'deltaSpecContent' && msg.changeName === changeName) {
-        const key = cacheKey(scopeId, 'specs', msg.specId);
-        contentCacheRef.current.set(key, msg.content ?? '');
-        setContent(msg.content ?? '');
+      } else if (data.type === 'deltaSpecContent' && data.changeName === changeName) {
+        const key = cacheKey(scopeId, 'specs', String(data.specId));
+        contentCacheRef.current.set(key, String(data.content ?? ''));
+        setContent(String(data.content ?? ''));
         setLoading(false);
         setError(null);
-      } else if (msg.type === 'deltaSpecContentError' && msg.changeName === changeName) {
-        setError(msg.message ?? 'Failed to load spec');
+      } else if (data.type === 'deltaSpecContentError' && data.changeName === changeName) {
+        setError(typeof data.message === 'string' ? data.message : 'Failed to load spec');
         setLoading(false);
         setContent(null);
       } else if (
-        (msg.type === 'setContext'
-          && msg.view === 'changeDetail'
-          && msg.changeName === changeName
-          && msg.executorLaunchPresentation)
-        || msg.type === 'executorLaunchPresentation'
+        (data.type === 'setContext'
+          && data.view === 'changeDetail'
+          && data.changeName === changeName
+          && data.executorLaunchPresentation)
+        || data.type === 'executorLaunchPresentation'
       ) {
-        const presentation = msg.type === 'executorLaunchPresentation'
-          ? msg
-          : msg.executorLaunchPresentation;
+        const presentation = data.type === 'executorLaunchPresentation'
+          ? data
+          : data.executorLaunchPresentation as Record<string, unknown>;
         if (presentation) {
           setExecutorPresentation(normalizeExecutorPresentation({
-            agentAdapters: presentation.agentAdapters,
-            workflowLaunchConfig: presentation.workflowLaunchConfig,
-            uiWorkflowLaunchConfig: presentation.uiWorkflowLaunchConfig,
+            agentAdapters: presentation.agentAdapters as ExecutorLaunchPresentation['agentAdapters'],
+            workflowLaunchConfig: presentation.workflowLaunchConfig as ExecutorLaunchPresentation['workflowLaunchConfig'],
+            uiWorkflowLaunchConfig: presentation.uiWorkflowLaunchConfig as ExecutorLaunchPresentation['uiWorkflowLaunchConfig'],
           }));
         }
-      } else if (msg.type === 'taskExecutionFinished' && msg.changeName === changeName) {
+      } else if (data.type === 'taskExecutionFinished' && data.changeName === changeName) {
         setExecutingTaskIndex(null);
-        if (msg.executionState && typeof msg.executionState === 'object') {
-          setTaskExecutionState(msg.executionState);
+        if (data.executionState && typeof data.executionState === 'object') {
+          setTaskExecutionState(data.executionState as Record<number, { success: boolean; timestamp: number }>);
         }
-      } else if (msg.type === 'taskExecutionState' && msg.changeName === changeName) {
-        if (msg.executionState && typeof msg.executionState === 'object') {
-          setTaskExecutionState(msg.executionState);
+      } else if (data.type === 'taskExecutionState' && data.changeName === changeName) {
+        if (data.executionState && typeof data.executionState === 'object') {
+          setTaskExecutionState(data.executionState as Record<number, { success: boolean; timestamp: number }>);
         }
-      } else if (msg.type === 'runCommandResult') {
-        setRunCommandResult({ success: msg.success, message: msg.message });
-      } else if (msg.type === 'interactiveWorkflowState' && msg.changeName === changeName) {
-        setInteractiveState(msg.state ?? { changeName, sessions: {} });
-      } else if (msg.type === 'artifactInvalidated' && msg.changeName === changeName) {
-        const invalidated: string[] = msg.artifactTypes ?? [];
+      } else if (data.type === 'runCommandResult') {
+        setRunCommandResult({
+          success: Boolean(data.success),
+          message: typeof data.message === 'string' ? data.message : undefined,
+        });
+      } else if (data.type === 'interactiveWorkflowState' && data.changeName === changeName) {
+        setInteractiveState((data.state as InteractiveWorkflowState | undefined) ?? { changeName, sessions: {} });
+      } else if (data.type === 'artifactInvalidated' && data.changeName === changeName) {
+        const invalidated: string[] = Array.isArray(data.artifactTypes)
+          ? data.artifactTypes as string[]
+          : [];
         const scopePrefix = scopeId ? `${scopeId}::` : '';
         for (const type of invalidated) {
           if (type === 'specs') {
             for (const key of Array.from(contentCacheRef.current.keys())) {
-              // Cache keys are optionally scope-prefixed; drop the specs entries that
-              // belong to this panel's scope (and any legacy unscoped specs:* keys).
               const suffix = scopePrefix ? key.slice(scopePrefix.length) : key;
               const isLegacyUnscopedSpecs = scopePrefix && (key === 'specs' || key.startsWith('specs:'));
               if (
@@ -554,7 +583,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
                 contentCacheRef.current.delete(key);
               }
             }
-          } else {
+          } else if (type !== 'tasks') {
             contentCacheRef.current.delete(`${scopePrefix}${type}`);
             if (scopePrefix) {
               contentCacheRef.current.delete(type);
@@ -562,11 +591,20 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
           }
         }
         if (invalidated.includes('tasks')) {
-          verifyArchiveTasksLoadedRef.current = null;
-          if (activeTabRef.current === 'verifyArchive') {
-            setVerifyArchiveTasksLoading(true);
-          }
-          requestArtifact('tasks');
+          handleTasksArtifactInvalidated({
+            scopeId,
+            coordinator: artifactFetchCoordinatorRef.current,
+            contentCache: contentCacheRef.current,
+            resetVerifyArchiveLoadedFlag: () => {
+              verifyArchiveTasksLoadedRef.current = null;
+            },
+            markVerifyArchiveLoading: () => {
+              if (activeTabRef.current === 'verifyArchive') {
+                setVerifyArchiveTasksLoading(true);
+              }
+            },
+            scheduleTasksRefetch: () => requestArtifact('tasks'),
+          });
         } else if (invalidated.includes(activeTabRef.current)) {
           if (activeTabRef.current === 'specs') {
             requestSpecsList();
@@ -575,9 +613,13 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
           }
         }
       }
+  };
+
+  useEffect(() => {
+    return onMessage((event: MessageEvent) => {
+      dispatchExtensionMessageRef.current(event.data);
     });
-    return cleanup;
-   }, [activeTab, changeName, onMessage, postMessage, scopeId, workflowReceipt, workflowSnapshot]);
+  }, [onMessage]);
 
   useEffect(() => {
     postMessage(sendMessage.getExecutorLaunchPresentation());
@@ -695,7 +737,6 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   useEffect(() => {
     if (!verifyArchiveTasksLoading) return;
     const timeout = window.setTimeout(() => {
-      setVerifyArchiveTasksLoading(false);
       verifyArchiveTasksLoadedRef.current = null;
       requestArtifact('tasks');
     }, 15_000);

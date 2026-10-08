@@ -49,9 +49,9 @@ describe('ChangeDetail workflow routing', () => {
   });
 
   it('keeps correlated receipt state local and ignores stale requests', () => {
-    expect(source).toContain("msg.type === 'workflowActionReceipt'");
-    expect(source).toContain('msg.bindingKey === workflowSnapshot.bindingKey');
-    expect(source).toContain('workflowLaunchPending.handleReceipt(msg)');
+    expect(source).toContain("data.type === 'workflowActionReceipt'");
+    expect(source).toContain('data.bindingKey === workflowSnapshot.bindingKey');
+    expect(source).toContain('workflowLaunchPending.handleReceipt');
     expect(source).toContain('receiptStatus={workflowReceipt?.status}');
   });
 
@@ -68,7 +68,19 @@ describe('ChangeDetail workflow routing', () => {
   it('loads bound task progress before resolving Archive Now on the Verify & Archive tab', () => {
     expect(source).toContain("requestArtifact('tasks')");
     expect(source).toContain('artifactFetchCoordinatorKey');
-    expect(source).toContain('artifactFetchCoordinatorRef.current.complete(fetchKey)');
+    expect(source).toContain('completeArtifactFetchAndStoreContent');
+    expect(source).toContain('dispatchExtensionMessageRef');
+    expect(source).toContain('handleTasksArtifactInvalidated');
+    expect(source).toContain('isArchiveNowAllowed');
+  });
+
+  it('keeps Archive Now gated until tasks refetch completes (not cleared by fallback timer)', () => {
+    const timeoutBlock = source.slice(
+      source.indexOf('if (!verifyArchiveTasksLoading) return'),
+      source.indexOf('}, [verifyArchiveTasksLoading, changeName, scopeId]'),
+    );
+    expect(timeoutBlock).toContain("requestArtifact('tasks')");
+    expect(timeoutBlock).not.toContain('setVerifyArchiveTasksLoading(false)');
   });
 
   it('keeps interactive review separate from resolver-gated direct archive', () => {
@@ -95,7 +107,7 @@ describe('ChangeDetail workflow routing', () => {
 
   it('switches the detail view to archived read-only state after direct archive succeeds', () => {
     expect(source).toContain("const [archivedLocally, setArchivedLocally] = useState(false)");
-    expect(source).toContain("msg.type === 'dashboardData'");
+    expect(source).toContain("data.type === 'dashboardData'");
     expect(source).toContain('setArchivedLocally(true)');
     expect(source).toContain('const isArchived = archivedLocally || changeName.startsWith(\'archive:\')');
     expect(source).not.toContain("msg.type === 'archiveCompleted'");
@@ -140,7 +152,7 @@ describe('ChangeDetail workflow routing', () => {
   });
 
   it('accepts executorLaunchPresentation from setContext and standalone messages', () => {
-    expect(source).toContain("msg.type === 'setContext'");
-    expect(source).toContain('msg.executorLaunchPresentation');
+    expect(source).toContain("data.type === 'setContext'");
+    expect(source).toContain('data.executorLaunchPresentation');
   });
 });
