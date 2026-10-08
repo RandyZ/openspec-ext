@@ -36,6 +36,10 @@ import type {
   InteractiveWorkflowState,
 } from '../../shared/interactiveWorkflow';
 import { ArtifactFetchCoordinator } from '../utils/artifactFetchCoordinator';
+import {
+  artifactContentCacheKey,
+  artifactFetchCoordinatorKey,
+} from '../utils/artifactFetchKeys';
 
 const MISSING_ARTIFACT_MESSAGE = t('artifact.missing');
 
@@ -55,9 +59,7 @@ export interface ChangeDetailProps {
   initialExecutorPresentation?: ExecutorLaunchPresentation | null;
 }
 
-// Cache key includes scopeId so the same change name in two roots never shares content.
-const cacheKey = (scopeId: string | undefined, type: string, specId?: string | null) =>
-  `${scopeId ? `${scopeId}::` : ''}${type === 'specs' && specId ? `specs:${specId}` : specId ? `${type}:${specId}` : type}`;
+const cacheKey = artifactContentCacheKey;
 
 function getCreateDisabledReason(
   artifactType: string,
@@ -146,8 +148,12 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   const [errorCode, setErrorCode] = useState<string | undefined>(undefined);
   const [deltaSpecIds, setDeltaSpecIds] = useState<string[]>([]);
   const [selectedSpecId, setSelectedSpecId] = useState<string | null>(null);
+  const selectedSpecIdRef = useRef<string | null>(null);
+  selectedSpecIdRef.current = selectedSpecId;
   const [artifactOutputs, setArtifactOutputs] = useState<Record<string, ArtifactOutputDescriptor[]>>({});
   const [selectedOutputPaths, setSelectedOutputPaths] = useState<Record<string, string | undefined>>({});
+  const selectedOutputPathsRef = useRef(selectedOutputPaths);
+  selectedOutputPathsRef.current = selectedOutputPaths;
   const [executorPresentation, setExecutorPresentation] = useState<ExecutorLaunchPresentation | null>(
     initialExecutorPresentation ? normalizeExecutorPresentation(initialExecutorPresentation) : null,
   );
@@ -268,15 +274,28 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     }
   }, [interactiveAction]);
 
+  const resolveFetchKey = (artifactType: string) =>
+    artifactFetchCoordinatorKey(
+      scopeId,
+      artifactType,
+      artifactType === 'specs' ? selectedSpecIdRef.current : undefined,
+    );
+
   const requestArtifact = (artifactType: string, outputPath?: string) => {
-    const key = cacheKey(scopeId, artifactType, outputPath ?? selectedOutputPaths[artifactType]);
-    artifactFetchCoordinatorRef.current.schedule(key, () => {
+    const fetchKey = resolveFetchKey(artifactType);
+    const resolvedOutputPath = outputPath ?? selectedOutputPathsRef.current[artifactType];
+    artifactFetchCoordinatorRef.current.schedule(fetchKey, () => {
       setLoading(true);
       setError(null);
       setErrorCode(undefined);
       setArtifactStateMessage(null);
       setContent(null);
-      postMessage(sendMessage.getArtifactContent(changeName, artifactType, scopeId, outputPath));
+      postMessage(sendMessage.getArtifactContent(
+        changeName,
+        artifactType,
+        scopeId,
+        outputPath ?? resolvedOutputPath,
+      ));
     });
   };
 
@@ -382,13 +401,12 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
       const msg = event.data;
       if (msg.type === 'panelVisibility') {
         const visible = msg.visible !== false;
+        const tasksFetchKey = artifactFetchCoordinatorKey(scopeId, 'tasks');
+        const tasksDirtyWhileHidden = visible
+          && artifactFetchCoordinatorRef.current.isDirty(tasksFetchKey);
         artifactFetchCoordinatorRef.current.setPanelVisible(visible);
         if (visible && activeTabRef.current === 'verifyArchive') {
-          const tasksKey = cacheKey(scopeId, 'tasks', selectedOutputPaths.tasks);
-          if (
-            verifyArchiveTasksLoading
-            || artifactFetchCoordinatorRef.current.isDirty(tasksKey)
-          ) {
+          if (tasksDirtyWhileHidden || verifyArchiveTasksLoading) {
             verifyArchiveTasksLoadedRef.current = null;
             setVerifyArchiveTasksLoading(true);
             requestArtifact('tasks');
@@ -399,9 +417,10 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         && msg.data.archivedChanges.some((archived: { name?: string }) => archived.name === changeName)) {
         setArchivedLocally(true);
       } else if (msg.type === 'artifactContent' && msg.changeName === changeName) {
-        const key = cacheKey(scopeId, msg.artifactType, msg.artifactPath);
-        artifactFetchCoordinatorRef.current.complete(key);
-        contentCacheRef.current.set(key, msg.content ?? '');
+        const fetchKey = artifactFetchCoordinatorKey(scopeId, msg.artifactType);
+        const storageKey = cacheKey(scopeId, msg.artifactType, msg.artifactPath);
+        artifactFetchCoordinatorRef.current.complete(fetchKey);
+        contentCacheRef.current.set(storageKey, msg.content ?? '');
         setContent(msg.content ?? '');
         setArtifactStateMessage(null);
         if (Array.isArray(msg.outputs)) {
@@ -445,8 +464,12 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         }
       } else if (msg.type === 'artifactContentError' && msg.changeName === changeName) {
         const artifactType = msg.artifactType ?? activeTabRef.current;
-        const errorKey = cacheKey(scopeId, artifactType, selectedOutputPaths[artifactType]);
-        artifactFetchCoordinatorRef.current.complete(errorKey);
+        const fetchKey = artifactFetchCoordinatorKey(
+          scopeId,
+          artifactType,
+          artifactType === 'specs' ? selectedSpecIdRef.current : undefined,
+        );
+        artifactFetchCoordinatorRef.current.complete(fetchKey);
         if (artifactType === 'tasks') {
           setVerifyArchiveTasksLoading(false);
         }

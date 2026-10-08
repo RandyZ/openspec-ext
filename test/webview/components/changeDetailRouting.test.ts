@@ -67,6 +67,8 @@ describe('ChangeDetail workflow routing', () => {
 
   it('loads bound task progress before resolving Archive Now on the Verify & Archive tab', () => {
     expect(source).toContain("requestArtifact('tasks')");
+    expect(source).toContain('artifactFetchCoordinatorKey');
+    expect(source).toContain('artifactFetchCoordinatorRef.current.complete(fetchKey)');
   });
 
   it('keeps interactive review separate from resolver-gated direct archive', () => {
