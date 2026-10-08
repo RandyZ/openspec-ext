@@ -36,5 +36,8 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Typecheck
+        run: ./scripts/check-typecheck-baseline.sh
+
       - name: Lint
         run: npx eslint src/

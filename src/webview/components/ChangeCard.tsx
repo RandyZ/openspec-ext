@@ -7,6 +7,8 @@ import {
   type ResolvedWorkflowAction,
 } from '../../shared/changeWorkflow';
 import type { ChangeLifecycleStatus } from '../../shared/changeLifecycle';
+import { resolveChangeBindingKey } from '../utils/changeBindingKey';
+import type { OpenSpecRootBinding } from '../types/messages';
 import {
   getWorkflowActionButtonLabel,
   getWorkflowActionTitle,
@@ -73,6 +75,7 @@ export interface ChangeCardProps {
   workflowLaunchConfig?: WorkflowLaunchConfigView | null;
   workflowLaunchPendingKeys?: ReadonlySet<string>;
   workflowLaunchFailureHint?: { message: string } | null;
+  projectBinding?: OpenSpecRootBinding | null;
 }
 
 export const ChangeCard: React.FC<ChangeCardProps> = ({
@@ -84,6 +87,7 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
   workflowLaunchConfig,
   workflowLaunchPendingKeys,
   workflowLaunchFailureHint,
+  projectBinding,
 }) => {
   const [hover, setHover] = React.useState(false);
   const [focusWithin, setFocusWithin] = React.useState(false);
@@ -104,9 +108,8 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
       ...resolvedActions.highImpact,
     ]
     : [];
-  const launchPendingKey = change.workflowSnapshot?.bindingKey
-    ? `${change.name}\u0000${change.workflowSnapshot.bindingKey}`
-    : undefined;
+  const bindingKey = resolveChangeBindingKey(change, projectBinding);
+  const launchPendingKey = bindingKey ? `${change.name}\u0000${bindingKey}` : undefined;
   const isWorkflowLaunchPending = launchPendingKey
     ? workflowLaunchPendingKeys?.has(launchPendingKey) === true
     : false;

@@ -1,12 +1,18 @@
 import React from 'react';
 import type { InteractiveWorkflowAction } from '../../shared/interactiveWorkflow';
 import { t } from '../../i18n';
+import {
+  getVerifyArchiveHint,
+  getVerifyArchiveRunLabel,
+  type WorkflowLaunchConfigView,
+} from '../utils/workflowLaunchLabels';
 
 export interface VerifyArchivePanelProps {
   isArchived: boolean;
   canArchiveNow?: boolean;
   archiveNowDisabledReason?: string;
   pendingAction?: InteractiveWorkflowAction | null;
+  workflowLaunchConfig?: WorkflowLaunchConfigView | null;
   onRun: (action: InteractiveWorkflowAction) => void;
   onArchiveNow?: () => void;
 }
@@ -50,6 +56,7 @@ export const VerifyArchivePanel: React.FC<VerifyArchivePanelProps> = ({
   canArchiveNow = false,
   archiveNowDisabledReason,
   pendingAction,
+  workflowLaunchConfig,
   onRun,
   onArchiveNow,
 }) => {
@@ -67,6 +74,7 @@ export const VerifyArchivePanel: React.FC<VerifyArchivePanelProps> = ({
         action="verify"
         disabled={false}
         launching={pendingAction === 'verify'}
+        workflowLaunchConfig={workflowLaunchConfig}
         onRun={onRun}
       />
 
@@ -74,6 +82,7 @@ export const VerifyArchivePanel: React.FC<VerifyArchivePanelProps> = ({
         action="archive"
         disabled={isArchived}
         launching={pendingAction === 'archive'}
+        workflowLaunchConfig={workflowLaunchConfig}
         disabledMessage={isArchived ? t('verifyArchive.archiveDisabledArchived') : undefined}
         onRun={onRun}
       />
@@ -121,18 +130,20 @@ export const WorkflowActionCard: React.FC<{
   disabled: boolean;
   disabledMessage?: string;
   launching?: boolean;
+  workflowLaunchConfig?: WorkflowLaunchConfigView | null;
   onRun: (action: InteractiveWorkflowAction) => void;
 }> = ({
   action,
   disabled,
   disabledMessage,
   launching = false,
+  workflowLaunchConfig,
   onRun,
 }) => {
   const isVerify = action === 'verify';
   const title = isVerify ? t('verifyArchive.verifyTitle') : t('verifyArchive.reviewArchiveTitle');
-  const runLabel = isVerify ? t('verifyArchive.runVerify') : t('verifyArchive.runArchive');
-  const hint = isVerify ? t('verifyArchive.verifyAgentHint') : t('verifyArchive.archiveAgentHint');
+  const runLabel = getVerifyArchiveRunLabel(action, workflowLaunchConfig, { launching });
+  const hint = getVerifyArchiveHint(action, workflowLaunchConfig);
 
   return (
     <section style={cardStyle}>

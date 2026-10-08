@@ -92,6 +92,7 @@
   "detail.nav.blocked": "Blocked",
   "detail.nav.skipped": "Skipped",
   "detail.verifyArchive": "Verify & Archive",
+  "detail.loadingTaskProgress": "Loading task progress…",
 
   "fillChat.failed": "fillChat failed: {error}",
 
@@ -165,6 +166,10 @@
   "verifyArchive.description": "Verify and Archive launch `/opsx-verify` and `/opsx-archive` in the IDE Agent panel, the same path as Apply and Continue.",
   "verifyArchive.verifyAgentHint": "Opens `/opsx-verify` in the Agent panel.",
   "verifyArchive.archiveAgentHint": "Prefills `/opsx-archive` in the Agent panel (confirm before sending).",
+  "verifyArchive.verifyCopyHint": "Copies `/opsx-verify` to the clipboard.",
+  "verifyArchive.archiveCopyHint": "Copies `/opsx-archive` to the clipboard.",
+  "verifyArchive.verifyAgentCliHint": "Runs `/opsx-verify` via Cursor Agent CLI.",
+  "verifyArchive.archiveAgentCliHint": "Runs `/opsx-archive` via Cursor Agent CLI.",
   "verifyArchive.verifyTitle": "Verify & Validate",
   "verifyArchive.archiveTitle": "Archive",
   "verifyArchive.runVerify": "Run Verify",
@@ -210,6 +215,8 @@
 
   "agentLaunch.started": "Started in Agent: {command}",
   "agentLaunch.openedPanel": "Opened in Agent panel: {command}",
+  "agentLaunch.prefilledChat": "Prefilled in Chat: {command}",
+  "agentLaunch.panelNotConfirmed": "Could not confirm the Agent panel opened. Open the panel and press Enter to send.",
   "agentLaunch.prefilled": "Prefilled in Agent — press Enter to send: {command}",
   "agentLaunch.submitNotConfirmed": "Command may not have been sent automatically — press Enter in the Agent panel.",
   "agentLaunch.failedWithReason": "Failed to start Agent: {reason}",

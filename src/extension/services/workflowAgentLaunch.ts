@@ -112,6 +112,10 @@ function notifyLaunchResult(
     void vscode.window.showInformationMessage(t('agentLaunch.deeplinkPrefilled', { command }));
     return;
   }
+  if (result.layer === 'vscodeChat' || result.target === 'externalAdapter') {
+    void vscode.window.showInformationMessage(t('agentLaunch.prefilledChat', { command }));
+    return;
+  }
   void vscode.window.showInformationMessage(t('agentLaunch.openedPanel', { command }));
 }
 

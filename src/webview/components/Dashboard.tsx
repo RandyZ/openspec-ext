@@ -39,6 +39,7 @@ import {
 } from '../utils/workflowLaunchLabels';
 import type { CacheAction, CacheStatsView } from '../types/messages';
 import { useWorkflowLaunchPending } from '../hooks/useWorkflowLaunchPending';
+import { resolveChangeBindingKey } from '../utils/changeBindingKey';
 import {
   DEFAULT_CHANGES_VIEW_STATE,
   getChangesViewForRoot,
@@ -713,7 +714,8 @@ export const Dashboard: React.FC = () => {
       return true;
     })
     .slice(0, 3);
-  const priorityWorkflowConfig = projectSidebar?.workflowLaunchConfig ?? workflowLaunchConfig;
+  const priorityWorkflowConfig = workflowLaunchConfig ?? projectSidebar?.workflowLaunchConfig;
+  const projectBinding = projectSidebar?.binding;
 
   return (
     <div className="min-h-screen" style={{ 
@@ -785,12 +787,17 @@ export const Dashboard: React.FC = () => {
                   isArchived: change.lifecycleStatus === 'archived',
                 }).recommended
                 : null;
-              const pendingKey = `${change.name}\u0000${change.workflowSnapshot?.bindingKey ?? ''}`;
+              const bindingKey = resolveChangeBindingKey(change, projectBinding);
+              const pendingKey = `${change.name}\u0000${bindingKey ?? ''}`;
               const isLaunchPending = workflowLaunchPending.pendingKeys.has(pendingKey);
               const ctaLabel = group.key === 'needs-attention'
                 ? t('verifyArchive.reviewArchive')
                 : group.key === 'ready-to-verify'
-                  ? (isLaunchPending ? t('workflow.launching') : t('verifyArchive.runVerify'))
+                  ? getWorkflowActionButtonLabel(
+                    'Verify',
+                    priorityWorkflowConfig,
+                    { launching: isLaunchPending },
+                  )
                   : recommended
                     ? getWorkflowActionButtonLabel(
                       recommended.label,
@@ -885,7 +892,10 @@ export const Dashboard: React.FC = () => {
                       onOpenArchivedChange={handleOpenArchivedChange}
                       archivedItems={[...(projectSidebar.archivedChanges ?? [])]}
                       onLaunchWorkflow={handleLaunchWorkflow}
-                      workflowLaunchConfig={projectSidebar.workflowLaunchConfig ?? workflowLaunchConfig}
+                      workflowLaunchConfig={workflowLaunchConfig ?? projectSidebar.workflowLaunchConfig}
+                      workflowLaunchPendingKeys={workflowLaunchPending.pendingKeys}
+                      workflowActionReceipts={workflowReceipts}
+                      projectBinding={projectSidebar.binding}
                       layout="narrow"
                     />
                   </div>
@@ -1041,6 +1051,7 @@ export const Dashboard: React.FC = () => {
                   archivedItems={pendingScopeId ? [] : (data.archivedChanges ?? [])}
                   onOpenArchivedChange={handleOpenArchivedChange}
                   workflowLaunchConfig={workflowLaunchConfig}
+                  projectBinding={data?.scope ? undefined : projectBinding}
                   rootLabel={selectedRootLabel}
                   viewState={changesViewState}
                   onViewStateChange={persistChangesViewState}

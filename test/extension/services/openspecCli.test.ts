@@ -802,6 +802,18 @@ describe('OpenSpecCliService', () => {
     expect(version).toBe('1.2.3');
   });
 
+  it('getVersion caches result for the service instance session', async () => {
+    mockSpawnSuccess('1.2.3\n');
+    const service = new OpenSpecCliService(workspaceRoot);
+    await service.getVersion();
+    expect(
+      (service as unknown as { cachedCliVersion?: string }).cachedCliVersion,
+    ).toBe('1.2.3');
+    const callsAfterFirst = vi.mocked(spawn).mock.calls.length;
+    await service.getVersion();
+    expect(vi.mocked(spawn).mock.calls.length).toBe(callsAfterFirst);
+  });
+
   it('getVersion throws when command fails', async () => {
     mockSpawnExit(127, 'not found');
     const service = new OpenSpecCliService(workspaceRoot);

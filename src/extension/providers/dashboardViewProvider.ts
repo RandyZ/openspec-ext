@@ -708,9 +708,16 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   }
 
   public postWorkflowLaunchConfig(targetWebview?: vscode.Webview): void {
-    const webview = targetWebview ?? this._view?.webview;
-    if (!webview) return;
-    webview.postMessage(getWorkflowLaunchConfigMessage());
+    const message = getWorkflowLaunchConfigMessage();
+    if (targetWebview) {
+      targetWebview.postMessage(message);
+      return;
+    }
+    for (const webview of [this._view?.webview, this.dashboardPanel?.webview]) {
+      if (webview) {
+        webview.postMessage(message);
+      }
+    }
   }
 
   public openInEditor(): void {

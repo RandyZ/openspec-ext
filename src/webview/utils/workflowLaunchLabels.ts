@@ -59,6 +59,34 @@ export function getWorkflowActionTitle(
   return t('workflow.title.launch', { action: actionLabel });
 }
 
+export function getVerifyArchiveRunLabel(
+  action: 'verify' | 'archive',
+  config?: WorkflowLaunchConfigView | null,
+  options?: { launching?: boolean },
+): string {
+  const actionLabel = action === 'verify' ? 'Verify' : 'Archive';
+  return getWorkflowActionButtonLabel(actionLabel, config, options);
+}
+
+export function getVerifyArchiveHint(
+  action: 'verify' | 'archive',
+  config?: WorkflowLaunchConfigView | null,
+): string {
+  if (!config || !shouldUseAgentWorkflowLabels(config)) {
+    return action === 'verify'
+      ? t('verifyArchive.verifyCopyHint')
+      : t('verifyArchive.archiveCopyHint');
+  }
+  if (config.cursorLaunchMode === 'agentCli') {
+    return action === 'verify'
+      ? t('verifyArchive.verifyAgentCliHint')
+      : t('verifyArchive.archiveAgentCliHint');
+  }
+  return action === 'verify'
+    ? t('verifyArchive.verifyAgentHint')
+    : t('verifyArchive.archiveAgentHint');
+}
+
 export function getWorkflowLaunchModeHint(
   config?: WorkflowLaunchConfigView | null,
 ): string | null {

@@ -58,7 +58,7 @@ describe('agentPanelLauncher', () => {
     );
 
     expect(result.layer).toBe('composerCreateNew');
-    expect(result.outcome).toBe('prefilled');
+    expect(result.outcome).toBe('submitted');
     expect(executeCommand).toHaveBeenCalledWith(
       'composer.createNew',
       expect.objectContaining({ autoSubmit: true, view: 'pane' }),

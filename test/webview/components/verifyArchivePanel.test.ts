@@ -4,18 +4,28 @@ import { describe, expect, it } from 'vitest';
 import { setLocale } from '../../../src/i18n';
 import { VerifyArchivePanel } from '../../../src/webview/components/VerifyArchivePanel';
 
+const agentPanelLaunchConfig = {
+  workflowLaunchMode: 'adapter' as const,
+  preferredAgentAdapter: 'cursor' as const,
+  cursorLaunchMode: 'agentPanel' as const,
+  cursorAgentModel: 'auto',
+  cursorLaunchModeExplicit: true,
+  effectiveAdapterId: 'cursor' as const,
+};
+
 describe('VerifyArchivePanel', () => {
   it('renders run controls for verify and archive', () => {
     setLocale('en');
     const html = renderToStaticMarkup(
       React.createElement(VerifyArchivePanel, {
         isArchived: false,
+        workflowLaunchConfig: agentPanelLaunchConfig,
         onRun: () => undefined,
       })
     );
 
-    expect(html).toContain('Run Verify');
-    expect(html).toContain('Run Archive');
+    expect(html).toContain('Open Cursor · Verify');
+    expect(html).toContain('Open Cursor · Archive');
     expect(html).toContain('Archive Now');
   });
 
@@ -56,12 +66,13 @@ describe('VerifyArchivePanel', () => {
     const html = renderToStaticMarkup(
       React.createElement(VerifyArchivePanel, {
         isArchived: true,
+        workflowLaunchConfig: agentPanelLaunchConfig,
         onRun: () => undefined,
       })
     );
 
     expect(html).toContain('disabled');
-    expect(html).toContain('Run Archive');
+    expect(html).toContain('Open Cursor · Archive');
   });
 
   it('describes Agent panel launch hints instead of terminal session controls', () => {

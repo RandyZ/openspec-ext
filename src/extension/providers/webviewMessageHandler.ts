@@ -39,7 +39,7 @@ import {
 import type { OpenSpecScope } from '../services/openspecScope';
 import { isPathInWorkspaceFolders } from '../utils/workspaceFolders';
 import { broadcastWorkflowActionReceipt } from '../services/workflowWebviewRegistry';
-import { notifyWorkflowLaunchFailure } from '../services/workflowAgentLaunch';
+import { disposeLaunchStatusBarAfterMinimum, processLaunchWorkflowAction } from './launchWorkflowAction';
 import {
   createWorkflowRequestId,
   getWorkflowBindingKey,
@@ -48,8 +48,6 @@ import {
   type WorkflowBindingIdentity,
 } from '../../shared/changeWorkflow';
 
-const WORKFLOW_LAUNCHING_MIN_VISIBLE_MS = 400;
-
 function postWorkflowReceipt(webview: vscode.Webview, receipt: WorkflowActionReceipt): void {
   try {
     webview.postMessage({ type: 'workflowActionReceipt', ...receipt });
@@ -57,19 +55,6 @@ function postWorkflowReceipt(webview: vscode.Webview, receipt: WorkflowActionRec
     // Originating webview may be disposed.
   }
   broadcastWorkflowActionReceipt(receipt, webview);
-}
-
-async function disposeLaunchStatusBarAfterMinimum(
-  disposable: vscode.Disposable | undefined,
-  launchStartedAt: number,
-): Promise<void> {
-  if (!disposable) return;
-  const elapsed = Date.now() - launchStartedAt;
-  const remaining = WORKFLOW_LAUNCHING_MIN_VISIBLE_MS - elapsed;
-  if (remaining > 0) {
-    await new Promise((resolve) => setTimeout(resolve, remaining));
-  }
-  disposable.dispose();
 }
 
 function parseWorkflowBindingFromKey(bindingKey: string): WorkflowBindingIdentity | undefined {
@@ -771,7 +756,7 @@ export async function handleWebviewMessage(
             cache: { source: 'fresh', stale: false },
           });
         } catch (err) {
-          logger.info('getArtifactContent active output read failed', err as Error);
+          logger.warn('getArtifactContent active output read failed', err as Error);
           webview.postMessage({
             type: 'artifactContentError',
             changeName,
@@ -929,6 +914,7 @@ export async function handleWebviewMessage(
         break;
       }
       logTaskTiming('validated');
+      const taskLaunchStatus = vscode.window.setStatusBarMessage?.(t('workflow.launching'));
       let success = false;
       try {
         logTaskTiming('executor-start');
@@ -941,6 +927,8 @@ export async function handleWebviewMessage(
       } catch (err) {
         logger.error('executeTask failed', err as Error);
         vscode.window.showErrorMessage((err as Error).message || t('task.executionFailed'));
+      } finally {
+        void disposeLaunchStatusBarAfterMinimum(taskLaunchStatus, taskLaunchStartedAt);
       }
       try {
         const executionState = await dataManager.getTaskExecutionState(changeName, scope);
@@ -1118,211 +1106,16 @@ export async function handleWebviewMessage(
       const action = message.action;
       const changeName = message.changeName;
       if (typeof changeName !== 'string' || !changeName.trim()) break;
-
-      const launchStartedAt = Date.now();
-      const logWorkflowTiming = (phase: string, detail?: string) => {
-        logger.info(
-          `[workflow-timing] ${phase} +${Date.now() - launchStartedAt}ms`
-          + (detail ? ` ${detail}` : ''),
-        );
-      };
-
-      // Resolve the effective root (scope-aware) so store-scoped workflows run against
-      // the store root, not the workspace root.
-      const { rootPath: scopeRootPath, scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
-      const correlated = message.requestId !== undefined || message.bindingKey !== undefined;
-      const requestId = message.requestId ?? createWorkflowRequestId('legacy');
-      const workflowBinding = resolveWorkflowBindingForLaunch(scope, message.bindingKey);
-      let receiptBindingKeyForPost = message.bindingKey ?? 'legacy';
-      const postReceipt = (
-        target: WorkflowActionReceipt['target'],
-        status: WorkflowActionReceipt['status'],
-        receiptMessage?: string,
-        suppressPriorityAttention?: boolean,
-      ) => postWorkflowReceipt(webview, {
-        requestId,
+      await processLaunchWorkflowAction({
+        webview,
+        dataManager,
+        boundScope,
+        action: action as WorkflowAction,
         changeName,
-        bindingKey: receiptBindingKeyForPost,
-        action,
-        target,
-        status,
-        ...(receiptMessage ? { message: receiptMessage } : {}),
-        ...(suppressPriorityAttention ? { suppressPriorityAttention: true } : {}),
+        requestId: message.requestId,
+        bindingKey: message.bindingKey,
+        scopeId: message.scopeId,
       });
-
-      let launchStatusDisposable: vscode.Disposable | undefined;
-      try {
-      if (correlated) {
-        postReceipt('unknown', 'running');
-        launchStatusDisposable = vscode.window.setStatusBarMessage?.(t('workflow.launching'));
-      }
-      logWorkflowTiming('received', `action=${action} change=${changeName}`);
-
-      if (!isPathInWorkspaceFolders(scopeRootPath)) {
-        if (correlated) {
-          postLaunchValidationFailure(
-            webview,
-            {
-              requestId,
-              changeName,
-              bindingKey: message.bindingKey ?? 'unknown',
-              action,
-              target: 'unknown',
-              status: 'failed',
-              message: t('workflow.workspaceRootStale'),
-            },
-            `Workflow launch blocked: scope root not in workspace folders (${scopeRootPath})`,
-            t('workflow.workspaceRootStale'),
-          );
-        } else {
-          void vscode.window.showWarningMessage(t('workflow.workspaceRootStale'));
-        }
-        break;
-      }
-
-      const snapshotReader = dataManager as DataManager & {
-        getChangeWorkflowSnapshot?: (
-          name: string,
-          scope?: OpenSpecScope,
-          binding?: WorkflowBindingIdentity
-        ) => Promise<ChangeWorkflowSnapshot | undefined>;
-      };
-      let expectedBindingKey: string | undefined;
-      if (workflowBinding && message.bindingKey) {
-        const identityKey = getWorkflowBindingKey(workflowBinding);
-        if (identityKey === message.bindingKey) {
-          expectedBindingKey = identityKey;
-        }
-      }
-      if (
-        expectedBindingKey === undefined
-        && typeof snapshotReader.getChangeWorkflowSnapshot === 'function'
-      ) {
-        try {
-          expectedBindingKey = (
-            await snapshotReader.getChangeWorkflowSnapshot(changeName, scope, workflowBinding)
-          )?.bindingKey;
-        } catch (error) {
-          logger.warn('Failed to validate workflow action binding', error as Error);
-          if (correlated) {
-            postLaunchValidationFailure(
-              webview,
-              {
-                requestId,
-                changeName,
-                bindingKey: message.bindingKey ?? 'unknown',
-                action,
-                target: 'unknown',
-                status: 'failed',
-                message: t('workflow.bindingValidationFailed'),
-              },
-              `Workflow binding validation error for ${changeName}: ${(error as Error).message}`,
-              t('workflow.bindingValidationFailed'),
-            );
-            break;
-          }
-        }
-      }
-      receiptBindingKeyForPost = message.bindingKey ?? expectedBindingKey ?? 'legacy';
-      if (correlated && (!message.requestId || !message.bindingKey)) {
-        postLaunchValidationFailure(
-          webview,
-          {
-            requestId,
-            changeName,
-            bindingKey: receiptBindingKeyForPost,
-            action,
-            target: 'unknown',
-            status: 'failed',
-            message: t('workflow.bindingRequestIncomplete'),
-          },
-          `Workflow launch rejected for ${changeName}: missing requestId or bindingKey`,
-          t('workflow.bindingRequestIncomplete'),
-        );
-        break;
-      }
-      if (message.bindingKey && expectedBindingKey && message.bindingKey !== expectedBindingKey) {
-        postLaunchValidationFailure(
-          webview,
-          {
-            requestId,
-            changeName,
-            bindingKey: message.bindingKey,
-            action,
-            target: 'unknown',
-            status: 'failed',
-            message: t('workflow.bindingMismatch'),
-          },
-          `Workflow binding mismatch for ${changeName}: expected=${expectedBindingKey}, received=${message.bindingKey}`,
-          t('workflow.bindingMismatch'),
-        );
-        break;
-      }
-
-      logWorkflowTiming('validated', `bindingKey=${receiptBindingKeyForPost}`);
-
-      const launchConfig = getWorkflowLaunchConfig();
-      const launchConfigView = toWorkflowLaunchConfigView(launchConfig);
-      const effectiveAdapterId = launchConfigView.effectiveAdapterId;
-      logger.info(
-        `[workflow] launchWorkflowAction: action=${action}, changeName=${changeName}, ` +
-          `scopeId=${message.scopeId ?? '<none>'}, scopeRoot=${scopeRootPath}, ` +
-          `workflowLaunchMode=${launchConfig.workflowLaunchMode}, ` +
-          `preferredAgentAdapter=${launchConfig.preferredAgentAdapter}, ` +
-          `cursorLaunchMode=${launchConfig.cursorLaunchMode}, ` +
-          `cursorLaunchModeExplicit=${launchConfig.cursorLaunchModeExplicit}, ` +
-          `effectiveAdapterId=${effectiveAdapterId ?? 'none'}`
-      );
-
-        logWorkflowTiming('launcher-start');
-        const launchResult = await launchWorkflowAgentCommand({
-          action: action as WorkflowAction,
-          changeName,
-          workspaceRoot: scopeRootPath,
-        });
-        const timingOutcome = launchResult.outcome === 'deduped'
-          ? 'deduped'
-          : (launchResult.outcome ?? 'n/a');
-        logWorkflowTiming(
-          `layer-${launchResult.layer ?? 'none'}-done`,
-          `target=${launchResult.target} outcome=${timingOutcome} command=${launchResult.command}`,
-        );
-        logger.info(
-          `[workflow] agent launch: target=${launchResult.target}, layer=${launchResult.layer ?? 'n/a'}, ` +
-            `outcome=${launchResult.outcome ?? 'n/a'}, command=${launchResult.command}`
-        );
-        const receiptTarget = launchResult.target === 'agentPanel'
-          ? 'cursor'
-          : launchResult.target === 'agentCli'
-            ? 'cursor'
-            : launchResult.target === 'externalAdapter'
-              ? buildWorkflowLaunchPayload({
-                action: action as WorkflowAction,
-                changeName,
-                workflowLaunchMode: 'adapter',
-                adapterId: effectiveAdapterId ?? undefined,
-              }).target
-              : 'clipboard';
-        if (launchResult.success) {
-          const status = launchResult.outcome === 'copied' ? 'copied' : 'delivered';
-          postReceipt(receiptTarget, status, launchResult.message);
-        } else {
-          const reason = launchResult.message ?? t('agentLaunch.failed');
-          postReceipt(receiptTarget, 'failed', reason, true);
-          void notifyWorkflowLaunchFailure(reason, () => launchWorkflowAgentCommand({
-            action: action as WorkflowAction,
-            changeName,
-            workspaceRoot: scopeRootPath,
-          }));
-        }
-      } catch (error) {
-        logger.error('launchWorkflowAction failed', error as Error);
-        const reason = (error as Error).message;
-        postReceipt('unknown', 'failed', reason, true);
-        void notifyWorkflowLaunchFailure(reason);
-      } finally {
-        void disposeLaunchStatusBarAfterMinimum(launchStatusDisposable, launchStartedAt);
-      }
       break;
     }
 
@@ -1593,6 +1386,14 @@ export async function handleWebviewMessage(
       }
       break;
     }
+
+    case 'webviewReady':
+      await postExecutorLaunchPresentationFromHost(webview, dataManager);
+      break;
+
+    case 'getProjectSidebarData':
+      logger.debug('Ignoring getProjectSidebarData in non-dashboard webview');
+      break;
 
     default:
       logger.warn(`Unknown message type: ${message.type}`);

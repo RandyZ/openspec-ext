@@ -353,6 +353,9 @@ export class ChangeDetailPanelManager {
 
     // Proactively send setContext so webview can show ChangeDetail without waiting for first message
     setTimeout(() => {
+      if (this.panels.get(key) === panel) {
+        panel.webview.postMessage({ type: 'panelVisibility', visible: panel.visible });
+      }
       this.buildSetContextPayload(changeName, boundOptions).then((payload) =>
         this.panels.get(key) === panel && panel.webview.postMessage(payload)
       );
@@ -395,6 +398,11 @@ export class ChangeDetailPanelManager {
     );
 
     panel.onDidChangeViewState((e) => {
+      try {
+        panel.webview.postMessage({ type: 'panelVisibility', visible: e.webviewPanel.visible });
+      } catch {
+        // panel disposed
+      }
       if (e.webviewPanel.visible && this.onAfterOpen) {
         logger.debug('Change detail panel became visible, calling onAfterOpen');
         this.onAfterOpen();

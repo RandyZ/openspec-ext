@@ -13,6 +13,7 @@ import {
 } from '../../../src/webview/state/changesViewState';
 import { buildChangeListItems } from '../../../src/webview/types/changeList';
 import { buildVisibleChangePage } from '../../../src/webview/utils/changeListPipeline';
+import { getWorkflowBindingKey } from '../../../src/shared/changeWorkflow';
 
 const HOST_COUNTS: ChangeStatusCounts = {
   all: 17,
@@ -486,6 +487,53 @@ describe('Task 5.5 root-scoped archived isolation', () => {
     expect(html).toContain('Archived 1');
     expect(html).not.toContain('old-two');
     expect(html).not.toContain('old-three');
+  });
+});
+
+describe('Project Sidebar workflow failure tooltips', () => {
+  const projectBinding = {
+    projectId: 'ws2',
+    commandCwd: '/fixtures/ws2',
+    rootPath: '/fixtures/ws2',
+    rootSource: 'declared' as const,
+  };
+  const bindingKey = getWorkflowBindingKey(projectBinding);
+
+  it('shows failed launch reason on card buttons when change has no workflowSnapshot', () => {
+    const change = makeChange('apply-a', 'applying', {
+      completedTasks: 1,
+      totalTasks: 3,
+      workflowSnapshot: {
+        changeName: 'apply-a',
+        schema: 'custom',
+        bindingKey: bindingKey,
+        artifacts: [{
+          id: 'proposal',
+          status: 'ready',
+          requires: [],
+          missingDeps: [],
+          outputPath: 'proposal.md',
+          existingOutputPaths: ['proposal.md'],
+        }],
+      },
+    });
+    const html = renderSection({
+      changes: [change],
+      archivedItems: [],
+      changeStatusCounts: { ...HOST_COUNTS, all: 1, applying: 1 },
+      projectBinding,
+      workflowActionReceipts: [{
+        requestId: 'req-1',
+        changeName: 'apply-a',
+        bindingKey,
+        action: 'apply',
+        target: 'cursor',
+        status: 'failed',
+        message: 'spawn agent ENOENT',
+      }],
+      onLaunchWorkflow: vi.fn(),
+    });
+    expect(html).toContain('spawn agent ENOENT');
   });
 });
 

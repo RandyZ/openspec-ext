@@ -10,7 +10,7 @@ export type AgentLaunchLayer =
   | 'clipboard'
   | 'vscodeChat';
 
-export type AgentLaunchOutcome = 'started' | 'prefilled' | 'copied' | 'failed' | 'deduped';
+export type AgentLaunchOutcome = 'started' | 'prefilled' | 'submitted' | 'copied' | 'failed' | 'deduped';
 
 export interface AgentLaunchResult {
   success: boolean;
@@ -112,14 +112,18 @@ async function tryCursorComposerCreateNew(
       logger.warn(
         `composer.createNew did not confirm a new pane within ${COMPOSER_SUCCESS_WAIT_MS}ms (background check)`,
       );
-      void vscode.window.showWarningMessage(t('agentLaunch.submitNotConfirmed'));
+      void vscode.window.showWarningMessage(
+        request.autoSubmit
+          ? t('agentLaunch.submitNotConfirmed')
+          : t('agentLaunch.panelNotConfirmed'),
+      );
     }
   })();
 
   return {
     success: true,
     layer: 'composerCreateNew',
-    outcome: 'prefilled',
+    outcome: request.autoSubmit ? 'submitted' : 'prefilled',
   };
 }
 

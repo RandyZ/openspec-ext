@@ -14,7 +14,7 @@ import {
   resolveWorkflowCommandTargetForUi,
   type WorkflowAction,
 } from '../../shared/workflowCommand';
-import { WORKFLOW_LAUNCH_PENDING_TIMEOUT_MS } from '../hooks/useWorkflowLaunchPending';
+import { useWorkflowLaunchPending } from '../hooks/useWorkflowLaunchPending';
 import {
   createWorkflowRequestId,
   resolveWorkflowActions,
@@ -131,6 +131,8 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   const [activeTab, setActiveTab] = useState<string>(initialTab ?? 'proposal');
   const contentCacheRef = useRef<Map<string, string>>(new Map());
   const artifactFetchCoordinatorRef = useRef(new ArtifactFetchCoordinator());
+  const verifyArchiveTasksLoadedRef = useRef<string | null>(null);
+  const workflowLaunchPending = useWorkflowLaunchPending();
   const persistedExecutorRef = useRef<string | null>(null);
   const [completedTasks, setCompletedTasks] = useState(0);
   const [totalTasks, setTotalTasks] = useState(0);
@@ -158,7 +160,8 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   const [pendingInteractiveAction, setPendingInteractiveAction] = useState<InteractiveWorkflowAction | null>(interactiveAction ?? null);
   const [copiedName, setCopiedName] = useState(false);
   const [artifactStateMessage, setArtifactStateMessage] = useState<string | null>(null);
-  const [pendingWorkflowAction, setPendingWorkflowAction] = useState<WorkflowAction | null>(null);
+  const [pendingLaunchAction, setPendingLaunchAction] = useState<WorkflowAction | null>(null);
+  const [verifyArchiveTasksLoading, setVerifyArchiveTasksLoading] = useState(false);
   const [archivedLocally, setArchivedLocally] = useState(false);
   const [workflowReceipt, setWorkflowReceipt] = useState<{
     requestId: string;
@@ -285,9 +288,6 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
       setLoading(false);
       setError(null);
       setContent(null);
-      if (!isArchived) {
-        requestArtifact('tasks');
-      }
       return;
     }
 
@@ -358,9 +358,24 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   ]);
 
   useEffect(() => {
+    if (activeTab !== 'verifyArchive' || isArchived) {
+      return;
+    }
+    const loadKey = `${changeName}\u0000${scopeId ?? ''}`;
+    if (verifyArchiveTasksLoadedRef.current === loadKey) {
+      return;
+    }
+    verifyArchiveTasksLoadedRef.current = loadKey;
+    setVerifyArchiveTasksLoading(true);
+    requestArtifact('tasks');
+  }, [activeTab, changeName, isArchived, scopeId]);
+
+  useEffect(() => {
     const cleanup = onMessage((event: MessageEvent) => {
       const msg = event.data;
-      if (msg.type === 'dashboardData'
+      if (msg.type === 'panelVisibility') {
+        artifactFetchCoordinatorRef.current.setPanelVisible(msg.visible !== false);
+      } else if (msg.type === 'dashboardData'
         && Array.isArray(msg.data?.archivedChanges)
         && msg.data.archivedChanges.some((archived: { name?: string }) => archived.name === changeName)) {
         setArchivedLocally(true);
@@ -390,22 +405,26 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
           const { completed, total } = countTaskProgress(msg.content);
           setTotalTasks(total);
           setCompletedTasks(completed);
+          if (activeTab === 'verifyArchive') {
+            setVerifyArchiveTasksLoading(false);
+          }
         }
       } else if (msg.type === 'workflowActionReceipt'
         && msg.changeName === changeName
         && workflowSnapshot
-        && msg.bindingKey === workflowSnapshot.bindingKey
-        && (workflowReceipt?.requestId === msg.requestId || msg.status === 'running')) {
-        setWorkflowReceipt({
-          requestId: msg.requestId,
-          bindingKey: msg.bindingKey,
-          status: msg.status,
-          message: msg.message,
-        });
+        && msg.bindingKey === workflowSnapshot.bindingKey) {
+        workflowLaunchPending.handleReceipt(msg);
         if (msg.status === 'running') {
-          setPendingWorkflowAction(msg.action as WorkflowAction);
+          if (msg.action === 'verify' || msg.action === 'archive') {
+            setPendingLaunchAction(msg.action);
+          }
         } else {
-          setPendingWorkflowAction(null);
+          setWorkflowReceipt({
+            requestId: msg.requestId,
+            bindingKey: msg.bindingKey,
+            status: msg.status,
+            message: msg.message,
+          });
         }
       } else if (msg.type === 'artifactContentError' && msg.changeName === changeName) {
         const errorKey = cacheKey(scopeId, msg.artifactType ?? activeTab, selectedOutputPaths[msg.artifactType ?? activeTab]);
@@ -490,7 +509,11 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
             }
           }
         }
-        if (invalidated.includes(activeTab)) {
+        if (invalidated.includes('tasks') && activeTab === 'verifyArchive') {
+          verifyArchiveTasksLoadedRef.current = null;
+          setVerifyArchiveTasksLoading(true);
+          requestArtifact('tasks');
+        } else if (invalidated.includes(activeTab)) {
           if (activeTab === 'specs') {
             requestSpecsList();
           } else if (activeTab !== 'verifyArchive') {
@@ -591,22 +614,34 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     postMessage(sendMessage.runCommand(commandId, verifyArgsJson.trim() || undefined, changeName));
   };
 
-  useEffect(() => {
-    if (!pendingWorkflowAction) return undefined;
-    const timer = window.setTimeout(() => {
-      setPendingWorkflowAction(null);
-    }, WORKFLOW_LAUNCH_PENDING_TIMEOUT_MS);
-    return () => window.clearTimeout(timer);
-  }, [pendingWorkflowAction]);
-
   const copyCommandTarget = resolveWorkflowCommandTargetForUi(executorUiLaunchConfig);
+
+  const workflowBindingKey = workflowSnapshot?.bindingKey;
+  const isWorkflowLaunchPending = workflowBindingKey
+    ? workflowLaunchPending.isPending(changeName, workflowBindingKey)
+    : false;
+  const actionBarPendingAction = isWorkflowLaunchPending ? pendingLaunchAction : null;
+  const verifyArchivePendingAction = isWorkflowLaunchPending
+    && (pendingLaunchAction === 'verify' || pendingLaunchAction === 'archive')
+    ? pendingLaunchAction
+    : null;
+
+  useEffect(() => {
+    if (!workflowBindingKey || !pendingLaunchAction) return;
+    if (!workflowLaunchPending.isPending(changeName, workflowBindingKey)) {
+      setPendingLaunchAction(null);
+    }
+  }, [changeName, pendingLaunchAction, workflowBindingKey, workflowLaunchPending.pendingKeys]);
 
   const handleLaunchWorkflow = (
     action: 'explore' | 'continue' | 'ff' | 'apply' | 'verify' | 'archive' | 'sync'
   ) => {
-    if (!workflowSnapshot?.bindingKey || pendingWorkflowAction === action) return;
-    const requestId = createWorkflowRequestId();
-    setPendingWorkflowAction(action);
+    if (!workflowSnapshot?.bindingKey) return;
+    if (pendingLaunchAction === action && workflowLaunchPending.isPending(changeName, workflowSnapshot.bindingKey)) {
+      return;
+    }
+    const { requestId } = workflowLaunchPending.registerLaunch(changeName, workflowSnapshot.bindingKey);
+    setPendingLaunchAction(action);
     setWorkflowReceipt({
       requestId,
       bindingKey: workflowSnapshot.bindingKey,
@@ -670,7 +705,9 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
             />
           </div>
           <div className="inline-flex items-center gap-2 mt-2 px-2.5 py-1 rounded text-xs" style={{ background: 'var(--vscode-editor-inactiveSelectionBackground)', color: 'var(--vscode-descriptionForeground)' }}>
-            {getStatusSummary(existingArtifactIds, completedTasks, totalTasks, isArchived)}
+            {verifyArchiveTasksLoading && activeTab === 'verifyArchive'
+              ? t('detail.loadingTaskProgress')
+              : getStatusSummary(existingArtifactIds, completedTasks, totalTasks, isArchived)}
           </div>
           {workflowSnapshot && (
             <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px]" style={{ color: 'var(--vscode-descriptionForeground)' }}>
@@ -690,7 +727,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         changeName={changeName}
         isArchived={isArchived}
         resolvedActions={resolvedWorkflowActions}
-        pendingAction={pendingWorkflowAction}
+        pendingAction={actionBarPendingAction}
         receiptStatus={workflowReceipt?.status}
         receiptMessage={workflowReceipt?.message}
         executorUiLaunchConfig={executorUiLaunchConfig}
@@ -767,9 +804,8 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
               isArchived={isArchived}
               canArchiveNow={canArchiveNow}
               archiveNowDisabledReason={archiveNowDisabledReason}
-              pendingAction={pendingWorkflowAction === 'verify' || pendingWorkflowAction === 'archive'
-                ? pendingWorkflowAction
-                : null}
+              pendingAction={verifyArchivePendingAction}
+              workflowLaunchConfig={executorUiLaunchConfig}
               onRun={(action) => handleLaunchWorkflow(action)}
               onArchiveNow={handleArchiveNow}
             />

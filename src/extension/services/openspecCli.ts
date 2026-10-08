@@ -90,6 +90,7 @@ export class OpenSpecCliService {
   private resolver: OpenSpecCliResolver;
   private cliActivationDiagnostic: CliActivationDiagnostic | null = null;
   private shownCliDiagnosticKeys = new Set<string>();
+  private cachedCliVersion?: string;
   /** Resolved shell-free spawn targets for Windows launcher commands. */
   private windowsSpawnTargets = new Map<string, WindowsSpawnTarget>();
 
@@ -248,9 +249,13 @@ export class OpenSpecCliService {
    * Get OpenSpec CLI version
    */
   async getVersion(): Promise<string> {
+    if (this.cachedCliVersion) {
+      return this.cachedCliVersion;
+    }
     try {
       const output = await this.execOpenSpec(['--version']);
-      return output.trim();
+      this.cachedCliVersion = output.trim();
+      return this.cachedCliVersion;
     } catch (error) {
       logger.error('Failed to get OpenSpec version', error as Error);
       throw error;

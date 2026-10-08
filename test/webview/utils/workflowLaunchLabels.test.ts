@@ -79,7 +79,7 @@ describe('workflow launch labels', () => {
         ...baseConfig,
         workflowLaunchMode: 'adapter',
         preferredAgentAdapter: 'vscode-copilot',
-        cursorLaunchMode: 'agentPanel',
+        cursorLaunchMode: 'clipboard',
         effectiveAdapterId: 'vscode-copilot',
       }),
     ).toBe('Launch · Apply');
@@ -88,7 +88,7 @@ describe('workflow launch labels', () => {
         ...baseConfig,
         workflowLaunchMode: 'adapter',
         preferredAgentAdapter: 'vscode-copilot',
-        cursorLaunchMode: 'agentPanel',
+        cursorLaunchMode: 'clipboard',
         effectiveAdapterId: 'vscode-copilot',
       }),
     ).toBe('Launch via adapter');

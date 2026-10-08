@@ -6,14 +6,23 @@ export type ArtifactFetchCoordinatorOptions = {
 /** Coalesces artifact fetches: debounced scheduling, one in-flight request per key. */
 export class ArtifactFetchCoordinator {
   private readonly debounceMs: number;
-  private readonly isVisible: () => boolean;
+  private panelVisible = true;
+  private readonly isDocumentVisible: () => boolean;
   private readonly inFlight = new Set<string>();
   private readonly debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(options: ArtifactFetchCoordinatorOptions = {}) {
     this.debounceMs = options.debounceMs ?? 400;
-    this.isVisible = options.isVisible ?? (() =>
+    this.isDocumentVisible = options.isVisible ?? (() =>
       typeof document === 'undefined' || document.visibilityState !== 'hidden');
+  }
+
+  setPanelVisible(visible: boolean): void {
+    this.panelVisible = visible;
+  }
+
+  private isVisible(): boolean {
+    return this.panelVisible && this.isDocumentVisible();
   }
 
   get hasInFlight(): boolean {

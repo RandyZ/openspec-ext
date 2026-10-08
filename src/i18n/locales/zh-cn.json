@@ -94,6 +94,7 @@
   "detail.nav.blocked": "已阻塞",
   "detail.nav.skipped": "已跳过",
   "detail.verifyArchive": "验证与归档",
+  "detail.loadingTaskProgress": "正在加载任务进度…",
 
   "fillChat.failed": "fillChat 失败: {error}",
 
@@ -167,6 +168,10 @@
   "verifyArchive.description": "Verify 与 Archive 与 Apply、Continue 相同，在 IDE Agent 面板启动 `/opsx-verify` 与 `/opsx-archive`。",
   "verifyArchive.verifyAgentHint": "在 Agent 面板打开 `/opsx-verify`。",
   "verifyArchive.archiveAgentHint": "在 Agent 面板预填 `/opsx-archive`（发送前请确认）。",
+  "verifyArchive.verifyCopyHint": "将 `/opsx-verify` 复制到剪贴板。",
+  "verifyArchive.archiveCopyHint": "将 `/opsx-archive` 复制到剪贴板。",
+  "verifyArchive.verifyAgentCliHint": "通过 Cursor Agent CLI 运行 `/opsx-verify`。",
+  "verifyArchive.archiveAgentCliHint": "通过 Cursor Agent CLI 运行 `/opsx-archive`。",
   "verifyArchive.verifyTitle": "Verify & Validate",
   "verifyArchive.archiveTitle": "Archive",
   "verifyArchive.runVerify": "Run Verify",
@@ -212,6 +217,8 @@
 
   "agentLaunch.started": "已在 Agent 中开始：{command}",
   "agentLaunch.openedPanel": "已在 Agent 面板打开：{command}",
+  "agentLaunch.prefilledChat": "已在 Chat 中预填：{command}",
+  "agentLaunch.panelNotConfirmed": "无法确认 Agent 面板已打开。请打开面板并按 Enter 发送。",
   "agentLaunch.submitNotConfirmed": "命令可能未自动发送 — 请在 Agent 面板中按 Enter。",
   "agentLaunch.failedWithReason": "无法启动 Agent：{reason}",
   "agentLaunch.prefilled": "已在 Agent 预填，请按回车发送：{command}",

@@ -51,7 +51,7 @@ describe('ChangeDetail workflow routing', () => {
   it('keeps correlated receipt state local and ignores stale requests', () => {
     expect(source).toContain("msg.type === 'workflowActionReceipt'");
     expect(source).toContain('msg.bindingKey === workflowSnapshot.bindingKey');
-    expect(source).toContain('workflowReceipt?.requestId === msg.requestId');
+    expect(source).toContain('workflowLaunchPending.handleReceipt(msg)');
     expect(source).toContain('receiptStatus={workflowReceipt?.status}');
   });
 

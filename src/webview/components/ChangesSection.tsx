@@ -20,6 +20,8 @@ import { t } from '../../i18n';
 import type { WorkflowAction } from '../../shared/workflowCommand';
 import type { WorkflowLaunchConfigView } from '../utils/workflowLaunchLabels';
 import type { WorkflowActionReceipt } from '../../shared/changeWorkflow';
+import { resolveChangeBindingKey } from '../utils/changeBindingKey';
+import type { OpenSpecRootBinding } from '../types/messages';
 
 export type ChangesSectionLayout = 'wide' | 'narrow' | 'auto';
 
@@ -33,6 +35,7 @@ interface ChangesSectionProps {
   onLaunchWorkflow?: (action: WorkflowAction, changeName: string, bindingKey?: string) => void;
   workflowLaunchPendingKeys?: ReadonlySet<string>;
   workflowActionReceipts?: readonly WorkflowActionReceipt[];
+  projectBinding?: OpenSpecRootBinding | null;
   archivedItems?: ArchivedChangeInfo[];
   onOpenArchivedChange?: (directoryName: string) => void;
   workflowLaunchConfig?: WorkflowLaunchConfigView | null;
@@ -106,6 +109,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
   onLaunchWorkflow,
   workflowLaunchPendingKeys,
   workflowActionReceipts = [],
+  projectBinding = null,
   archivedItems = [],
   onOpenArchivedChange,
   workflowLaunchConfig,
@@ -289,8 +293,9 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
                 onLaunchWorkflow={onLaunchWorkflow}
                 workflowLaunchConfig={workflowLaunchConfig}
                 workflowLaunchPendingKeys={workflowLaunchPendingKeys}
+                projectBinding={projectBinding}
                 workflowLaunchFailureHint={(() => {
-                  const bindingKey = item.change.workflowSnapshot?.bindingKey;
+                  const bindingKey = resolveChangeBindingKey(item.change, projectBinding);
                   if (!bindingKey) return null;
                   const failed = workflowActionReceipts.find((receipt) =>
                     receipt.changeName === item.change.name

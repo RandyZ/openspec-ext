@@ -10,6 +10,7 @@ import { t } from '../../i18n';
 import { buildWorkflowCommand } from '../../shared/workflowCommand';
 import { getCursorAgentModel, getWorkflowLaunchConfig } from '../services/workflowLaunchConfig';
 import { launchAgentPanelPrompt } from '../services/agentPanelLauncher';
+import { notifyWorkflowCommandCopied } from '../services/workflowClipboardNotify';
 
 const ADAPTER_ID = 'cursor';
 const DISPLAY_NAME = 'Cursor (Agent)';
@@ -160,7 +161,7 @@ export const cursorAdapter: IAgentExecutorAdapter = {
     }
 
     if (cursorLaunchMode === 'clipboard') {
-      vscode.window.showInformationMessage(t('workflow.copiedCommand', { command: text }));
+      notifyWorkflowCommandCopied(text);
       return { success: true, adapterId: ADAPTER_ID, message: 'Copied to clipboard' };
     }
 
