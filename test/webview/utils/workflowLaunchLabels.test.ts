@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { setLocale } from '../../../src/i18n';
 import {
+  getExampleWorkflowCommand,
+  getVerifyArchiveHint,
   getWorkflowActionButtonLabel,
   getWorkflowLaunchModeHint,
   type WorkflowLaunchConfigView,
@@ -71,6 +73,19 @@ describe('workflow launch labels', () => {
         effectiveAdapterId: 'cursor',
       }),
     ).toBe('Open Chat · Verify');
+  });
+
+  it('formats Verify & Archive hints with colon commands for VS Code Chat', () => {
+    const config: WorkflowLaunchConfigView = {
+      ...baseConfig,
+      workflowLaunchMode: 'adapter',
+      preferredAgentAdapter: 'vscode-chat',
+      effectiveAdapterId: 'vscode-chat',
+    };
+    expect(getExampleWorkflowCommand('verify', config)).toBe('/opsx:verify my-change');
+    expect(getVerifyArchiveHint('verify', config)).toContain('/opsx:verify my-change');
+    expect(getVerifyArchiveHint('verify', config)).toContain('Chat');
+    expect(getVerifyArchiveHint('verify', config)).not.toContain('/opsx-verify');
   });
 
   it('shows generic launch wording for non-Cursor adapters', () => {

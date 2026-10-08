@@ -103,8 +103,9 @@ describe('processLaunchWorkflowAction', () => {
     expect(posts.filter((msg) => msg.status === 'failed').length).toBeGreaterThanOrEqual(1);
   });
 
-  it('does not post a delivered receipt when launch is deduped', async () => {
-    launchWorkflowAgentCommand.mockResolvedValueOnce({
+  it('posts a suppressed completed receipt when launch is deduped so pending UI clears', async () => {
+    launchWorkflowAgentCommand.mockReset();
+    launchWorkflowAgentCommand.mockResolvedValue({
       success: true,
       outcome: 'deduped',
       target: 'agentCli',
@@ -121,6 +122,7 @@ describe('processLaunchWorkflowAction', () => {
         capabilities: { stores: false, context: false, doctor: false, worksets: false, diagnostics: [] },
         diagnostics: [],
       }),
+      getChangeWorkflowSnapshot: async () => ({ bindingKey }),
     } as unknown as import('../../../src/extension/services/dataManager').DataManager;
 
     await processLaunchWorkflowAction({
@@ -135,5 +137,8 @@ describe('processLaunchWorkflowAction', () => {
     const posts = vi.mocked(webview.postMessage).mock.calls.map((call) => call[0]);
     expect(posts.some((msg) => msg.status === 'delivered')).toBe(false);
     expect(posts.some((msg) => msg.status === 'running')).toBe(true);
+    const completed = posts.find((msg) => msg.status === 'completed');
+    expect(completed).toBeDefined();
+    expect(completed?.suppressPriorityAttention).toBe(true);
   });
 });

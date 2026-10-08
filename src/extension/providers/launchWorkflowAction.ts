@@ -326,6 +326,7 @@ export async function processLaunchWorkflowAction(
           }).target
           : 'clipboard';
     if (launchResult.outcome === 'deduped') {
+      postReceipt(receiptTarget, 'completed', launchResult.message, true);
       return;
     }
     if (launchResult.success) {

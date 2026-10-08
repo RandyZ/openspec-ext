@@ -72,6 +72,17 @@ describe('ChangeDetail workflow routing', () => {
     expect(source).toContain('dispatchExtensionMessageRef');
     expect(source).toContain('handleTasksArtifactInvalidated');
     expect(source).toContain('isArchiveNowAllowed');
+    expect(source).toContain('executorLaunchConfigKey');
+    expect(source).toContain('setWorkflowReceipt(null)');
+  });
+
+  it('sets ActionBar pending UI before registerLaunch for minimum Launching visibility', () => {
+    const start = source.indexOf('const handleLaunchWorkflow = (');
+    const end = source.indexOf('}, [activeTab, pendingInteractiveAction]);', start);
+    const block = source.slice(start, end);
+    expect(block.indexOf('setPendingLaunchAction(action)')).toBeLessThan(
+      block.indexOf('registerLaunch(changeName, workflowSnapshot.bindingKey)'),
+    );
   });
 
   it('keeps Archive Now gated until tasks refetch completes (not cleared by fallback timer)', () => {

@@ -671,7 +671,17 @@ export class OpenSpecCliService {
    * all flow through the same code.
    */
   private runtimeVersionCacheKey(runtime: ResolvedOpenSpecRuntime): string {
-    return `${runtime.command}\u0000${runtime.argsPrefix.join('\u0000')}\u0000${runtime.source}`;
+    const configuredCliPath = vscode.workspace.getConfiguration('openspec').get<string>('cliPath') ?? '';
+    const command = path.isAbsolute(runtime.command)
+      ? path.resolve(runtime.command)
+      : runtime.command;
+    const argsPrefix = runtime.argsPrefix
+      .map((arg) => (path.isAbsolute(arg) ? path.resolve(arg) : arg))
+      .join('\u0000');
+    const configuredKey = configuredCliPath
+      ? (path.isAbsolute(configuredCliPath) ? path.resolve(configuredCliPath) : configuredCliPath)
+      : '';
+    return `${command}\u0000${argsPrefix}\u0000${runtime.source}\u0000${configuredKey}`;
   }
 
   private async execOpenSpecOnce(args: string[], timeoutMs: number): Promise<string> {
@@ -681,7 +691,13 @@ export class OpenSpecCliService {
     if (versionCacheKey) {
       const cachedVersion = OpenSpecCliService.versionByRuntimeKey.get(versionCacheKey);
       if (cachedVersion !== undefined) {
-        return cachedVersion;
+        return cachedVersion.endsWith('\n') ? cachedVersion : `${cachedVersion}\n`;
+      }
+      const resolvedVersion = runtime.version?.trim();
+      if (resolvedVersion) {
+        OpenSpecCliService.versionByRuntimeKey.set(versionCacheKey, resolvedVersion);
+        this.cachedCliVersion = resolvedVersion;
+        return `${resolvedVersion}\n`;
       }
     }
     const isLocalSource = runtime.source === 'localSource';

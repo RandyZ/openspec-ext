@@ -211,6 +211,19 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     () => resolveExecutorUiLaunchConfig(executorPresentation),
     [executorPresentation],
   );
+  const executorLaunchConfigKey = useMemo(
+    () => [
+      executorUiLaunchConfig.effectiveAdapterId ?? '',
+      executorUiLaunchConfig.cursorLaunchMode ?? '',
+      executorUiLaunchConfig.workflowLaunchMode ?? '',
+      executorUiLaunchConfig.preferredAgentAdapter ?? '',
+    ].join('\u0000'),
+    [executorUiLaunchConfig],
+  );
+
+  useEffect(() => {
+    setWorkflowReceipt(null);
+  }, [executorLaunchConfigKey]);
   const tasksLaunchModeHint = getWorkflowLaunchModeHint(executorUiLaunchConfig);
   const executorUiModeLabel = getExecutorUiModeLabel(executorUiLaunchConfig);
   const executorSelectValue = resolveExecutorSelectValue(agentAdapters);
@@ -475,6 +488,9 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
           if (data.action === 'verify' || data.action === 'archive') {
             setPendingLaunchAction(data.action as WorkflowAction);
           }
+        } else if (data.suppressPriorityAttention === true && data.status === 'completed') {
+          setPendingLaunchAction(null);
+          setPendingLaunchSurface(null);
         } else {
           setWorkflowReceipt({
             requestId: String(data.requestId),
@@ -751,9 +767,9 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     if (pendingLaunchAction === action && workflowLaunchPending.isPending(changeName, workflowSnapshot.bindingKey)) {
       return;
     }
-    const { requestId } = workflowLaunchPending.registerLaunch(changeName, workflowSnapshot.bindingKey);
     setPendingLaunchAction(action);
     setPendingLaunchSurface(surface);
+    const { requestId } = workflowLaunchPending.registerLaunch(changeName, workflowSnapshot.bindingKey);
     setWorkflowReceipt({
       requestId,
       bindingKey: workflowSnapshot.bindingKey,

@@ -1,6 +1,24 @@
 import { t } from '../../i18n';
 import type { WorkflowLaunchConfigView } from '../../shared/workflowLaunchConfig';
 import { shouldUseAgentWorkflowLabels } from '../../shared/workflowLaunchConfig';
+import {
+  buildWorkflowCommand,
+  resolveWorkflowCommandTargetForUi,
+  type WorkflowAction,
+} from '../../shared/workflowCommand';
+
+const VERIFY_ARCHIVE_EXAMPLE_CHANGE = 'my-change';
+
+export function getExampleWorkflowCommand(
+  action: WorkflowAction,
+  config?: WorkflowLaunchConfigView | null,
+): string {
+  return buildWorkflowCommand({
+    action,
+    changeName: VERIFY_ARCHIVE_EXAMPLE_CHANGE,
+    target: resolveWorkflowCommandTargetForUi(config ?? null),
+  });
+}
 
 export type { WorkflowLaunchConfigView } from '../../shared/workflowLaunchConfig';
 
@@ -83,26 +101,45 @@ export function getVerifyArchiveDescription(
     }
     return t('verifyArchive.descriptionAgentPanel');
   }
-  return t('verifyArchive.descriptionAdapter');
+  return t('verifyArchive.descriptionChatAdapter', {
+    verifyCommand: getExampleWorkflowCommand('verify', config),
+    archiveCommand: getExampleWorkflowCommand('archive', config),
+  });
 }
 
 export function getVerifyArchiveHint(
   action: 'verify' | 'archive',
   config?: WorkflowLaunchConfigView | null,
 ): string {
+  const command = getExampleWorkflowCommand(action, config);
   if (!config || !shouldUseAgentWorkflowLabels(config)) {
     return action === 'verify'
-      ? t('verifyArchive.verifyCopyHint')
-      : t('verifyArchive.archiveCopyHint');
+      ? t('verifyArchive.verifyCopyHint', { command })
+      : t('verifyArchive.archiveCopyHint', { command });
   }
-  if (config.cursorLaunchMode === 'agentCli') {
+  if (config.effectiveAdapterId === 'cursor') {
+    if (config.cursorLaunchMode === 'agentCli') {
+      return action === 'verify'
+        ? t('verifyArchive.verifyAgentCliHint', { command })
+        : t('verifyArchive.archiveAgentCliHint', { command });
+    }
+    if (config.cursorLaunchMode === 'clipboard') {
+      return action === 'verify'
+        ? t('verifyArchive.verifyCopyHint', { command })
+        : t('verifyArchive.archiveCopyHint', { command });
+    }
+    if (config.cursorLaunchMode === 'chatCommand') {
+      return action === 'verify'
+        ? t('verifyArchive.verifyChatHint', { command })
+        : t('verifyArchive.archiveChatHint', { command });
+    }
     return action === 'verify'
-      ? t('verifyArchive.verifyAgentCliHint')
-      : t('verifyArchive.archiveAgentCliHint');
+      ? t('verifyArchive.verifyAgentHint', { command })
+      : t('verifyArchive.archiveAgentHint', { command });
   }
   return action === 'verify'
-    ? t('verifyArchive.verifyAgentHint')
-    : t('verifyArchive.archiveAgentHint');
+    ? t('verifyArchive.verifyChatHint', { command })
+    : t('verifyArchive.archiveChatHint', { command });
 }
 
 export function getWorkflowLaunchModeHint(
