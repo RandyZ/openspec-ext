@@ -55,9 +55,13 @@ vi.mock('@extension/adapters', () => ({
   getAdapterById: vi.fn(async (id: string) => (id === 'cursor' ? cursorAdapterMock : null)),
 }));
 
-vi.mock('@extension/services/workflowAgentLaunch', () => ({
-  launchWorkflowAgentCommand,
-}));
+vi.mock('@extension/services/workflowAgentLaunch', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@extension/services/workflowAgentLaunch')>();
+  return {
+    ...actual,
+    launchWorkflowAgentCommand,
+  };
+});
 
 vi.mock('@extension/utils/logger', () => ({
   logger: {
@@ -311,6 +315,40 @@ describe('handleWebviewMessage toggleTask', () => {
       message: expect.stringContaining(''),
       suppressPriorityAttention: true,
     });
+  });
+
+  it('marks agent launch failures as suppressPriorityAttention and surfaces an error toast', async () => {
+    launchWorkflowAgentCommand.mockResolvedValueOnce({
+      success: false,
+      command: '/opsx-apply demo-change',
+      target: 'agentCli',
+      message: 'spawn agent ENOENT',
+    });
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      getChangeWorkflowSnapshot: vi.fn().mockResolvedValue({ bindingKey: 'root-current' }),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      {
+        type: 'launchWorkflowAction',
+        action: 'apply',
+        changeName: 'demo-change',
+        requestId: 'request-fail',
+        bindingKey: 'root-current',
+      },
+      webview as any,
+      dataManager as any,
+    );
+
+    expect(webview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'workflowActionReceipt',
+      status: 'failed',
+      message: 'spawn agent ENOENT',
+      suppressPriorityAttention: true,
+    }));
+    expect(vscode.window.showErrorMessage).toHaveBeenCalled();
   });
 
   it('reports clipboard delivery as copied rather than completed', async () => {
