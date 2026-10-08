@@ -89,19 +89,29 @@ export function getVerifyArchiveRunLabel(
   return getWorkflowActionButtonLabel(actionLabel, config, options);
 }
 
+function verifyArchiveDescriptionCopy(
+  config: WorkflowLaunchConfigView | null | undefined,
+  runtime?: WorkflowCommandFormatRuntime,
+): string {
+  return t('verifyArchive.descriptionCopy', {
+    verifyCommand: getExampleWorkflowCommand('verify', config, runtime),
+    archiveCommand: getExampleWorkflowCommand('archive', config, runtime),
+  });
+}
+
 export function getVerifyArchiveDescription(
   config?: WorkflowLaunchConfigView | null,
   runtime?: WorkflowCommandFormatRuntime,
 ): string {
   if (!config || !shouldUseAgentWorkflowLabels(config)) {
-    return t('verifyArchive.descriptionCopy');
+    return verifyArchiveDescriptionCopy(config, runtime);
   }
   if (config.effectiveAdapterId === 'cursor') {
     if (config.cursorLaunchMode === 'agentCli') {
       return t('verifyArchive.descriptionAgentCli');
     }
     if (config.cursorLaunchMode === 'clipboard') {
-      return t('verifyArchive.descriptionCopy');
+      return verifyArchiveDescriptionCopy(config, runtime);
     }
     return t('verifyArchive.descriptionAgentPanel');
   }

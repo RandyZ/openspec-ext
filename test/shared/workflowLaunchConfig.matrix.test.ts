@@ -56,6 +56,21 @@ const matrix: MatrixRow[] = [
     },
   },
   {
+    name: 'VS Code adapter + vscode-chat (implicit cursorLaunchMode=clipboard)',
+    input: {
+      workflowLaunchMode: 'adapter',
+      preferredAgentAdapter: 'vscode-chat',
+    },
+    host: 'vscode',
+    expect: {
+      workflowLaunchMode: 'adapter',
+      preferredAgentAdapter: 'vscode-chat',
+      cursorLaunchMode: 'clipboard',
+      effectiveAdapterId: 'vscode-chat',
+      copyOnly: false,
+    },
+  },
+  {
     name: 'Cursor legacy workspace deeplink only (R3)',
     input: {
       cursorLaunchMode: 'agentPanel',

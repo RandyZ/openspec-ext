@@ -84,8 +84,8 @@ describe('VerifyArchivePanel', () => {
       })
     );
 
-    expect(html).toContain('/opsx-verify');
-    expect(html).toContain('/opsx-archive');
+    expect(html).toContain('/opsx:verify my-change');
+    expect(html).toContain('/opsx:archive my-change');
     expect(html).not.toContain('Reveal Terminal');
     expect(html).not.toContain('Clear Session');
   });

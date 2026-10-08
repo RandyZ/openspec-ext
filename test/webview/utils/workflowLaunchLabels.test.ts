@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { setLocale } from '../../../src/i18n';
 import {
   getExampleWorkflowCommand,
+  getVerifyArchiveDescription,
   getVerifyArchiveHint,
   getWorkflowActionButtonLabel,
   getWorkflowLaunchModeHint,
@@ -75,6 +76,25 @@ describe('workflow launch labels', () => {
         effectiveAdapterId: 'cursor',
       }),
     ).toBe('Open Chat · Verify');
+  });
+
+  it('formats Verify & Archive copy description with IDE-specific command syntax', () => {
+    const desc = getVerifyArchiveDescription(baseConfig, { isCursorHost: false });
+    expect(desc).toContain('/opsx:verify my-change');
+    expect(desc).toContain('/opsx:archive my-change');
+    expect(desc).not.toContain('/opsx-verify');
+
+    const cursorCopy: WorkflowLaunchConfigView = {
+      ...baseConfig,
+      workflowLaunchMode: 'adapter',
+      preferredAgentAdapter: 'cursor',
+      cursorLaunchMode: 'clipboard',
+      cursorLaunchModeExplicit: true,
+      effectiveAdapterId: 'cursor',
+    };
+    const cursorDesc = getVerifyArchiveDescription(cursorCopy, { isCursorHost: true });
+    expect(cursorDesc).toContain('/opsx-verify my-change');
+    expect(cursorDesc).toContain('/opsx-archive my-change');
   });
 
   it('formats Verify & Archive hints with colon commands for VS Code Chat', () => {

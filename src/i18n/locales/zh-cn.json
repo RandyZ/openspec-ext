@@ -169,7 +169,7 @@
   "verifyArchive.description": "Verify 与 Archive 与 Apply、Continue 相同，在 IDE Agent 面板启动 `/opsx-verify` 与 `/opsx-archive`。",
   "verifyArchive.descriptionAgentPanel": "Verify 与 Archive 与 Apply、Continue 相同，通过 Cursor Agent 面板启动。",
   "verifyArchive.descriptionAgentCli": "Verify 与 Archive 与 Apply、Continue 相同，通过 Cursor Agent CLI 启动。",
-  "verifyArchive.descriptionCopy": "Verify 与 Archive 与其他 Copy 操作相同，将 `/opsx-verify` 与 `/opsx-archive` 复制到剪贴板。",
+  "verifyArchive.descriptionCopy": "Verify 与 Archive 与其他 Copy 操作相同，将 {verifyCommand} 与 {archiveCommand} 复制到剪贴板。",
   "verifyArchive.descriptionAdapter": "Verify 与 Archive 与 Apply、Continue 相同，通过已配置的 Chat 适配器启动。",
   "verifyArchive.verifyAgentHint": "在 Agent 面板打开 {command}。",
   "verifyArchive.archiveAgentHint": "在 Agent 面板预填 {command}（发送前请确认）。",

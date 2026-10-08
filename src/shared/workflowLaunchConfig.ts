@@ -100,7 +100,9 @@ export function resolveWorkflowLaunchConfig(
 export function isCopyOnlyWorkflowMode(config: WorkflowLaunchConfigView): boolean {
   if (config.workflowLaunchMode === 'clipboard') return true;
   if (config.preferredAgentAdapter === 'clipboard') return true;
-  if (config.cursorLaunchMode === 'clipboard') return true;
+  if (config.effectiveAdapterId === 'cursor' && config.cursorLaunchMode === 'clipboard') {
+    return true;
+  }
   return config.effectiveAdapterId == null || config.effectiveAdapterId === 'clipboard';
 }
 
