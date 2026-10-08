@@ -23,6 +23,7 @@ import {
 import { confirmDirectArchive } from '../commands/archiveConfirm';
 import { formatBytes } from '../utils/formatBytes';
 import { toWorkflowLaunchConfigView } from '../../shared/workflowLaunchConfig';
+import { isCursorHost } from '../utils/isCursorHost';
 import type {
   InteractiveWorkflowAction,
   InteractiveWorkflowState,
@@ -1465,6 +1466,7 @@ export function getWorkflowLaunchConfigMessage() {
   return {
     type: 'workflowLaunchConfig' as const,
     config: toWorkflowLaunchConfigView(config),
+    isCursorHost: isCursorHost(),
   };
 }
 

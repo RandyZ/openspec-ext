@@ -5,6 +5,7 @@ import {
   getVerifyArchiveDescription,
   getVerifyArchiveHint,
   getVerifyArchiveRunLabel,
+  type WorkflowCommandFormatRuntime,
   type WorkflowLaunchConfigView,
 } from '../utils/workflowLaunchLabels';
 
@@ -15,6 +16,7 @@ export interface VerifyArchivePanelProps {
   tasksProgressError?: string | null;
   pendingAction?: InteractiveWorkflowAction | null;
   workflowLaunchConfig?: WorkflowLaunchConfigView | null;
+  commandFormatRuntime?: WorkflowCommandFormatRuntime;
   onRun: (action: InteractiveWorkflowAction) => void;
   onArchiveNow?: () => void;
 }
@@ -60,6 +62,7 @@ export const VerifyArchivePanel: React.FC<VerifyArchivePanelProps> = ({
   tasksProgressError,
   pendingAction,
   workflowLaunchConfig,
+  commandFormatRuntime,
   onRun,
   onArchiveNow,
 }) => {
@@ -83,7 +86,7 @@ export const VerifyArchivePanel: React.FC<VerifyArchivePanelProps> = ({
       )}
       <div style={cardStyle}>
         <div className="text-sm font-semibold mb-2">{t('verifyArchive.title')}</div>
-        <p style={mutedTextStyle}>{getVerifyArchiveDescription(workflowLaunchConfig)}</p>
+        <p style={mutedTextStyle}>{getVerifyArchiveDescription(workflowLaunchConfig, commandFormatRuntime)}</p>
       </div>
 
       <WorkflowActionCard
@@ -91,6 +94,7 @@ export const VerifyArchivePanel: React.FC<VerifyArchivePanelProps> = ({
         disabled={false}
         launching={pendingAction === 'verify'}
         workflowLaunchConfig={workflowLaunchConfig}
+        commandFormatRuntime={commandFormatRuntime}
         onRun={onRun}
       />
 
@@ -99,6 +103,7 @@ export const VerifyArchivePanel: React.FC<VerifyArchivePanelProps> = ({
         disabled={isArchived}
         launching={pendingAction === 'archive'}
         workflowLaunchConfig={workflowLaunchConfig}
+        commandFormatRuntime={commandFormatRuntime}
         disabledMessage={isArchived ? t('verifyArchive.archiveDisabledArchived') : undefined}
         onRun={onRun}
       />
@@ -147,6 +152,7 @@ export const WorkflowActionCard: React.FC<{
   disabledMessage?: string;
   launching?: boolean;
   workflowLaunchConfig?: WorkflowLaunchConfigView | null;
+  commandFormatRuntime?: WorkflowCommandFormatRuntime;
   onRun: (action: InteractiveWorkflowAction) => void;
 }> = ({
   action,
@@ -154,12 +160,13 @@ export const WorkflowActionCard: React.FC<{
   disabledMessage,
   launching = false,
   workflowLaunchConfig,
+  commandFormatRuntime,
   onRun,
 }) => {
   const isVerify = action === 'verify';
   const title = isVerify ? t('verifyArchive.verifyTitle') : t('verifyArchive.reviewArchiveTitle');
   const runLabel = getVerifyArchiveRunLabel(action, workflowLaunchConfig, { launching });
-  const hint = getVerifyArchiveHint(action, workflowLaunchConfig);
+  const hint = getVerifyArchiveHint(action, workflowLaunchConfig, commandFormatRuntime);
 
   return (
     <section style={cardStyle}>

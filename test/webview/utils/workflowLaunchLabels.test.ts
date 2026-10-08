@@ -35,6 +35,8 @@ describe('workflow launch labels', () => {
     expect(
       getWorkflowActionButtonLabel('Apply', {
         ...baseConfig,
+        workflowLaunchMode: 'adapter',
+        preferredAgentAdapter: 'cursor',
         cursorLaunchMode: 'agentCli',
         cursorLaunchModeExplicit: true,
         effectiveAdapterId: 'cursor',

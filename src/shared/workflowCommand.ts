@@ -21,6 +21,12 @@ export interface WorkflowCommandRequest {
   target: WorkflowCommandTarget;
 }
 
+import {
+  isCopyOnlyWorkflowMode,
+  toWorkflowLaunchConfigView,
+  type WorkflowLaunchConfigView,
+} from './workflowLaunchConfig';
+
 export type WorkflowLaunchMode = 'clipboard' | 'adapter';
 
 export interface WorkflowLaunchPayloadRequest {
@@ -67,24 +73,26 @@ export function getWorkflowCommandTargetForAdapter(
   }
 }
 
-/** Webview-safe target when copying commands (no host env); mirrors Cursor hyphen rules. */
-export function resolveWorkflowCommandTargetForUi(config: {
-  effectiveAdapterId?: string | null;
-  cursorLaunchMode?: string;
-  workflowLaunchMode?: string;
-  preferredAgentAdapter?: string;
-} | null | undefined): WorkflowCommandTarget {
+export function resolveCopyOnlyWorkflowCommandTarget(
+  config: WorkflowLaunchConfigView,
+  runtime: { isCursorHost: boolean },
+): WorkflowCommandTarget {
+  return runtime.isCursorHost ? 'cursor' : 'clipboard';
+}
+
+/** Webview-safe target when copying commands; aligns with host buildResolvedLaunchPayload. */
+export function resolveWorkflowCommandTargetForUi(
+  config: WorkflowLaunchConfigView | null | undefined,
+  runtime?: { isCursorHost?: boolean },
+): WorkflowCommandTarget {
   if (!config) return 'clipboard';
-  const copyOnly = config.effectiveAdapterId == null
-    || config.effectiveAdapterId === 'clipboard'
-    || (config.workflowLaunchMode === 'clipboard');
-  if (copyOnly) {
-    return config.effectiveAdapterId === 'cursor' ? 'cursor' : 'clipboard';
+  const view = toWorkflowLaunchConfigView(config);
+  if (isCopyOnlyWorkflowMode(view)) {
+    return resolveCopyOnlyWorkflowCommandTarget(view, {
+      isCursorHost: runtime?.isCursorHost ?? false,
+    });
   }
-  if (config.effectiveAdapterId === 'cursor' && config.cursorLaunchMode === 'clipboard') {
-    return 'cursor';
-  }
-  return getWorkflowCommandTargetForAdapter(config.effectiveAdapterId);
+  return getWorkflowCommandTargetForAdapter(view.effectiveAdapterId);
 }
 
 export function buildWorkflowLaunchPayload(

@@ -98,7 +98,28 @@ export function resolveWorkflowLaunchConfig(
 }
 
 export function isCopyOnlyWorkflowMode(config: WorkflowLaunchConfigView): boolean {
+  if (config.workflowLaunchMode === 'clipboard') return true;
+  if (config.preferredAgentAdapter === 'clipboard') return true;
+  if (config.cursorLaunchMode === 'clipboard') return true;
   return config.effectiveAdapterId == null || config.effectiveAdapterId === 'clipboard';
+}
+
+/**
+ * Labels, pending UI, and dedupe must follow resolved host settings — not executor UI override.
+ */
+export function isHostWorkflowLaunchCopyOnly(
+  hostSettingsConfig: WorkflowLaunchConfigView | null | undefined,
+): boolean {
+  if (!hostSettingsConfig) return true;
+  return isCopyOnlyWorkflowMode(hostSettingsConfig);
+}
+
+/** Config for workflow button copy/launch labels (host settings when copy-only). */
+export function resolveWorkflowLabelLaunchConfig(
+  hostSettingsConfig: WorkflowLaunchConfigView,
+  uiConfig: WorkflowLaunchConfigView,
+): WorkflowLaunchConfigView {
+  return isHostWorkflowLaunchCopyOnly(hostSettingsConfig) ? hostSettingsConfig : uiConfig;
 }
 
 /** Label/intent: adapter mode with a non-clipboard preferred adapter uses Agent verbs. */

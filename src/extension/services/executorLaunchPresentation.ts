@@ -6,17 +6,21 @@ import {
 import { toWorkflowLaunchConfigView } from '../../shared/workflowLaunchConfig';
 import type { DataManager } from './dataManager';
 import { getWorkflowLaunchConfig } from './workflowLaunchConfig';
+import { isCursorHost } from '../utils/isCursorHost';
 
 export async function createExecutorLaunchPresentation(
   dataManager: DataManager,
 ): Promise<ExecutorLaunchPresentation> {
   const workflowLaunchConfig = toWorkflowLaunchConfigView(getWorkflowLaunchConfig());
   const adapters = await dataManager.getAgentAdaptersInfo();
-  return buildExecutorLaunchPresentation(
-    workflowLaunchConfig,
-    adapters.available,
-    adapters.currentId,
-  );
+  return {
+    ...buildExecutorLaunchPresentation(
+      workflowLaunchConfig,
+      adapters.available,
+      adapters.currentId,
+    ),
+    isCursorHost: isCursorHost(),
+  };
 }
 
 export function postExecutorLaunchPresentation(

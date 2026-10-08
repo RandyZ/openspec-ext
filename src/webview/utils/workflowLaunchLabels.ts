@@ -9,14 +9,17 @@ import {
 
 const VERIFY_ARCHIVE_EXAMPLE_CHANGE = 'my-change';
 
+export type WorkflowCommandFormatRuntime = { isCursorHost?: boolean };
+
 export function getExampleWorkflowCommand(
   action: WorkflowAction,
   config?: WorkflowLaunchConfigView | null,
+  runtime?: WorkflowCommandFormatRuntime,
 ): string {
   return buildWorkflowCommand({
     action,
     changeName: VERIFY_ARCHIVE_EXAMPLE_CHANGE,
-    target: resolveWorkflowCommandTargetForUi(config ?? null),
+    target: resolveWorkflowCommandTargetForUi(config ?? null, runtime),
   });
 }
 
@@ -88,6 +91,7 @@ export function getVerifyArchiveRunLabel(
 
 export function getVerifyArchiveDescription(
   config?: WorkflowLaunchConfigView | null,
+  runtime?: WorkflowCommandFormatRuntime,
 ): string {
   if (!config || !shouldUseAgentWorkflowLabels(config)) {
     return t('verifyArchive.descriptionCopy');
@@ -102,16 +106,17 @@ export function getVerifyArchiveDescription(
     return t('verifyArchive.descriptionAgentPanel');
   }
   return t('verifyArchive.descriptionChatAdapter', {
-    verifyCommand: getExampleWorkflowCommand('verify', config),
-    archiveCommand: getExampleWorkflowCommand('archive', config),
+    verifyCommand: getExampleWorkflowCommand('verify', config, runtime),
+    archiveCommand: getExampleWorkflowCommand('archive', config, runtime),
   });
 }
 
 export function getVerifyArchiveHint(
   action: 'verify' | 'archive',
   config?: WorkflowLaunchConfigView | null,
+  runtime?: WorkflowCommandFormatRuntime,
 ): string {
-  const command = getExampleWorkflowCommand(action, config);
+  const command = getExampleWorkflowCommand(action, config, runtime);
   if (!config || !shouldUseAgentWorkflowLabels(config)) {
     return action === 'verify'
       ? t('verifyArchive.verifyCopyHint', { command })

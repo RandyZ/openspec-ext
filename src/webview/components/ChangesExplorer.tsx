@@ -7,7 +7,7 @@ import { useVscode } from '../hooks/useVscode';
 import { ChangesSection } from './ChangesSection';
 import type { ProjectChangesExplorerData, ExtensionMessage } from '../types/messages';
 import { createWorkflowRequestId, type WorkflowActionReceipt } from '../../shared/changeWorkflow';
-import { isCopyOnlyWorkflowMode } from '../../shared/workflowLaunchConfig';
+import { isHostWorkflowLaunchCopyOnly } from '../../shared/workflowLaunchConfig';
 import { getCopyOnlyFallbackLaunchConfig } from '../utils/executorUiLaunchConfig';
 import { sendMessage } from '../types/messages';
 import type { WorkflowLaunchConfigView } from '../utils/workflowLaunchLabels';
@@ -20,6 +20,7 @@ export interface ChangesExplorerProps {
 export const ChangesExplorer: React.FC<ChangesExplorerProps> = ({ data }) => {
   const { postMessage, onMessage } = useVscode();
   const [workflowLaunchConfig, setWorkflowLaunchConfig] = useState<WorkflowLaunchConfigView | null>(null);
+  const [workflowLaunchIsCursorHost, setWorkflowLaunchIsCursorHost] = useState(false);
   const workflowLaunchPending = useWorkflowLaunchPending();
   const counts = useMemo(
     () => buildChangeStatusCounts(data.changes, data.archivedChanges),
@@ -30,6 +31,7 @@ export const ChangesExplorer: React.FC<ChangesExplorerProps> = ({ data }) => {
     const cleanup = onMessage((event: MessageEvent<ExtensionMessage>) => {
       if (event.data.type === 'workflowLaunchConfig') {
         setWorkflowLaunchConfig(event.data.config);
+        setWorkflowLaunchIsCursorHost(event.data.isCursorHost === true);
       } else if (event.data.type === 'workflowActionReceipt') {
         workflowLaunchPending.handleReceipt(event.data as WorkflowActionReceipt);
       }
@@ -38,7 +40,10 @@ export const ChangesExplorer: React.FC<ChangesExplorerProps> = ({ data }) => {
     return cleanup;
   }, [onMessage, postMessage, workflowLaunchPending]);
 
-  const copyCommandTarget = resolveWorkflowCommandTargetForUi(workflowLaunchConfig);
+  const copyCommandTarget = resolveWorkflowCommandTargetForUi(
+    workflowLaunchConfig ?? getCopyOnlyFallbackLaunchConfig(),
+    { isCursorHost: workflowLaunchIsCursorHost },
+  );
 
   const openChange = (changeName: string) => {
     postMessage(sendMessage.openChangeDetailInEditor(
@@ -64,7 +69,7 @@ export const ChangesExplorer: React.FC<ChangesExplorerProps> = ({ data }) => {
   };
 
   const launchWorkflow = (action: WorkflowAction, changeName: string, bindingKey?: string) => {
-    const copyOnlyLaunch = isCopyOnlyWorkflowMode(
+    const copyOnlyLaunch = isHostWorkflowLaunchCopyOnly(
       workflowLaunchConfig ?? getCopyOnlyFallbackLaunchConfig(),
     );
     const { requestId } = bindingKey && !copyOnlyLaunch

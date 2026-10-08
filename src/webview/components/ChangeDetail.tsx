@@ -20,10 +20,14 @@ import {
   resolveWorkflowActions,
   type ChangeWorkflowSnapshot,
 } from '../../shared/changeWorkflow';
-import { isCopyOnlyWorkflowMode } from '../../shared/workflowLaunchConfig';
+import {
+  isHostWorkflowLaunchCopyOnly,
+  resolveWorkflowLabelLaunchConfig,
+} from '../../shared/workflowLaunchConfig';
 import { getWorkflowLaunchModeHint } from '../utils/workflowLaunchLabels';
 import type { ExecutorLaunchPresentation } from '../../shared/executorLaunchPresentation';
 import {
+  getCopyOnlyFallbackLaunchConfig,
   getExecutorUiModeLabel,
   normalizeExecutorPresentation,
   normalizePresentationAdapters,
@@ -228,7 +232,14 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     () => resolveExecutorUiLaunchConfig(executorPresentation),
     [executorPresentation],
   );
-  const copyOnlyWorkflowLaunch = isCopyOnlyWorkflowMode(executorUiLaunchConfig);
+  const hostWorkflowLaunchConfig = executorPresentation?.workflowLaunchConfig
+    ?? getCopyOnlyFallbackLaunchConfig();
+  const copyOnlyWorkflowLaunch = isHostWorkflowLaunchCopyOnly(hostWorkflowLaunchConfig);
+  const workflowLabelLaunchConfig = resolveWorkflowLabelLaunchConfig(
+    hostWorkflowLaunchConfig,
+    executorUiLaunchConfig,
+  );
+  const isCursorHost = executorPresentation?.isCursorHost ?? false;
   const executorLaunchConfigKey = useMemo(
     () => [
       executorUiLaunchConfig.effectiveAdapterId ?? '',
@@ -242,7 +253,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   useEffect(() => {
     setWorkflowReceipt(null);
   }, [executorLaunchConfigKey]);
-  const tasksLaunchModeHint = getWorkflowLaunchModeHint(executorUiLaunchConfig);
+  const tasksLaunchModeHint = getWorkflowLaunchModeHint(workflowLabelLaunchConfig);
   const executorUiModeLabel = getExecutorUiModeLabel(executorUiLaunchConfig);
   const executorSelectValue = resolveExecutorSelectValue(agentAdapters);
   const resolvedWorkflowActions = useMemo(
@@ -797,7 +808,10 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     postMessage(sendMessage.runCommand(commandId, verifyArgsJson.trim() || undefined, changeName));
   };
 
-  const copyCommandTarget = resolveWorkflowCommandTargetForUi(executorUiLaunchConfig);
+  const copyCommandTarget = resolveWorkflowCommandTargetForUi(
+    hostWorkflowLaunchConfig,
+    { isCursorHost },
+  );
 
   const workflowBindingKey = workflowSnapshot?.bindingKey;
   const isWorkflowLaunchPending = workflowBindingKey
@@ -939,7 +953,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         pendingAction={actionBarPendingAction}
         receiptStatus={workflowReceipt?.status}
         receiptMessage={workflowReceipt?.message}
-        executorUiLaunchConfig={executorUiLaunchConfig}
+        executorUiLaunchConfig={workflowLabelLaunchConfig}
         onAction={handleResolvedAction}
         onCopyFf={(name) =>
           postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({ action: 'ff', changeName: name, target: copyCommandTarget })))
@@ -1015,7 +1029,8 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
               archiveNowDisabledReason={archiveNowDisabledReason}
               tasksProgressError={tasksProgressError}
               pendingAction={verifyArchivePendingAction}
-              workflowLaunchConfig={executorUiLaunchConfig}
+              workflowLaunchConfig={workflowLabelLaunchConfig}
+              commandFormatRuntime={{ isCursorHost }}
               onRun={(action) => handleLaunchWorkflow(action, 'verifyArchive')}
               onArchiveNow={handleArchiveNow}
             />

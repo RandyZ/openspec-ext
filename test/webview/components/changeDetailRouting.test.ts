@@ -105,7 +105,8 @@ describe('ChangeDetail workflow routing', () => {
   });
 
   it('skips Launching pending state for copy-only workflow launches', () => {
-    expect(source).toContain('copyOnlyWorkflowLaunch');
+    expect(source).toContain('isHostWorkflowLaunchCopyOnly');
+    expect(source).toContain('hostWorkflowLaunchConfig');
     expect(source).toContain('if (!copyOnlyWorkflowLaunch)');
   });
 

@@ -99,7 +99,7 @@ const matrix: MatrixRow[] = [
       preferredAgentAdapter: 'cursor',
       cursorLaunchMode: 'clipboard',
       effectiveAdapterId: 'cursor',
-      copyOnly: false,
+      copyOnly: true,
     },
   },
   {

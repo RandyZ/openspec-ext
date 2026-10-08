@@ -93,7 +93,7 @@
   "detail.nav.available": "当前可用",
   "detail.nav.blocked": "已阻塞",
   "detail.nav.skipped": "已跳过",
-  "detail.verifyArchive": "验证与归档",
+  "detail.verifyArchive": "验证并归档",
   "detail.loadingTaskProgress": "正在加载任务进度…",
   "detail.tasksProgressUnknown": "任务进度不可用",
 
@@ -180,7 +180,7 @@
   "verifyArchive.verifyChatHint": "在 Chat 中预填 {command}（按 Enter 发送）。",
   "verifyArchive.archiveChatHint": "在 Chat 中预填 {command}（发送前请确认）。",
   "verifyArchive.descriptionChatAdapter": "Verify 与 Archive 与 Apply、Continue 相同，通过 Chat 启动（例如 {verifyCommand}、{archiveCommand}）。",
-  "verifyArchive.verifyTitle": "Verify & Validate",
+  "verifyArchive.verifyTitle": "验证与确认",
   "verifyArchive.archiveTitle": "Archive",
   "verifyArchive.runVerify": "Run Verify",
   "verifyArchive.runArchive": "Run Archive",

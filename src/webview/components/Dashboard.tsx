@@ -40,7 +40,7 @@ import {
 import type { CacheAction, CacheStatsView } from '../types/messages';
 import { useWorkflowLaunchPending } from '../hooks/useWorkflowLaunchPending';
 import { getCopyOnlyFallbackLaunchConfig } from '../utils/executorUiLaunchConfig';
-import { isCopyOnlyWorkflowMode } from '../../shared/workflowLaunchConfig';
+import { isHostWorkflowLaunchCopyOnly } from '../../shared/workflowLaunchConfig';
 import { resolveChangeBindingKey } from '../utils/changeBindingKey';
 import {
   DEFAULT_CHANGES_VIEW_STATE,
@@ -360,6 +360,7 @@ export const Dashboard: React.FC = () => {
   // effect run) can read the latest scope without closing over stale state.
   const scopeIdRef = useRef<string | undefined>(undefined);
   const [workflowLaunchConfig, setWorkflowLaunchConfig] = useState<WorkflowLaunchConfigView | null>(null);
+  const [workflowLaunchIsCursorHost, setWorkflowLaunchIsCursorHost] = useState(false);
   // Sequence-stamped Host responses for the Workset create flow. The sequence
   // lets the picker apply each Host message at most once, and ignore responses
   // that arrive after the form was left. The payloads stay untrusted: the
@@ -481,6 +482,7 @@ export const Dashboard: React.FC = () => {
         }));
       } else if (message.type === 'workflowLaunchConfig') {
         setWorkflowLaunchConfig(message.config ?? null);
+        setWorkflowLaunchIsCursorHost(message.isCursorHost === true);
       } else if (message.type === 'workflowActionReceipt') {
         const receipt = message as WorkflowActionReceipt;
         const pending = pendingWorkflowRequestsRef.current.get(receipt.requestId);
@@ -622,7 +624,10 @@ export const Dashboard: React.FC = () => {
     ));
   };
 
-  const copyCommandTarget = resolveWorkflowCommandTargetForUi(workflowLaunchConfig);
+  const copyCommandTarget = resolveWorkflowCommandTargetForUi(
+    workflowLaunchConfig ?? getCopyOnlyFallbackLaunchConfig(),
+    { isCursorHost: workflowLaunchIsCursorHost },
+  );
 
   const handleCopyFf = (changeName: string) => {
     postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({ action: 'ff', changeName, target: copyCommandTarget })));
@@ -634,7 +639,7 @@ export const Dashboard: React.FC = () => {
 
   const handleLaunchWorkflow = (action: WorkflowAction, changeName: string, bindingKey?: string) => {
     const launchConfigForUi = workflowLaunchConfig ?? projectSidebar?.workflowLaunchConfig ?? null;
-    const copyOnlyLaunch = isCopyOnlyWorkflowMode(
+    const copyOnlyLaunch = isHostWorkflowLaunchCopyOnly(
       launchConfigForUi ?? getCopyOnlyFallbackLaunchConfig(),
     );
     const requestId = bindingKey && !copyOnlyLaunch
