@@ -86,6 +86,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   /** Single-flight lock: at most one Workset creation may run at a time. */
   private worksetCreateInFlight = false;
   private readonly agentUnavailableWebviews = new WeakSet<vscode.Webview>();
+  private readonly projectSidebarAutoRetried = new WeakSet<vscode.Webview>();
 
   constructor(
     private dataManager: DataManager,
@@ -375,6 +376,19 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       ? `OpenSpec workspace is not initialized for this project: ${this.errorMessage(error)}`
       : this.errorMessage(error);
     targetWebview.postMessage({ type: 'error', message });
+    this.scheduleProjectSidebarAutoRetry(targetWebview, targetSurface);
+  }
+
+  private scheduleProjectSidebarAutoRetry(
+    targetWebview: vscode.Webview,
+    targetSurface: ProjectSurface,
+  ): void {
+    if (this.projectSidebarAutoRetried.has(targetWebview)) return;
+    this.projectSidebarAutoRetried.add(targetWebview);
+    setTimeout(() => {
+      logger.info('Retrying Project Sidebar load after initial failure');
+      void this.reloadProjectSidebarData(targetWebview, targetSurface);
+    }, 2500);
   }
 
   private errorMessage(error: unknown): string {

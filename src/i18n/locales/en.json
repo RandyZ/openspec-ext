@@ -70,6 +70,7 @@
   "workflow.title.launch": "{action}: launch via configured adapter",
   "workflow.modeHint.copyOnly": "Copies command",
   "workflow.modeHint.executableCursor": "Opens Agent panel",
+  "workflow.modeHint.executableCursorCli": "Runs Cursor Agent CLI (may modify files)",
   "workflow.modeHint.executableGeneric": "Launch via adapter",
   "workflow.highImpact": "High-impact actions",
   "workflow.receiptPending": "Pending",
@@ -211,6 +212,7 @@
 
   "dashboard.loading": "Loading OpenSpec data...",
   "dashboard.loadFailed": "Failed to load data. Try refreshing.",
+  "dashboard.retryLoad": "Retry",
   "dashboard.staleData": "Showing cached data while refreshing...",
   "dashboard.refreshing": "Refreshing OpenSpec data...",
   "dashboard.changes": "Changes ({count})",

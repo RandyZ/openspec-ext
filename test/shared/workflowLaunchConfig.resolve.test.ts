@@ -68,18 +68,22 @@ describe('resolveWorkflowLaunchConfig', () => {
     expect(explicitAgentCli.cursorLaunchMode).toBe('agentCli');
   });
 
-  it('preserves non-clipboard cursor launch modes set in configuration reads', () => {
+  it('upgrades legacy explicit cursor launch modes without explicit copy-only', () => {
     const resolved = resolveWorkflowLaunchConfig(
       {
         ...baseConfig,
-        workflowLaunchMode: 'adapter',
-        preferredAgentAdapter: 'cursor',
-        cursorLaunchMode: 'chatCommand',
+        cursorLaunchMode: 'agentPanel',
+        cursorLaunchModeExplicit: true,
       },
       { isCursorHost: true },
     );
 
-    expect(resolved.cursorLaunchMode).toBe('chatCommand');
+    expect(resolved).toMatchObject({
+      workflowLaunchMode: 'adapter',
+      preferredAgentAdapter: 'cursor',
+      cursorLaunchMode: 'agentPanel',
+    });
+    expect(getEffectiveWorkflowAdapterId(resolved)).toBe('cursor');
   });
 
   it('treats explicit clipboard executor as copy-only even with explicit cursor launch mode', () => {
@@ -106,7 +110,7 @@ describe('resolveWorkflowLaunchConfig', () => {
         workflowLaunchModeExplicit: true,
         preferredAgentAdapter: 'vscode-copilot',
         preferredAgentAdapterExplicit: true,
-        cursorLaunchMode: 'chatCommand',
+        cursorLaunchMode: 'agentPanel',
         cursorLaunchModeExplicit: true,
       },
       { isCursorHost: true },
@@ -115,7 +119,7 @@ describe('resolveWorkflowLaunchConfig', () => {
     expect(resolved).toMatchObject({
       workflowLaunchMode: 'adapter',
       preferredAgentAdapter: 'vscode-copilot',
-      cursorLaunchMode: 'chatCommand',
+      cursorLaunchMode: 'agentPanel',
     });
   });
 });

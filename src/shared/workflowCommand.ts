@@ -72,7 +72,7 @@ export function buildWorkflowLaunchPayload(
 ): WorkflowLaunchPayload {
   const target =
     request.workflowLaunchMode === 'clipboard'
-      ? 'clipboard'
+      ? (request.adapterId === 'cursor' ? 'cursor' : 'clipboard')
       : getWorkflowCommandTargetForAdapter(request.adapterId);
   const command = buildWorkflowCommand({
     action: request.action,

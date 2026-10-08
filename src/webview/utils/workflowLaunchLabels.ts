@@ -67,6 +67,9 @@ export function getWorkflowLaunchModeHint(
     return t('workflow.modeHint.copyOnly');
   }
   if (config.effectiveAdapterId === 'cursor') {
+    if (config.cursorLaunchMode === 'agentCli') {
+      return t('workflow.modeHint.executableCursorCli');
+    }
     return t('workflow.modeHint.executableCursor');
   }
   return t('workflow.modeHint.executableGeneric');

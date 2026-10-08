@@ -72,6 +72,7 @@
   "workflow.title.launch": "{action}：通过所选适配器启动",
   "workflow.modeHint.copyOnly": "仅复制命令",
   "workflow.modeHint.executableCursor": "打开 Agent 面板",
+  "workflow.modeHint.executableCursorCli": "运行 Cursor Agent CLI（可能修改文件）",
   "workflow.modeHint.executableGeneric": "通过适配器启动",
   "workflow.highImpact": "高影响动作",
   "workflow.receiptPending": "等待中",
@@ -213,6 +214,8 @@
 
   "dashboard.loading": "正在加载 OpenSpec 数据...",
   "dashboard.loadFailed": "加载数据失败，请尝试刷新。",
+  "dashboard.retryLoad": "重试",
+  "dashboard.retryLoad": "重试",
   "dashboard.staleData": "正在刷新，当前显示缓存数据...",
   "dashboard.refreshing": "正在刷新 OpenSpec 数据...",
   "dashboard.changes": "Changes ({count})",

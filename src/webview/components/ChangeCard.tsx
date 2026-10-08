@@ -71,6 +71,7 @@ export interface ChangeCardProps {
   onArchive?: (changeName: string) => void;
   onLaunchWorkflow?: (action: WorkflowAction, changeName: string, bindingKey?: string) => void;
   workflowLaunchConfig?: WorkflowLaunchConfigView | null;
+  workflowLaunchPendingKeys?: ReadonlySet<string>;
 }
 
 export const ChangeCard: React.FC<ChangeCardProps> = ({
@@ -80,6 +81,7 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
   onCopyApply,
   onLaunchWorkflow,
   workflowLaunchConfig,
+  workflowLaunchPendingKeys,
 }) => {
   const [hover, setHover] = React.useState(false);
   const [focusWithin, setFocusWithin] = React.useState(false);
@@ -100,6 +102,12 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
       ...resolvedActions.highImpact,
     ]
     : [];
+  const launchPendingKey = change.workflowSnapshot?.bindingKey
+    ? `${change.name}\u0000${change.workflowSnapshot.bindingKey}`
+    : undefined;
+  const isWorkflowLaunchPending = launchPendingKey
+    ? workflowLaunchPendingKeys?.has(launchPendingKey) === true
+    : false;
   const needsAttention = change.attention?.required === true;
   const additionalActionCount = resolvedActions
     ? resolvedActions.available.length + resolvedActions.highImpact.length
@@ -243,8 +251,10 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
               const isInteractiveVerifyOrArchive =
                 descriptor.action === 'verify' || descriptor.action === 'archive';
               const buttonLabel = isInteractiveVerifyOrArchive
-                ? label
-                : getWorkflowActionButtonLabel(label, workflowLaunchConfig);
+                ? (isWorkflowLaunchPending ? t('workflow.launching') : label)
+                : getWorkflowActionButtonLabel(label, workflowLaunchConfig, {
+                  launching: isWorkflowLaunchPending,
+                });
               const title = isInteractiveVerifyOrArchive
                 ? label
                 : getWorkflowActionTitle(label, workflowLaunchConfig);

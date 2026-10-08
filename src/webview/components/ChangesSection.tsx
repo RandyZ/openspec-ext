@@ -30,6 +30,7 @@ interface ChangesSectionProps {
   onCopyFf?: (changeName: string) => void;
   onCopyApply?: (changeName: string) => void;
   onLaunchWorkflow?: (action: WorkflowAction, changeName: string, bindingKey?: string) => void;
+  workflowLaunchPendingKeys?: ReadonlySet<string>;
   archivedItems?: ArchivedChangeInfo[];
   onOpenArchivedChange?: (directoryName: string) => void;
   workflowLaunchConfig?: WorkflowLaunchConfigView | null;
@@ -101,6 +102,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
   onCopyFf,
   onCopyApply,
   onLaunchWorkflow,
+  workflowLaunchPendingKeys,
   archivedItems = [],
   onOpenArchivedChange,
   workflowLaunchConfig,
@@ -283,6 +285,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
                 onCopyApply={onCopyApply}
                 onLaunchWorkflow={onLaunchWorkflow}
                 workflowLaunchConfig={workflowLaunchConfig}
+                workflowLaunchPendingKeys={workflowLaunchPendingKeys}
               />
             ) : (
               <ArchivedChangeCard

@@ -109,6 +109,21 @@ describe('workflow launch config', () => {
     });
   });
 
+  it('migrates legacy explicit deeplink on Cursor to adapter agent panel (R3)', () => {
+    vi.mocked(vscode.env).appName = 'Cursor';
+    mockConfig({
+      cursorLaunchMode: 'deeplink',
+      __explicitCursorLaunchMode: true,
+    });
+
+    expect(getWorkflowLaunchConfig()).toMatchObject({
+      workflowLaunchMode: 'adapter',
+      preferredAgentAdapter: 'cursor',
+      cursorLaunchMode: 'agentPanel',
+      cursorLaunchModeExplicit: true,
+    });
+  });
+
   it('falls back to legacy agentModel for Cursor CLI model', () => {
     mockConfig({
       agentModel: 'legacy-model',

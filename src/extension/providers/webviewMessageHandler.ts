@@ -39,6 +39,7 @@ import {
 import type { OpenSpecScope } from '../services/openspecScope';
 import {
   createWorkflowRequestId,
+  getWorkflowBindingKey,
   type ChangeWorkflowSnapshot,
   type WorkflowActionReceipt,
   type WorkflowBindingIdentity,
@@ -1062,6 +1063,26 @@ export async function handleWebviewMessage(
       const correlated = message.requestId !== undefined || message.bindingKey !== undefined;
       const requestId = message.requestId ?? createWorkflowRequestId('legacy');
       const workflowBinding = resolveWorkflowBindingForLaunch(scope, message.bindingKey);
+      let receiptBindingKeyForPost = message.bindingKey ?? 'legacy';
+      const postReceipt = (
+        target: WorkflowActionReceipt['target'],
+        status: WorkflowActionReceipt['status'],
+        receiptMessage?: string,
+      ) => postWorkflowReceipt(webview, {
+        requestId,
+        changeName,
+        bindingKey: receiptBindingKeyForPost,
+        action,
+        target,
+        status,
+        ...(receiptMessage ? { message: receiptMessage } : {}),
+      });
+
+      if (correlated) {
+        postReceipt('unknown', 'running');
+        vscode.window.setStatusBarMessage?.(t('workflow.launching'), 5000);
+      }
+
       const snapshotReader = dataManager as DataManager & {
         getChangeWorkflowSnapshot?: (
           name: string,
@@ -1070,7 +1091,16 @@ export async function handleWebviewMessage(
         ) => Promise<ChangeWorkflowSnapshot | undefined>;
       };
       let expectedBindingKey: string | undefined;
-      if (typeof snapshotReader.getChangeWorkflowSnapshot === 'function') {
+      if (workflowBinding && message.bindingKey) {
+        const identityKey = getWorkflowBindingKey(workflowBinding);
+        if (identityKey === message.bindingKey) {
+          expectedBindingKey = identityKey;
+        }
+      }
+      if (
+        expectedBindingKey === undefined
+        && typeof snapshotReader.getChangeWorkflowSnapshot === 'function'
+      ) {
         try {
           expectedBindingKey = (
             await snapshotReader.getChangeWorkflowSnapshot(changeName, scope, workflowBinding)
@@ -1096,14 +1126,14 @@ export async function handleWebviewMessage(
           }
         }
       }
-      const receiptBindingKey = message.bindingKey ?? expectedBindingKey ?? 'legacy';
+      receiptBindingKeyForPost = message.bindingKey ?? expectedBindingKey ?? 'legacy';
       if (correlated && (!message.requestId || !message.bindingKey)) {
         postLaunchValidationFailure(
           webview,
           {
             requestId,
             changeName,
-            bindingKey: receiptBindingKey,
+            bindingKey: receiptBindingKeyForPost,
             action,
             target: 'unknown',
             status: 'failed',
@@ -1131,20 +1161,6 @@ export async function handleWebviewMessage(
         );
         break;
       }
-
-      const postReceipt = (
-        target: WorkflowActionReceipt['target'],
-        status: WorkflowActionReceipt['status'],
-        message?: string,
-      ) => postWorkflowReceipt(webview, {
-        requestId,
-        changeName,
-        bindingKey: receiptBindingKey,
-        action,
-        target,
-        status,
-        ...(message ? { message } : {}),
-      });
 
       const launchConfig = getWorkflowLaunchConfig();
       const launchConfigView = toWorkflowLaunchConfigView(launchConfig);

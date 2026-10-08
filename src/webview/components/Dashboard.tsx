@@ -347,6 +347,9 @@ export const Dashboard: React.FC = () => {
   const [pendingCacheAction, setPendingCacheAction] = useState<CacheAction | null>(null);
   const [workflowReceipts, setWorkflowReceipts] = useState<WorkflowActionReceipt[]>([]);
   const pendingWorkflowRequestsRef = useRef(new Map<string, { changeName: string; bindingKey: string }>());
+  const [workflowLaunchPendingKeys, setWorkflowLaunchPendingKeys] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const latestWorkflowRequestRef = useRef(new Map<string, string>());
   // Tracks the scope the current requirements cache was loaded under; reset on change.
   const lastScopeIdRef = useRef<string | undefined>(undefined);
@@ -493,6 +496,13 @@ export const Dashboard: React.FC = () => {
           ]);
           if (message.status !== 'running') {
             pendingWorkflowRequestsRef.current.delete(message.requestId);
+            const pendingKey = `${message.changeName}\u0000${message.bindingKey}`;
+            setWorkflowLaunchPendingKeys((previous) => {
+              if (!previous.has(pendingKey)) return previous;
+              const next = new Set(previous);
+              next.delete(pendingKey);
+              return next;
+            });
           }
         }
       } else if (message.type === 'cacheStats') {
@@ -533,6 +543,16 @@ export const Dashboard: React.FC = () => {
 
     return cleanup;
   }, [postMessage, onMessage, dispatch, projectFirst]);
+
+  useEffect(() => {
+    if (!projectFirst || projectSidebar) return undefined;
+    const timer = window.setTimeout(() => {
+      if (!projectSidebar && loading) {
+        postMessage(sendMessage.getProjectSidebarData());
+      }
+    }, 8000);
+    return () => window.clearTimeout(timer);
+  }, [projectFirst, projectSidebar, loading, postMessage]);
 
   const handleSelectScope = useCallback(
     createScopeSelectHandler(dispatch, postMessage),
@@ -616,6 +636,7 @@ export const Dashboard: React.FC = () => {
       const key = `${changeName}\u0000${bindingKey}`;
       pendingWorkflowRequestsRef.current.set(requestId, { changeName, bindingKey });
       latestWorkflowRequestRef.current.set(key, requestId);
+      setWorkflowLaunchPendingKeys((previous) => new Set(previous).add(key));
     }
     postMessage(sendMessage.launchWorkflowAction(
       action,
@@ -764,12 +785,18 @@ export const Dashboard: React.FC = () => {
                   isArchived: change.lifecycleStatus === 'archived',
                 }).recommended
                 : null;
+              const pendingKey = `${change.name}\u0000${change.workflowSnapshot?.bindingKey ?? ''}`;
+              const isLaunchPending = workflowLaunchPendingKeys.has(pendingKey);
               const ctaLabel = group.key === 'needs-attention'
                 ? t('verifyArchive.reviewArchive')
                 : group.key === 'ready-to-verify'
-                  ? t('verifyArchive.runVerify')
+                  ? (isLaunchPending ? t('workflow.launching') : t('verifyArchive.runVerify'))
                   : recommended
-                    ? getWorkflowActionButtonLabel(recommended.label, priorityWorkflowConfig)
+                    ? getWorkflowActionButtonLabel(
+                      recommended.label,
+                      priorityWorkflowConfig,
+                      { launching: isLaunchPending },
+                    )
                     : null;
               if (!ctaLabel) return null;
               const ctaAccessibleName = t('dashboard.priorityActionAriaLabel', {
@@ -1009,6 +1036,7 @@ export const Dashboard: React.FC = () => {
                   onCopyFf={handleCopyFf}
                   onCopyApply={handleCopyApply}
                   onLaunchWorkflow={handleLaunchWorkflow}
+                  workflowLaunchPendingKeys={workflowLaunchPendingKeys}
                   archivedItems={pendingScopeId ? [] : (data.archivedChanges ?? [])}
                   onOpenArchivedChange={handleOpenArchivedChange}
                   workflowLaunchConfig={workflowLaunchConfig}
@@ -1027,19 +1055,35 @@ export const Dashboard: React.FC = () => {
               </>
             )}
           </>
-        ) : projectDiagnostic ? null : loading ? (
+        ) : loading ? (
           <div className="text-xs py-4" style={{ 
             color: 'var(--vscode-descriptionForeground)' 
           }}>
             {t('dashboard.loading')}
           </div>
-        ) : (
-          <div className="text-xs py-4" style={{ 
+        ) : !projectSidebar ? (
+          <div className="text-xs py-4 flex flex-col gap-2" style={{ 
             color: 'var(--vscode-errorForeground)' 
           }}>
-            {t('dashboard.loadFailed')}
+            <span>{t('dashboard.loadFailed')}</span>
+            {projectFirst && (
+              <button
+                type="button"
+                className="self-start rounded px-2 py-1 text-xs"
+                style={{
+                  background: 'var(--vscode-button-secondaryBackground)',
+                  color: 'var(--vscode-button-secondaryForeground)',
+                }}
+                onClick={() => {
+                  dispatch({ type: 'SET_LOADING', payload: true, reason: 'initial' });
+                  postMessage(sendMessage.getProjectSidebarData());
+                }}
+              >
+                {t('dashboard.retryLoad')}
+              </button>
+            )}
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

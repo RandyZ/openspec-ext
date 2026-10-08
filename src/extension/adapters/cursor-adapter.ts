@@ -12,7 +12,7 @@ import { getCursorAgentModel, getWorkflowLaunchConfig } from '../services/workfl
 import { launchAgentPanelPrompt } from '../services/agentPanelLauncher';
 
 const ADAPTER_ID = 'cursor';
-const DISPLAY_NAME = 'Cursor (agent CLI)';
+const DISPLAY_NAME = 'Cursor (Agent)';
 const OUTPUT_CHANNEL_NAME = 'OpenSpec (Agent)';
 const NO_OUTPUT_NOTICE_MS = 10000;
 const STILL_RUNNING_NOTICE_MS = 30000;

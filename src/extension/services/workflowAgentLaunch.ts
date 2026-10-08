@@ -47,6 +47,33 @@ export interface WorkflowAgentLaunchResult {
 
 const PANEL_ADAPTER_IDS = new Set(['cursor', 'vscode-copilot', 'vscode-chat']);
 
+function isCursorHost(): boolean {
+  return (vscode.env.appName ?? '').toLowerCase().includes('cursor')
+    || (vscode.env.uriScheme ?? '').toLowerCase() === 'cursor';
+}
+
+function buildResolvedLaunchPayload(
+  action: WorkflowAction,
+  changeName: string,
+): ReturnType<typeof buildWorkflowLaunchPayload> {
+  const launchConfig = getWorkflowLaunchConfig();
+  const launchConfigView = toWorkflowLaunchConfigView(launchConfig);
+  if (isCopyOnlyWorkflowMode(launchConfigView)) {
+    return buildWorkflowLaunchPayload({
+      action,
+      changeName,
+      workflowLaunchMode: 'clipboard',
+      adapterId: isCursorHost() ? 'cursor' : 'clipboard',
+    });
+  }
+  return buildWorkflowLaunchPayload({
+    action,
+    changeName,
+    workflowLaunchMode: 'adapter',
+    adapterId: launchConfigView.effectiveAdapterId ?? launchConfig.preferredAgentAdapter,
+  });
+}
+
 const LAUNCH_DEDUPE_MS = 2500;
 let lastWorkflowLaunch: { key: string; at: number } | undefined;
 
@@ -95,14 +122,10 @@ export async function launchWorkflowAgentCommand(
     && lastWorkflowLaunch.key === dedupeKey
     && now - lastWorkflowLaunch.at < LAUNCH_DEDUPE_MS
   ) {
-    const command = buildWorkflowCommand({
-      action: request.action,
-      changeName: request.changeName,
-      target: 'clipboard',
-    });
+    const payload = buildResolvedLaunchPayload(request.action, request.changeName);
     return {
       success: true,
-      command,
+      command: payload.command,
       target: 'agentPanel',
       outcome: 'prefilled',
       message: t('workflow.launchDeduped'),
@@ -114,11 +137,7 @@ export async function launchWorkflowAgentCommand(
   const launchConfigView = toWorkflowLaunchConfigView(launchConfig);
   const autoSubmit = shouldAutoSubmitWorkflowAction(request.action, readAgentAutoSubmitMode());
 
-  const clipboardPayload = buildWorkflowLaunchPayload({
-    action: request.action,
-    changeName: request.changeName,
-    workflowLaunchMode: 'clipboard',
-  });
+  const clipboardPayload = buildResolvedLaunchPayload(request.action, request.changeName);
 
   if (isCopyOnlyWorkflowMode(launchConfigView)) {
     await vscode.env.clipboard.writeText(clipboardPayload.command);

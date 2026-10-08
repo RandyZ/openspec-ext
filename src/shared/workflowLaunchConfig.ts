@@ -36,39 +36,54 @@ export interface WorkflowLaunchConfigView extends WorkflowLaunchConfig {
   effectiveAdapterId: EffectiveWorkflowAdapterId;
 }
 
+/** User explicitly chose copy-only via settings (package defaults do not count). */
+export function isExplicitCopyOnlyConfig(config: WorkflowLaunchConfigWithExplicit): boolean {
+  return (config.workflowLaunchModeExplicit && config.workflowLaunchMode === 'clipboard')
+    || (config.preferredAgentAdapterExplicit && config.preferredAgentAdapter === 'clipboard');
+}
+
 export function shouldForceCursorWorkflowRoute(config: WorkflowLaunchConfig): boolean {
-  return config.cursorLaunchModeExplicit && config.cursorLaunchMode !== 'clipboard';
+  return config.cursorLaunchModeExplicit && config.cursorLaunchMode === 'agentCli';
 }
 
 export function resolveWorkflowLaunchConfig(
   config: WorkflowLaunchConfigWithExplicit,
   context: WorkflowLaunchRuntimeContext,
 ): WorkflowLaunchConfig {
-  if (shouldForceCursorWorkflowRoute(config)) {
-    return {
-      workflowLaunchMode: config.workflowLaunchMode,
-      preferredAgentAdapter: config.preferredAgentAdapter,
-      cursorLaunchMode: config.cursorLaunchMode,
-      cursorAgentModel: config.cursorAgentModel,
-      cursorLaunchModeExplicit: config.cursorLaunchModeExplicit,
-    };
-  }
+  const explicitCopyOnly = isExplicitCopyOnlyConfig(config);
 
   let { workflowLaunchMode, preferredAgentAdapter, cursorLaunchMode } = config;
 
-  if (!config.workflowLaunchModeExplicit && !config.cursorLaunchModeExplicit && context.isCursorHost) {
-    workflowLaunchMode = 'adapter';
-  }
-
-  if (!config.preferredAgentAdapterExplicit && workflowLaunchMode === 'adapter' && context.isCursorHost) {
-    preferredAgentAdapter = 'cursor';
+  if (context.isCursorHost && !explicitCopyOnly) {
+    if (!config.workflowLaunchModeExplicit && workflowLaunchMode === 'clipboard') {
+      workflowLaunchMode = 'adapter';
+    }
+    if (
+      !config.preferredAgentAdapterExplicit
+      && preferredAgentAdapter === 'clipboard'
+      && workflowLaunchMode === 'adapter'
+    ) {
+      preferredAgentAdapter = 'cursor';
+    }
+    if (
+      config.cursorLaunchModeExplicit
+      && cursorLaunchMode !== 'clipboard'
+      && cursorLaunchMode !== 'agentCli'
+    ) {
+      if (!config.workflowLaunchModeExplicit) {
+        workflowLaunchMode = 'adapter';
+      }
+      if (!config.preferredAgentAdapterExplicit && preferredAgentAdapter === 'clipboard') {
+        preferredAgentAdapter = 'cursor';
+      }
+    }
   }
 
   if (
-    !config.cursorLaunchModeExplicit &&
-    config.cursorLaunchMode === 'clipboard' &&
-    workflowLaunchMode === 'adapter' &&
-    preferredAgentAdapter === 'cursor'
+    !config.cursorLaunchModeExplicit
+    && cursorLaunchMode === 'clipboard'
+    && workflowLaunchMode === 'adapter'
+    && preferredAgentAdapter === 'cursor'
   ) {
     cursorLaunchMode = 'agentPanel';
   }
@@ -95,25 +110,22 @@ export function shouldUseAgentWorkflowLabels(config: WorkflowLaunchConfigView): 
 }
 
 export function getEffectiveWorkflowAdapterId(
-  config: WorkflowLaunchConfig
+  config: WorkflowLaunchConfig,
 ): EffectiveWorkflowAdapterId {
-  if (config.preferredAgentAdapter === 'clipboard') {
+  if (config.workflowLaunchMode === 'clipboard') {
     return 'clipboard';
   }
-  if (config.workflowLaunchMode === 'clipboard') {
-    return null;
+  if (config.workflowLaunchMode === 'adapter') {
+    return config.preferredAgentAdapter === 'clipboard' ? 'clipboard' : config.preferredAgentAdapter;
   }
   if (shouldForceCursorWorkflowRoute(config)) {
     return 'cursor';
-  }
-  if (config.workflowLaunchMode === 'adapter') {
-    return config.preferredAgentAdapter;
   }
   return null;
 }
 
 export function toWorkflowLaunchConfigView(
-  config: WorkflowLaunchConfig
+  config: WorkflowLaunchConfig,
 ): WorkflowLaunchConfigView {
   return {
     ...config,
