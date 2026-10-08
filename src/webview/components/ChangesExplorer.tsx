@@ -6,7 +6,9 @@ import { t } from '../../i18n';
 import { useVscode } from '../hooks/useVscode';
 import { ChangesSection } from './ChangesSection';
 import type { ProjectChangesExplorerData, ExtensionMessage } from '../types/messages';
-import type { WorkflowActionReceipt } from '../../shared/changeWorkflow';
+import { createWorkflowRequestId, type WorkflowActionReceipt } from '../../shared/changeWorkflow';
+import { isCopyOnlyWorkflowMode } from '../../shared/workflowLaunchConfig';
+import { getCopyOnlyFallbackLaunchConfig } from '../utils/executorUiLaunchConfig';
 import { sendMessage } from '../types/messages';
 import type { WorkflowLaunchConfigView } from '../utils/workflowLaunchLabels';
 import { useWorkflowLaunchPending } from '../hooks/useWorkflowLaunchPending';
@@ -62,9 +64,12 @@ export const ChangesExplorer: React.FC<ChangesExplorerProps> = ({ data }) => {
   };
 
   const launchWorkflow = (action: WorkflowAction, changeName: string, bindingKey?: string) => {
-    const { requestId } = bindingKey
+    const copyOnlyLaunch = isCopyOnlyWorkflowMode(
+      workflowLaunchConfig ?? getCopyOnlyFallbackLaunchConfig(),
+    );
+    const { requestId } = bindingKey && !copyOnlyLaunch
       ? workflowLaunchPending.registerLaunch(changeName, bindingKey, 'explorer')
-      : { requestId: undefined };
+      : { requestId: createWorkflowRequestId('explorer') };
     postMessage(sendMessage.launchWorkflowAction(
       action,
       changeName,

@@ -40,7 +40,11 @@ export function useWorkflowLaunchPending(onTimeout?: () => void) {
     pendingRequestsRef.current.set(requestId, { changeName, bindingKey });
     latestRequestRef.current.set(key, requestId);
     setPendingKeys((previous) => new Set(previous).add(key));
-    pendingStartedAtRef.current.set(key, Date.now());
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        pendingStartedAtRef.current.set(key, Date.now());
+      });
+    });
 
     const existing = timeoutHandlesRef.current.get(key);
     if (existing) clearTimeout(existing);
@@ -68,17 +72,34 @@ export function useWorkflowLaunchPending(onTimeout?: () => void) {
     }
     if (message.status === 'running') return;
     pendingRequestsRef.current.delete(message.requestId);
-    const startedAt = pendingStartedAtRef.current.get(key) ?? Date.now();
-    const delay = Math.max(0, WORKFLOW_LAUNCH_PENDING_MIN_VISIBLE_MS - (Date.now() - startedAt));
-    if (delay > 0) {
-      setTimeout(() => {
+
+    const clearAfterMinVisible = (startedAt: number) => {
+      const delay = Math.max(0, WORKFLOW_LAUNCH_PENDING_MIN_VISIBLE_MS - (Date.now() - startedAt));
+      if (delay > 0) {
+        setTimeout(() => {
+          clearPendingKey(key);
+          pendingStartedAtRef.current.delete(key);
+        }, delay);
+      } else {
         clearPendingKey(key);
         pendingStartedAtRef.current.delete(key);
-      }, delay);
-    } else {
-      clearPendingKey(key);
-      pendingStartedAtRef.current.delete(key);
+      }
+    };
+
+    const startedAt = pendingStartedAtRef.current.get(key);
+    if (startedAt !== undefined) {
+      clearAfterMinVisible(startedAt);
+      return;
     }
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const anchored = pendingStartedAtRef.current.get(key) ?? Date.now();
+        if (!pendingStartedAtRef.current.has(key)) {
+          pendingStartedAtRef.current.set(key, anchored);
+        }
+        clearAfterMinVisible(anchored);
+      });
+    });
   }, [clearPendingKey]);
 
   useEffect(() => () => {

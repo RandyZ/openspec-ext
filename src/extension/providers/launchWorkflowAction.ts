@@ -5,11 +5,11 @@ import { t } from '../../i18n';
 import { buildWorkflowLaunchPayload } from '../../shared/workflowCommand';
 import type { WorkflowAction } from '../../shared/workflowCommand';
 import { getWorkflowLaunchConfig } from '../services/workflowLaunchConfig';
+import { isCopyOnlyWorkflowMode, toWorkflowLaunchConfigView } from '../../shared/workflowLaunchConfig';
 import {
   launchWorkflowAgentCommand,
   notifyWorkflowLaunchFailure,
 } from '../services/workflowAgentLaunch';
-import { toWorkflowLaunchConfigView } from '../../shared/workflowLaunchConfig';
 import { isPathInWorkspaceFolders } from '../utils/workspaceFolders';
 import { broadcastWorkflowActionReceipt } from '../services/workflowWebviewRegistry';
 import type { OpenSpecScope } from '../services/openspecScope';
@@ -171,8 +171,9 @@ export async function processLaunchWorkflowAction(
   };
 
   let launchStatusDisposable: vscode.Disposable | undefined;
+  const copyOnlyLaunch = isCopyOnlyWorkflowMode(toWorkflowLaunchConfigView(getWorkflowLaunchConfig()));
   try {
-    if (correlated) {
+    if (correlated && !copyOnlyLaunch) {
       postReceipt('unknown', 'running');
       launchStatusDisposable = vscode.window.setStatusBarMessage?.(t('workflow.launching'));
     }

@@ -19,16 +19,18 @@ vi.mock('../../../src/extension/utils/workspaceFolders', () => ({
   isPathInWorkspaceFolders: () => true,
 }));
 
+const getWorkflowLaunchConfigMock = vi.fn(() => ({
+  workflowLaunchMode: 'adapter' as const,
+  preferredAgentAdapter: 'cursor' as const,
+  cursorLaunchMode: 'agentCli' as const,
+  cursorAgentModel: 'auto',
+  cursorLaunchModeExplicit: true,
+  workflowLaunchModeExplicit: false,
+  preferredAgentAdapterExplicit: false,
+}));
+
 vi.mock('../../../src/extension/services/workflowLaunchConfig', () => ({
-  getWorkflowLaunchConfig: () => ({
-    workflowLaunchMode: 'adapter',
-    preferredAgentAdapter: 'cursor',
-    cursorLaunchMode: 'agentCli',
-    cursorAgentModel: 'auto',
-    cursorLaunchModeExplicit: true,
-    workflowLaunchModeExplicit: false,
-    preferredAgentAdapterExplicit: false,
-  }),
+  getWorkflowLaunchConfig: () => getWorkflowLaunchConfigMock(),
 }));
 
 vi.mock('../../../src/extension/services/workflowAgentLaunch', () => ({
@@ -140,5 +142,60 @@ describe('processLaunchWorkflowAction', () => {
     const completed = posts.find((msg) => msg.status === 'completed');
     expect(completed).toBeDefined();
     expect(completed?.suppressPriorityAttention).toBe(true);
+  });
+
+  it('does not post running or status-bar launching for copy-only workflow mode', async () => {
+    getWorkflowLaunchConfigMock.mockImplementation(() => ({
+      workflowLaunchMode: 'clipboard',
+      preferredAgentAdapter: 'clipboard',
+      cursorLaunchMode: 'clipboard',
+      cursorAgentModel: 'auto',
+      cursorLaunchModeExplicit: false,
+      workflowLaunchModeExplicit: true,
+      preferredAgentAdapterExplicit: false,
+    }));
+    launchWorkflowAgentCommand.mockReset();
+    launchWorkflowAgentCommand.mockResolvedValue({
+      success: true,
+      outcome: 'copied',
+      target: 'clipboard',
+      command: '/opsx:apply x',
+    });
+    const dataManager = {
+      resolveScope: () => ({
+        id: 'scope-1',
+        label: 'ws2',
+        rootPath: binding.rootPath,
+        source: 'declared',
+        workflowBinding: binding,
+        runtimeSource: 'installed',
+        capabilities: { stores: false, context: false, doctor: false, worksets: false, diagnostics: [] },
+        diagnostics: [],
+      }),
+      getChangeWorkflowSnapshot: async () => ({ bindingKey }),
+    } as unknown as import('../../../src/extension/services/dataManager').DataManager;
+
+    await processLaunchWorkflowAction({
+      webview,
+      dataManager,
+      action: 'apply',
+      changeName: 'ws2-add-beta',
+      requestId: 'req-copy',
+      bindingKey,
+    });
+
+    const posts = vi.mocked(webview.postMessage).mock.calls.map((call) => call[0]);
+    expect(posts.some((msg) => msg.status === 'running')).toBe(false);
+    expect(posts.some((msg) => msg.status === 'copied')).toBe(true);
+
+    getWorkflowLaunchConfigMock.mockImplementation(() => ({
+      workflowLaunchMode: 'adapter' as const,
+      preferredAgentAdapter: 'cursor' as const,
+      cursorLaunchMode: 'agentCli' as const,
+      cursorAgentModel: 'auto',
+      cursorLaunchModeExplicit: true,
+      workflowLaunchModeExplicit: false,
+      preferredAgentAdapterExplicit: false,
+    }));
   });
 });

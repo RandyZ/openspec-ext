@@ -163,35 +163,42 @@ export function resetWorkflowLaunchDedupeForTests(): void {
 export async function launchWorkflowAgentCommand(
   request: WorkflowAgentLaunchRequest,
 ): Promise<WorkflowAgentLaunchResult> {
-  const dedupeKey = workflowLaunchDedupeKey(request);
-  const now = Date.now();
-  if (inFlightLaunchKey === dedupeKey) {
-    const deduped = buildDedupedLaunchResult(request);
-    notifyLaunchResult(deduped, deduped.command);
-    return deduped;
-  }
-  if (
-    lastSuccessfulLaunch
-    && lastSuccessfulLaunch.key === dedupeKey
-    && now - lastSuccessfulLaunch.at < LAUNCH_DEDUPE_MS
-  ) {
-    const deduped = buildDedupedLaunchResult(request);
-    notifyLaunchResult(deduped, deduped.command);
-    return deduped;
+  const launchConfigView = toWorkflowLaunchConfigView(getWorkflowLaunchConfig());
+  const copyOnly = isCopyOnlyWorkflowMode(launchConfigView);
+
+  if (!copyOnly) {
+    const dedupeKey = workflowLaunchDedupeKey(request);
+    const now = Date.now();
+    if (inFlightLaunchKey === dedupeKey) {
+      const deduped = buildDedupedLaunchResult(request);
+      notifyLaunchResult(deduped, deduped.command);
+      return deduped;
+    }
+    if (
+      lastSuccessfulLaunch
+      && lastSuccessfulLaunch.key === dedupeKey
+      && now - lastSuccessfulLaunch.at < LAUNCH_DEDUPE_MS
+    ) {
+      const deduped = buildDedupedLaunchResult(request);
+      notifyLaunchResult(deduped, deduped.command);
+      return deduped;
+    }
+
+    inFlightLaunchKey = dedupeKey;
+    try {
+      const result = await executeWorkflowAgentLaunch(request);
+      if (result.success) {
+        recordSuccessfulLaunch(dedupeKey);
+      }
+      return result;
+    } finally {
+      if (inFlightLaunchKey === dedupeKey) {
+        inFlightLaunchKey = undefined;
+      }
+    }
   }
 
-  inFlightLaunchKey = dedupeKey;
-  try {
-    const result = await executeWorkflowAgentLaunch(request);
-    if (result.success) {
-      recordSuccessfulLaunch(dedupeKey);
-    }
-    return result;
-  } finally {
-    if (inFlightLaunchKey === dedupeKey) {
-      inFlightLaunchKey = undefined;
-    }
-  }
+  return executeWorkflowAgentLaunch(request);
 }
 
 async function executeWorkflowAgentLaunch(

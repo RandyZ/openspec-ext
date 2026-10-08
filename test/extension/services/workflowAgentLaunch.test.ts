@@ -40,6 +40,17 @@ describe('launchWorkflowAgentCommand', () => {
     resetWorkflowLaunchDedupeForTests();
     vi.mocked(vscode.env.appName as unknown as string);
     Object.defineProperty(vscode.env, 'appName', { value: 'Cursor', configurable: true });
+    vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+      get: vi.fn((key: string) => {
+        if (key === 'agentAutoSubmit') return 'readOnly';
+        if (key === 'workflowLaunchMode') return 'adapter';
+        if (key === 'preferredAgentAdapter') return 'cursor';
+        if (key === 'cursorLaunchMode') return 'agentPanel';
+        if (key === 'cursorAgentModel') return 'auto';
+        return undefined;
+      }),
+      inspect: vi.fn(() => undefined),
+    } as ReturnType<typeof vscode.workspace.getConfiguration>);
     launchAgentPanelPrompt.mockResolvedValue({
       success: true,
       layer: 'composerCreateNew',
@@ -121,6 +132,35 @@ describe('launchWorkflowAgentCommand', () => {
       }),
       inspect: vi.fn(() => undefined),
     } as ReturnType<typeof vscode.workspace.getConfiguration>);
+  });
+
+  it('does not dedupe rapid repeat copy-only launches', async () => {
+    vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+      get: vi.fn((key: string) => {
+        if (key === 'agentAutoSubmit') return 'readOnly';
+        if (key === 'workflowLaunchMode') return 'clipboard';
+        if (key === 'preferredAgentAdapter') return 'clipboard';
+        if (key === 'cursorLaunchMode') return 'clipboard';
+        if (key === 'cursorAgentModel') return 'auto';
+        return undefined;
+      }),
+      inspect: vi.fn((key: string) => (
+        key === 'workflowLaunchMode' || key === 'preferredAgentAdapter'
+          ? { globalValue: 'clipboard' }
+          : undefined
+      )),
+    } as ReturnType<typeof vscode.workspace.getConfiguration>);
+
+    const request = {
+      action: 'apply' as const,
+      changeName: 'demo-change',
+      workspaceRoot: '/workspace',
+    };
+    await launchWorkflowAgentCommand(request);
+    await launchWorkflowAgentCommand(request);
+
+    expect(vscode.env.clipboard.writeText).toHaveBeenCalledTimes(2);
+    expect(launchAgentPanelPrompt).not.toHaveBeenCalled();
   });
 
   it('dedupes rapid repeat launches for the same change and action', async () => {

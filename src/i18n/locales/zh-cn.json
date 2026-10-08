@@ -165,7 +165,7 @@
   "verify.invalidJson": "参数不是合法 JSON",
   "verify.debugLabel": "Debug: 执行 IDE 命令",
   "verify.executed": "命令已执行。",
-  "verifyArchive.title": "在 Agent 面板中执行 Verify 与 Archive",
+  "verifyArchive.title": "验证并归档此 change",
   "verifyArchive.description": "Verify 与 Archive 与 Apply、Continue 相同，在 IDE Agent 面板启动 `/opsx-verify` 与 `/opsx-archive`。",
   "verifyArchive.descriptionAgentPanel": "Verify 与 Archive 与 Apply、Continue 相同，通过 Cursor Agent 面板启动。",
   "verifyArchive.descriptionAgentCli": "Verify 与 Archive 与 Apply、Continue 相同，通过 Cursor Agent CLI 启动。",

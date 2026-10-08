@@ -92,13 +92,21 @@ describe('ChangeDetail workflow routing', () => {
     expect(source).toContain('setWorkflowReceipt(null)');
   });
 
-  it('sets ActionBar pending UI before registerLaunch for minimum Launching visibility', () => {
+  it('sets ActionBar pending UI before registerLaunch for agent launches (not copy-only)', () => {
     const start = source.indexOf('const handleLaunchWorkflow = (');
     const end = source.indexOf('}, [activeTab, pendingInteractiveAction]);', start);
     const block = source.slice(start, end);
-    expect(block.indexOf('setPendingLaunchAction(action)')).toBeLessThan(
-      block.indexOf('registerLaunch(changeName, workflowSnapshot.bindingKey)'),
+    expect(block).toContain('copyOnlyWorkflowLaunch');
+    expect(block.indexOf('registerLaunch(changeName, workflowSnapshot.bindingKey)')).toBeLessThan(
+      block.indexOf('if (!copyOnlyWorkflowLaunch)'),
     );
+    const agentBlock = block.slice(block.indexOf('if (!copyOnlyWorkflowLaunch)'));
+    expect(agentBlock).toContain('setPendingLaunchAction(action)');
+  });
+
+  it('skips Launching pending state for copy-only workflow launches', () => {
+    expect(source).toContain('copyOnlyWorkflowLaunch');
+    expect(source).toContain('if (!copyOnlyWorkflowLaunch)');
   });
 
   it('keeps Archive Now gated until tasks refetch completes (not cleared by fallback timer)', () => {

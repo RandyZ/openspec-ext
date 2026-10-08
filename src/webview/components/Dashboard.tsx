@@ -39,6 +39,8 @@ import {
 } from '../utils/workflowLaunchLabels';
 import type { CacheAction, CacheStatsView } from '../types/messages';
 import { useWorkflowLaunchPending } from '../hooks/useWorkflowLaunchPending';
+import { getCopyOnlyFallbackLaunchConfig } from '../utils/executorUiLaunchConfig';
+import { isCopyOnlyWorkflowMode } from '../../shared/workflowLaunchConfig';
 import { resolveChangeBindingKey } from '../utils/changeBindingKey';
 import {
   DEFAULT_CHANGES_VIEW_STATE,
@@ -631,10 +633,14 @@ export const Dashboard: React.FC = () => {
   };
 
   const handleLaunchWorkflow = (action: WorkflowAction, changeName: string, bindingKey?: string) => {
-    const requestId = bindingKey
+    const launchConfigForUi = workflowLaunchConfig ?? projectSidebar?.workflowLaunchConfig ?? null;
+    const copyOnlyLaunch = isCopyOnlyWorkflowMode(
+      launchConfigForUi ?? getCopyOnlyFallbackLaunchConfig(),
+    );
+    const requestId = bindingKey && !copyOnlyLaunch
       ? workflowLaunchPending.registerLaunch(changeName, bindingKey, 'dashboard').requestId
       : createWorkflowRequestId('dashboard');
-    if (bindingKey) {
+    if (bindingKey && !copyOnlyLaunch) {
       const key = `${changeName}\u0000${bindingKey}`;
       pendingWorkflowRequestsRef.current.set(requestId, { changeName, bindingKey });
       latestWorkflowRequestRef.current.set(key, requestId);

@@ -20,6 +20,7 @@ import {
   resolveWorkflowActions,
   type ChangeWorkflowSnapshot,
 } from '../../shared/changeWorkflow';
+import { isCopyOnlyWorkflowMode } from '../../shared/workflowLaunchConfig';
 import { getWorkflowLaunchModeHint } from '../utils/workflowLaunchLabels';
 import type { ExecutorLaunchPresentation } from '../../shared/executorLaunchPresentation';
 import {
@@ -227,6 +228,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     () => resolveExecutorUiLaunchConfig(executorPresentation),
     [executorPresentation],
   );
+  const copyOnlyWorkflowLaunch = isCopyOnlyWorkflowMode(executorUiLaunchConfig);
   const executorLaunchConfigKey = useMemo(
     () => [
       executorUiLaunchConfig.effectiveAdapterId ?? '',
@@ -837,15 +839,19 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     if (pendingLaunchAction === action && workflowLaunchPending.isPending(changeName, workflowSnapshot.bindingKey)) {
       return;
     }
-    workflowReceiptBeforeLaunchRef.current = workflowReceipt;
-    setPendingLaunchAction(action);
-    setPendingLaunchSurface(surface);
-    const { requestId } = workflowLaunchPending.registerLaunch(changeName, workflowSnapshot.bindingKey);
-    setWorkflowReceipt({
-      requestId,
-      bindingKey: workflowSnapshot.bindingKey,
-      status: 'pending',
-    });
+    const requestId = copyOnlyWorkflowLaunch
+      ? createWorkflowRequestId('workflow')
+      : workflowLaunchPending.registerLaunch(changeName, workflowSnapshot.bindingKey).requestId;
+    if (!copyOnlyWorkflowLaunch) {
+      workflowReceiptBeforeLaunchRef.current = workflowReceipt;
+      setPendingLaunchAction(action);
+      setPendingLaunchSurface(surface);
+      setWorkflowReceipt({
+        requestId,
+        bindingKey: workflowSnapshot.bindingKey,
+        status: 'pending',
+      });
+    }
     postMessage(sendMessage.launchWorkflowAction(
       action,
       changeName,
