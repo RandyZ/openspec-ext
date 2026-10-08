@@ -74,6 +74,55 @@ describe('launchWorkflowAgentCommand', () => {
     });
   });
 
+  it('does not dedupe a retry after a failed agentCli launch', async () => {
+    const { getAdapterById } = await import('@extension/adapters');
+    const { cursorAdapter } = await import('@extension/adapters/cursor-adapter');
+    const configGet = vi.fn((key: string) => {
+      if (key === 'cursorLaunchMode') return 'agentCli';
+      if (key === 'workflowLaunchMode') return 'adapter';
+      if (key === 'preferredAgentAdapter') return 'cursor';
+      if (key === 'agentAutoSubmit') return 'readOnly';
+      if (key === 'cursorAgentModel') return 'auto';
+      return undefined;
+    });
+    vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+      get: configGet,
+      inspect: vi.fn(() => undefined),
+    } as ReturnType<typeof vscode.workspace.getConfiguration>);
+    vi.mocked(getAdapterById).mockResolvedValue({
+      id: 'cursor',
+      displayName: 'Cursor',
+      fillChat: vi.fn(),
+      executeTask: vi.fn(),
+      isAvailable: vi.fn(),
+    });
+    const executeTask = vi.spyOn(cursorAdapter, 'executeTask')
+      .mockResolvedValueOnce({ success: false, adapterId: 'cursor', message: 'spawn agent ENOENT' })
+      .mockResolvedValueOnce({ success: false, adapterId: 'cursor', message: 'spawn agent ENOENT' });
+
+    const request = {
+      action: 'apply' as const,
+      changeName: 'demo-change',
+      workspaceRoot: '/workspace',
+    };
+    await launchWorkflowAgentCommand(request);
+    await launchWorkflowAgentCommand(request);
+
+    expect(executeTask).toHaveBeenCalledTimes(2);
+    executeTask.mockRestore();
+    vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
+      get: vi.fn((key: string) => {
+        if (key === 'agentAutoSubmit') return 'readOnly';
+        if (key === 'workflowLaunchMode') return 'adapter';
+        if (key === 'preferredAgentAdapter') return 'cursor';
+        if (key === 'cursorLaunchMode') return 'agentPanel';
+        if (key === 'cursorAgentModel') return 'auto';
+        return undefined;
+      }),
+      inspect: vi.fn(() => undefined),
+    } as ReturnType<typeof vscode.workspace.getConfiguration>);
+  });
+
   it('dedupes rapid repeat launches for the same change and action', async () => {
     const request = {
       action: 'verify' as const,

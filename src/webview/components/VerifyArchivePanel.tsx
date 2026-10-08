@@ -2,6 +2,7 @@ import React from 'react';
 import type { InteractiveWorkflowAction } from '../../shared/interactiveWorkflow';
 import { t } from '../../i18n';
 import {
+  getVerifyArchiveDescription,
   getVerifyArchiveHint,
   getVerifyArchiveRunLabel,
   type WorkflowLaunchConfigView,
@@ -67,7 +68,7 @@ export const VerifyArchivePanel: React.FC<VerifyArchivePanelProps> = ({
     <div className="flex flex-col gap-4">
       <div style={cardStyle}>
         <div className="text-sm font-semibold mb-2">{t('verifyArchive.title')}</div>
-        <p style={mutedTextStyle}>{t('verifyArchive.description')}</p>
+        <p style={mutedTextStyle}>{getVerifyArchiveDescription(workflowLaunchConfig)}</p>
       </div>
 
       <WorkflowActionCard

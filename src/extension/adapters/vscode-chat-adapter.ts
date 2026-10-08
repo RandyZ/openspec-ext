@@ -29,7 +29,7 @@ export const vscodeChatAdapter: IAgentExecutorAdapter = {
     if (panelResult.outcome === 'copied') {
       vscode.window.showInformationMessage(t('agentLaunch.copied', { command: prompt }));
     } else {
-      vscode.window.showInformationMessage(t('agentLaunch.prefilled', { command: prompt }));
+      vscode.window.showInformationMessage(t('agentLaunch.prefilledChat', { command: prompt }));
     }
     return {
       success: panelResult.success,

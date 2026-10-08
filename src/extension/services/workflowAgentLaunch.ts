@@ -82,7 +82,8 @@ export function buildResolvedLaunchPayload(
 }
 
 const LAUNCH_DEDUPE_MS = 2500;
-let lastWorkflowLaunch: { key: string; at: number } | undefined;
+let inFlightLaunchKey: string | undefined;
+let lastSuccessfulLaunch: { key: string; at: number } | undefined;
 
 function workflowLaunchDedupeKey(request: WorkflowAgentLaunchRequest): string {
   return `${request.workspaceRoot}\u0000${request.changeName}\u0000${request.action}`;
@@ -137,8 +138,26 @@ export async function notifyWorkflowLaunchFailure(
   }
 }
 
+function buildDedupedLaunchResult(request: WorkflowAgentLaunchRequest): WorkflowAgentLaunchResult {
+  const payload = buildResolvedLaunchPayload(request.action, request.changeName);
+  const view = toWorkflowLaunchConfigView(getWorkflowLaunchConfig());
+  return {
+    success: true,
+    command: payload.command,
+    target: resolveLaunchTargetFromPayload(payload, view),
+    layer: undefined,
+    outcome: 'deduped',
+    message: t('workflow.launchDeduped'),
+  };
+}
+
+function recordSuccessfulLaunch(dedupeKey: string): void {
+  lastSuccessfulLaunch = { key: dedupeKey, at: Date.now() };
+}
+
 export function resetWorkflowLaunchDedupeForTests(): void {
-  lastWorkflowLaunch = undefined;
+  inFlightLaunchKey = undefined;
+  lastSuccessfulLaunch = undefined;
 }
 
 export async function launchWorkflowAgentCommand(
@@ -146,26 +165,38 @@ export async function launchWorkflowAgentCommand(
 ): Promise<WorkflowAgentLaunchResult> {
   const dedupeKey = workflowLaunchDedupeKey(request);
   const now = Date.now();
-  if (
-    lastWorkflowLaunch
-    && lastWorkflowLaunch.key === dedupeKey
-    && now - lastWorkflowLaunch.at < LAUNCH_DEDUPE_MS
-  ) {
-    const payload = buildResolvedLaunchPayload(request.action, request.changeName);
-    const view = toWorkflowLaunchConfigView(getWorkflowLaunchConfig());
-    const deduped: WorkflowAgentLaunchResult = {
-      success: true,
-      command: payload.command,
-      target: resolveLaunchTargetFromPayload(payload, view),
-      layer: undefined,
-      outcome: 'deduped',
-      message: t('workflow.launchDeduped'),
-    };
-    notifyLaunchResult(deduped, payload.command);
+  if (inFlightLaunchKey === dedupeKey) {
+    const deduped = buildDedupedLaunchResult(request);
+    notifyLaunchResult(deduped, deduped.command);
     return deduped;
   }
-  lastWorkflowLaunch = { key: dedupeKey, at: now };
+  if (
+    lastSuccessfulLaunch
+    && lastSuccessfulLaunch.key === dedupeKey
+    && now - lastSuccessfulLaunch.at < LAUNCH_DEDUPE_MS
+  ) {
+    const deduped = buildDedupedLaunchResult(request);
+    notifyLaunchResult(deduped, deduped.command);
+    return deduped;
+  }
 
+  inFlightLaunchKey = dedupeKey;
+  try {
+    const result = await executeWorkflowAgentLaunch(request);
+    if (result.success) {
+      recordSuccessfulLaunch(dedupeKey);
+    }
+    return result;
+  } finally {
+    if (inFlightLaunchKey === dedupeKey) {
+      inFlightLaunchKey = undefined;
+    }
+  }
+}
+
+async function executeWorkflowAgentLaunch(
+  request: WorkflowAgentLaunchRequest,
+): Promise<WorkflowAgentLaunchResult> {
   const launchConfig = getWorkflowLaunchConfig();
   const launchConfigView = toWorkflowLaunchConfigView(launchConfig);
   const autoSubmit = shouldAutoSubmitWorkflowAction(request.action, readAgentAutoSubmitMode());

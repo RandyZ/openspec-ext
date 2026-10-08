@@ -86,6 +86,12 @@ export function parseWindowsCmdShimEntry(content: string): string | undefined {
 }
 
 export class OpenSpecCliService {
+  private static versionByRuntimeKey = new Map<string, string>();
+
+  static resetVersionCacheForTests(): void {
+    OpenSpecCliService.versionByRuntimeKey.clear();
+  }
+
   private workspaceRoot: string;
   private resolver: OpenSpecCliResolver;
   private cliActivationDiagnostic: CliActivationDiagnostic | null = null;
@@ -664,8 +670,20 @@ export class OpenSpecCliService {
    * execution path for every CLI command, so localSource/customPath/installed modes
    * all flow through the same code.
    */
+  private runtimeVersionCacheKey(runtime: ResolvedOpenSpecRuntime): string {
+    return `${runtime.command}\u0000${runtime.argsPrefix.join('\u0000')}\u0000${runtime.source}`;
+  }
+
   private async execOpenSpecOnce(args: string[], timeoutMs: number): Promise<string> {
     const runtime = await this.resolver.resolveRuntime();
+    const isVersionProbe = args.length === 1 && args[0] === '--version';
+    const versionCacheKey = isVersionProbe ? this.runtimeVersionCacheKey(runtime) : undefined;
+    if (versionCacheKey) {
+      const cachedVersion = OpenSpecCliService.versionByRuntimeKey.get(versionCacheKey);
+      if (cachedVersion !== undefined) {
+        return cachedVersion;
+      }
+    }
     const isLocalSource = runtime.source === 'localSource';
     // Windows + non-local-source: never route through cmd.exe. Shell parsing would
     // corrupt arguments that must reach the CLI verbatim — a workset member path
@@ -714,6 +732,11 @@ export class OpenSpecCliService {
           );
           reject(error);
         } else {
+          const trimmed = stdout.trim();
+          if (versionCacheKey) {
+            OpenSpecCliService.versionByRuntimeKey.set(versionCacheKey, trimmed);
+            this.cachedCliVersion = trimmed;
+          }
           resolve(stdout);
         }
       });

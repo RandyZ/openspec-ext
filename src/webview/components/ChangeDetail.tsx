@@ -132,7 +132,11 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   const contentCacheRef = useRef<Map<string, string>>(new Map());
   const artifactFetchCoordinatorRef = useRef(new ArtifactFetchCoordinator());
   const verifyArchiveTasksLoadedRef = useRef<string | null>(null);
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
   const workflowLaunchPending = useWorkflowLaunchPending();
+  type LaunchSurface = 'actionBar' | 'verifyArchive';
+  const [pendingLaunchSurface, setPendingLaunchSurface] = useState<LaunchSurface | null>(null);
   const persistedExecutorRef = useRef<string | null>(null);
   const [completedTasks, setCompletedTasks] = useState(0);
   const [totalTasks, setTotalTasks] = useState(0);
@@ -206,14 +210,17 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
       : undefined,
     [workflowSnapshot, completedTasks, totalTasks, isArchived, deltaSpecIds.length]
   );
-  const canArchiveNow = Boolean(
+  const resolverAllowsArchiveNow = Boolean(
     resolvedWorkflowActions?.highImpact.some(
       (action) => action.action === 'archive' && action.highImpact === true
     )
   );
+  const canArchiveNow = resolverAllowsArchiveNow && !verifyArchiveTasksLoading;
   const archiveNowDisabledReason = isArchived
     ? t('verifyArchive.archiveDisabledArchived')
-    : t('verifyArchive.archiveDisabledIncomplete');
+    : verifyArchiveTasksLoading
+      ? t('detail.loadingTaskProgress')
+      : t('verifyArchive.archiveDisabledIncomplete');
   const showVerifyArchiveTab = debug || !isArchived || archivedLocally;
   const navigationArtifacts = useMemo(() => {
     if (workflowSnapshot) return workflowSnapshot.artifacts;
@@ -374,7 +381,19 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     const cleanup = onMessage((event: MessageEvent) => {
       const msg = event.data;
       if (msg.type === 'panelVisibility') {
-        artifactFetchCoordinatorRef.current.setPanelVisible(msg.visible !== false);
+        const visible = msg.visible !== false;
+        artifactFetchCoordinatorRef.current.setPanelVisible(visible);
+        if (visible && activeTabRef.current === 'verifyArchive') {
+          const tasksKey = cacheKey(scopeId, 'tasks', selectedOutputPaths.tasks);
+          if (
+            verifyArchiveTasksLoading
+            || artifactFetchCoordinatorRef.current.isDirty(tasksKey)
+          ) {
+            verifyArchiveTasksLoadedRef.current = null;
+            setVerifyArchiveTasksLoading(true);
+            requestArtifact('tasks');
+          }
+        }
       } else if (msg.type === 'dashboardData'
         && Array.isArray(msg.data?.archivedChanges)
         && msg.data.archivedChanges.some((archived: { name?: string }) => archived.name === changeName)) {
@@ -405,9 +424,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
           const { completed, total } = countTaskProgress(msg.content);
           setTotalTasks(total);
           setCompletedTasks(completed);
-          if (activeTab === 'verifyArchive') {
-            setVerifyArchiveTasksLoading(false);
-          }
+          setVerifyArchiveTasksLoading(false);
         }
       } else if (msg.type === 'workflowActionReceipt'
         && msg.changeName === changeName
@@ -427,13 +444,25 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
           });
         }
       } else if (msg.type === 'artifactContentError' && msg.changeName === changeName) {
-        const errorKey = cacheKey(scopeId, msg.artifactType ?? activeTab, selectedOutputPaths[msg.artifactType ?? activeTab]);
+        const artifactType = msg.artifactType ?? activeTabRef.current;
+        const errorKey = cacheKey(scopeId, artifactType, selectedOutputPaths[artifactType]);
         artifactFetchCoordinatorRef.current.complete(errorKey);
-        setError(msg.message ?? 'Failed to load');
-        setErrorCode(msg.code);
-        setLoading(false);
-        setContent(null);
-        setArtifactStateMessage(null);
+        if (artifactType === 'tasks') {
+          setVerifyArchiveTasksLoading(false);
+        }
+        if (msg.code === 'WORKSPACE_ROOT_STALE') {
+          setArtifactStateMessage(msg.message ?? t('workflow.workspaceRootStale'));
+          setLoading(false);
+          setError(null);
+          setErrorCode(msg.code);
+          setContent(null);
+        } else {
+          setError(msg.message ?? 'Failed to load');
+          setErrorCode(msg.code);
+          setLoading(false);
+          setContent(null);
+          setArtifactStateMessage(null);
+        }
       } else if (msg.type === 'deltaSpecList' && msg.changeName === changeName) {
         setDeltaSpecIds(msg.specIds ?? []);
         if (msg.specIds?.length) {
@@ -509,15 +538,17 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
             }
           }
         }
-        if (invalidated.includes('tasks') && activeTab === 'verifyArchive') {
+        if (invalidated.includes('tasks')) {
           verifyArchiveTasksLoadedRef.current = null;
-          setVerifyArchiveTasksLoading(true);
+          if (activeTabRef.current === 'verifyArchive') {
+            setVerifyArchiveTasksLoading(true);
+          }
           requestArtifact('tasks');
-        } else if (invalidated.includes(activeTab)) {
-          if (activeTab === 'specs') {
+        } else if (invalidated.includes(activeTabRef.current)) {
+          if (activeTabRef.current === 'specs') {
             requestSpecsList();
-          } else if (activeTab !== 'verifyArchive') {
-            requestArtifact(activeTab);
+          } else if (activeTabRef.current !== 'verifyArchive') {
+            requestArtifact(activeTabRef.current);
           }
         }
       }
@@ -620,8 +651,12 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   const isWorkflowLaunchPending = workflowBindingKey
     ? workflowLaunchPending.isPending(changeName, workflowBindingKey)
     : false;
-  const actionBarPendingAction = isWorkflowLaunchPending ? pendingLaunchAction : null;
+  const actionBarPendingAction = isWorkflowLaunchPending
+    && pendingLaunchSurface === 'actionBar'
+    ? pendingLaunchAction
+    : null;
   const verifyArchivePendingAction = isWorkflowLaunchPending
+    && pendingLaunchSurface === 'verifyArchive'
     && (pendingLaunchAction === 'verify' || pendingLaunchAction === 'archive')
     ? pendingLaunchAction
     : null;
@@ -630,11 +665,23 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     if (!workflowBindingKey || !pendingLaunchAction) return;
     if (!workflowLaunchPending.isPending(changeName, workflowBindingKey)) {
       setPendingLaunchAction(null);
+      setPendingLaunchSurface(null);
     }
   }, [changeName, pendingLaunchAction, workflowBindingKey, workflowLaunchPending.pendingKeys]);
 
+  useEffect(() => {
+    if (!verifyArchiveTasksLoading) return;
+    const timeout = window.setTimeout(() => {
+      setVerifyArchiveTasksLoading(false);
+      verifyArchiveTasksLoadedRef.current = null;
+      requestArtifact('tasks');
+    }, 15_000);
+    return () => window.clearTimeout(timeout);
+  }, [verifyArchiveTasksLoading, changeName, scopeId]);
+
   const handleLaunchWorkflow = (
-    action: 'explore' | 'continue' | 'ff' | 'apply' | 'verify' | 'archive' | 'sync'
+    action: 'explore' | 'continue' | 'ff' | 'apply' | 'verify' | 'archive' | 'sync',
+    surface: LaunchSurface = 'actionBar',
   ) => {
     if (!workflowSnapshot?.bindingKey) return;
     if (pendingLaunchAction === action && workflowLaunchPending.isPending(changeName, workflowSnapshot.bindingKey)) {
@@ -642,6 +689,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     }
     const { requestId } = workflowLaunchPending.registerLaunch(changeName, workflowSnapshot.bindingKey);
     setPendingLaunchAction(action);
+    setPendingLaunchSurface(surface);
     setWorkflowReceipt({
       requestId,
       bindingKey: workflowSnapshot.bindingKey,
@@ -658,7 +706,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
 
   useEffect(() => {
     if (activeTab !== 'verifyArchive' || !pendingInteractiveAction) return;
-    handleLaunchWorkflow(pendingInteractiveAction);
+    handleLaunchWorkflow(pendingInteractiveAction, 'verifyArchive');
     setPendingInteractiveAction(null);
   }, [activeTab, pendingInteractiveAction]);
 
@@ -667,10 +715,10 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   ) => {
     if (action === 'verify' || action === 'archive') {
       setActiveTab('verifyArchive');
-      handleLaunchWorkflow(action);
+      handleLaunchWorkflow(action, 'actionBar');
       return;
     }
-    handleLaunchWorkflow(action);
+    handleLaunchWorkflow(action, 'actionBar');
   };
 
   const handleConfirmTaskToggle = () => {
@@ -806,7 +854,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
               archiveNowDisabledReason={archiveNowDisabledReason}
               pendingAction={verifyArchivePendingAction}
               workflowLaunchConfig={executorUiLaunchConfig}
-              onRun={(action) => handleLaunchWorkflow(action)}
+              onRun={(action) => handleLaunchWorkflow(action, 'verifyArchive')}
               onArchiveNow={handleArchiveNow}
             />
 

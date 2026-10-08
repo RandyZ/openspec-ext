@@ -38,7 +38,7 @@ describe('ChangeDetail workflow routing', () => {
 
   it('routes Verify and Archive through unified workflow launch', () => {
     expect(source).toContain("action === 'verify' || action === 'archive'");
-    expect(source).toContain('handleLaunchWorkflow(action)');
+    expect(source).toContain('handleLaunchWorkflow(action');
     expect(source).toContain('onAction={handleResolvedAction}');
   });
 
@@ -73,13 +73,13 @@ describe('ChangeDetail workflow routing', () => {
     expect(source).toContain('canArchiveNow');
     expect(source).toContain('onArchiveNow');
     expect(source).toContain('sendMessage.archiveChange(changeName, scopeId)');
-    expect(source).toContain('handleLaunchWorkflow(action)');
+    expect(source).toContain('handleLaunchWorkflow(action');
 
     const interactiveHandler = source.slice(
       source.indexOf('const handleResolvedAction'),
       source.indexOf('const handleConfirmTaskToggle')
     );
-    expect(interactiveHandler).toContain('handleLaunchWorkflow(action)');
+    expect(interactiveHandler).toContain("handleLaunchWorkflow(action, 'actionBar')");
     expect(interactiveHandler).not.toContain('archiveChange');
 
     const panel = source.slice(

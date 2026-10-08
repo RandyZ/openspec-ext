@@ -176,7 +176,7 @@ export const cursorAdapter: IAgentExecutorAdapter = {
     } else if (panelResult.layer === 'deeplink') {
       vscode.window.showInformationMessage(t('agentLaunch.deeplinkPrefilled', { command: text }));
     } else {
-      vscode.window.showInformationMessage(t('agentLaunch.prefilled', { command: text }));
+      vscode.window.showInformationMessage(t('agentLaunch.openedPanel', { command: text }));
     }
     return {
       success: panelResult.success,

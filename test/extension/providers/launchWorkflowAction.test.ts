@@ -102,4 +102,38 @@ describe('processLaunchWorkflowAction', () => {
     expect(posts.some((msg) => msg.status === 'running')).toBe(true);
     expect(posts.filter((msg) => msg.status === 'failed').length).toBeGreaterThanOrEqual(1);
   });
+
+  it('does not post a delivered receipt when launch is deduped', async () => {
+    launchWorkflowAgentCommand.mockResolvedValueOnce({
+      success: true,
+      outcome: 'deduped',
+      target: 'agentCli',
+      command: '/opsx-apply x',
+    });
+    const dataManager = {
+      resolveScope: () => ({
+        id: 'scope-1',
+        label: 'ws2',
+        rootPath: binding.rootPath,
+        source: 'declared',
+        workflowBinding: binding,
+        runtimeSource: 'installed',
+        capabilities: { stores: false, context: false, doctor: false, worksets: false, diagnostics: [] },
+        diagnostics: [],
+      }),
+    } as unknown as import('../../../src/extension/services/dataManager').DataManager;
+
+    await processLaunchWorkflowAction({
+      webview,
+      dataManager,
+      action: 'apply',
+      changeName: 'ws2-add-beta',
+      requestId: 'req-dedup',
+      bindingKey,
+    });
+
+    const posts = vi.mocked(webview.postMessage).mock.calls.map((call) => call[0]);
+    expect(posts.some((msg) => msg.status === 'delivered')).toBe(false);
+    expect(posts.some((msg) => msg.status === 'running')).toBe(true);
+  });
 });

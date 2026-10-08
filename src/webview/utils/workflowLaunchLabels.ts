@@ -68,6 +68,24 @@ export function getVerifyArchiveRunLabel(
   return getWorkflowActionButtonLabel(actionLabel, config, options);
 }
 
+export function getVerifyArchiveDescription(
+  config?: WorkflowLaunchConfigView | null,
+): string {
+  if (!config || !shouldUseAgentWorkflowLabels(config)) {
+    return t('verifyArchive.descriptionCopy');
+  }
+  if (config.effectiveAdapterId === 'cursor') {
+    if (config.cursorLaunchMode === 'agentCli') {
+      return t('verifyArchive.descriptionAgentCli');
+    }
+    if (config.cursorLaunchMode === 'clipboard') {
+      return t('verifyArchive.descriptionCopy');
+    }
+    return t('verifyArchive.descriptionAgentPanel');
+  }
+  return t('verifyArchive.descriptionAdapter');
+}
+
 export function getVerifyArchiveHint(
   action: 'verify' | 'archive',
   config?: WorkflowLaunchConfigView | null,

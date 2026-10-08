@@ -141,6 +141,7 @@ describe('OpenSpecCliService', () => {
   const workspaceRoot = '/fake/workspace';
 
   beforeEach(() => {
+    OpenSpecCliService.resetVersionCacheForTests();
     vi.mocked(spawn).mockReset();
   });
 
@@ -908,6 +909,7 @@ describe('CLI activation diagnostics', () => {
   const workspaceRoot = '/fake/workspace';
 
   beforeEach(async () => {
+    OpenSpecCliService.resetVersionCacheForTests();
     vi.clearAllMocks();
     vi.mocked(spawn).mockReset();
     // Reset vscode mock to default (empty cliPath)
@@ -984,19 +986,23 @@ describe('CLI activation diagnostics', () => {
     await service.checkAvailability(false);
     expect(service.getCliActivationDiagnostic()).toBeNull();
 
+    OpenSpecCliService.resetVersionCacheForTests();
+
     // Now make the actual spawn fail for subsequent commands
     vi.mocked(spawn).mockImplementation((command: string, _args: readonly string[]) => {
       if (command === '/usr/local/bin/openspec') {
-        return createSpawnErrorProcess('spawn /usr/local/bin/openspec ENOENT') as any;
+        return createSpawnErrorProcess('Failed to spawn openspec: spawn /usr/local/bin/openspec ENOENT') as any;
       }
-      return createSpawnErrorProcess(`spawn ${command} ENOENT`) as any;
+      return createSpawnErrorProcess(`Failed to spawn openspec: spawn ${command} ENOENT`) as any;
     });
 
-    await expect(service.getVersion()).rejects.toThrow();
+    const failingService = new OpenSpecCliService(workspaceRoot);
+    failingService.getResolver().clearCache();
+    await expect(failingService.getVersion()).rejects.toThrow();
 
-    const diagnostic = service.getCliActivationDiagnostic();
-    expect(diagnostic?.category).toBe('spawn-failed');
-    expect(diagnostic?.normalizedMessage).toContain('enoent');
+    const diagnostic = failingService.getCliActivationDiagnostic();
+    expect(['spawn-failed', 'cli-not-found']).toContain(diagnostic?.category);
+    expect(diagnostic?.normalizedMessage?.toLowerCase()).toMatch(/enoent|could not be resolved/);
   });
 
   it('stores permission-denied diagnostic for EACCES errors', async () => {

@@ -325,6 +325,9 @@ export async function processLaunchWorkflowAction(
             adapterId: effectiveAdapterId ?? undefined,
           }).target
           : 'clipboard';
+    if (launchResult.outcome === 'deduped') {
+      return;
+    }
     if (launchResult.success) {
       const status = launchResult.outcome === 'copied' ? 'copied' : 'delivered';
       postReceipt(receiptTarget, status, launchResult.message);
