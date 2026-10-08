@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as vscode from 'vscode';
-import { launchWorkflowAgentCommand } from '@extension/services/workflowAgentLaunch';
+import {
+  launchWorkflowAgentCommand,
+  resetWorkflowLaunchDedupeForTests,
+} from '@extension/services/workflowAgentLaunch';
 
 const launchAgentPanelPrompt = vi.hoisted(() => vi.fn());
 
@@ -34,6 +37,7 @@ vi.mock('vscode', () => ({
 describe('launchWorkflowAgentCommand', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetWorkflowLaunchDedupeForTests();
     vi.mocked(vscode.env.appName as unknown as string);
     Object.defineProperty(vscode.env, 'appName', { value: 'Cursor', configurable: true });
     launchAgentPanelPrompt.mockResolvedValue({
@@ -68,5 +72,17 @@ describe('launchWorkflowAgentCommand', () => {
       text: '/opsx-apply demo-change',
       autoSubmit: false,
     });
+  });
+
+  it('dedupes rapid repeat launches for the same change and action', async () => {
+    const request = {
+      action: 'verify' as const,
+      changeName: 'demo-change',
+      workspaceRoot: '/workspace',
+    };
+    await launchWorkflowAgentCommand(request);
+    await launchWorkflowAgentCommand(request);
+
+    expect(launchAgentPanelPrompt).toHaveBeenCalledTimes(1);
   });
 });

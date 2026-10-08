@@ -109,7 +109,8 @@ export function getDashboardPriorityChanges(
     const receipt = snapshot
       ? latestReceipts.get(`${change.name}\u0000${snapshot.bindingKey}`)
       : undefined;
-    const hasReceiptAttention = receipt?.status === 'failed' || receipt?.status === 'fallback';
+    const hasReceiptAttention = (receipt?.status === 'failed' || receipt?.status === 'fallback')
+      && receipt?.suppressPriorityAttention !== true;
     const hasResolverAttention = resolved !== undefined && resolved.attentionReasons.length > 0;
     if (change.attention?.required === true || hasReceiptAttention || hasResolverAttention) {
       needsAttention.push(change);

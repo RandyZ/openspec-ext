@@ -130,9 +130,12 @@ export class TaskExecutorService {
           : await adapter.fillChat(request);
 
       if (result.success) {
-        vscode.window.showInformationMessage(
-          result.message || t('task.processedVia', { adapter: adapter.displayName })
-        );
+        const panelLaunchAdapterIds = new Set(['vscode-chat', 'cursor', 'vscode-copilot']);
+        if (!panelLaunchAdapterIds.has(adapter.id)) {
+          vscode.window.showInformationMessage(
+            result.message || t('task.processedVia', { adapter: adapter.displayName })
+          );
+        }
       } else {
         vscode.window.showErrorMessage(result.message || t('task.executionFailed'));
       }

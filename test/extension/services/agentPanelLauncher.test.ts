@@ -62,7 +62,7 @@ describe('agentPanelLauncher', () => {
     );
   });
 
-  it('falls back to chat.open when composer.createNew does not add a composer', async () => {
+  it('does not fall back to chat.open when composer.createNew is available but unconfirmed', async () => {
     const executeCommand = vi.fn(async (command: string) => {
       if (command === 'composer.getOrderedSelectedComposerIds') return ['only'];
       return undefined;
@@ -83,9 +83,9 @@ describe('agentPanelLauncher', () => {
       },
     );
 
-    expect(result.layer).toBe('chatOpen');
+    expect(result.layer).toBe('composerCreateNew');
     expect(result.outcome).toBe('prefilled');
-    expect(executeCommand).toHaveBeenCalledWith('workbench.action.chat.open', { query: '/opsx-apply demo' });
+    expect(executeCommand).not.toHaveBeenCalledWith('workbench.action.chat.open', expect.anything());
   });
 
   it('uses VS Code chat.open with agent mode on non-Cursor hosts', async () => {

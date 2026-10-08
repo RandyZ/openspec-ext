@@ -217,6 +217,18 @@ export async function launchAgentPanelPrompt(
     const composerResult = await tryCursorComposerCreateNew(request, deps);
     if (composerResult) return composerResult;
 
+    const cmdsAfterComposer = await getAvailableCommands(deps);
+    if (cmdsAfterComposer.has('composer.createNew')) {
+      logger.warn(
+        'composer.createNew did not confirm a new pane; skipping chat.open fallback to avoid duplicate Agent tabs',
+      );
+      return {
+        success: true,
+        layer: 'composerCreateNew',
+        outcome: 'prefilled',
+      };
+    }
+
     const chatResult = await tryCursorChatOpen(request, deps);
     if (chatResult) return chatResult;
 

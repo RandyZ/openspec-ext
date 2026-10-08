@@ -45,6 +45,8 @@ export interface WorkflowActionReceipt {
   readonly target: WorkflowCommandTarget;
   readonly status: WorkflowActionReceiptStatus;
   readonly message?: string;
+  /** When false, Dashboard must not promote the change to NEEDS ATTENTION (launch validation failures). */
+  readonly suppressPriorityAttention?: boolean;
 }
 
 export function createWorkflowRequestId(prefix = 'workflow'): string {

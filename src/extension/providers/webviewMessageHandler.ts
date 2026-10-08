@@ -41,10 +41,60 @@ import {
   createWorkflowRequestId,
   type ChangeWorkflowSnapshot,
   type WorkflowActionReceipt,
+  type WorkflowBindingIdentity,
 } from '../../shared/changeWorkflow';
 
 function postWorkflowReceipt(webview: vscode.Webview, receipt: WorkflowActionReceipt): void {
   webview.postMessage({ type: 'workflowActionReceipt', ...receipt });
+}
+
+function parseWorkflowBindingFromKey(bindingKey: string): WorkflowBindingIdentity | undefined {
+  try {
+    const parsed: unknown = JSON.parse(bindingKey);
+    if (!Array.isArray(parsed) || parsed.length < 4) return undefined;
+    const [projectId, commandCwd, rootPath, rootSource, storeId] = parsed;
+    if (
+      typeof projectId !== 'string'
+      || typeof commandCwd !== 'string'
+      || typeof rootPath !== 'string'
+      || typeof rootSource !== 'string'
+    ) {
+      return undefined;
+    }
+    return {
+      projectId,
+      commandCwd,
+      rootPath,
+      rootSource,
+      ...(typeof storeId === 'string' && storeId.length > 0 ? { storeId } : {}),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveWorkflowBindingForLaunch(
+  scope: OpenSpecScope | undefined,
+  bindingKey?: string,
+): WorkflowBindingIdentity | undefined {
+  if (scope?.workflowBinding) {
+    return scope.workflowBinding;
+  }
+  if (typeof bindingKey === 'string' && bindingKey.trim()) {
+    return parseWorkflowBindingFromKey(bindingKey);
+  }
+  return undefined;
+}
+
+function postLaunchValidationFailure(
+  webview: vscode.Webview,
+  receipt: WorkflowActionReceipt,
+  logMessage: string,
+  userMessage: string,
+): void {
+  logger.warn(logMessage);
+  void vscode.window.showWarningMessage(userMessage);
+  postWorkflowReceipt(webview, { ...receipt, suppressPriorityAttention: true });
 }
 
 /**
@@ -93,12 +143,17 @@ async function resolveActiveArtifactPath(
   const snapshotReader = dataManager as DataManager & {
     getChangeWorkflowSnapshot?: (
       name: string,
-      scope?: OpenSpecScope
+      scope?: OpenSpecScope,
+      binding?: WorkflowBindingIdentity
     ) => Promise<ChangeWorkflowSnapshot | undefined>;
   };
   if (typeof snapshotReader.getChangeWorkflowSnapshot !== 'function') return null;
 
-  const snapshot = await snapshotReader.getChangeWorkflowSnapshot(changeName, scope);
+  const snapshot = await snapshotReader.getChangeWorkflowSnapshot(
+    changeName,
+    scope,
+    scope?.workflowBinding,
+  );
   const artifact = snapshot?.artifacts.find((candidate) => candidate.id === artifactType);
   if (!artifact || artifact.existingOutputPaths.length === 0) return null;
 
@@ -1006,55 +1061,74 @@ export async function handleWebviewMessage(
       const { rootPath: scopeRootPath, scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
       const correlated = message.requestId !== undefined || message.bindingKey !== undefined;
       const requestId = message.requestId ?? createWorkflowRequestId('legacy');
+      const workflowBinding = resolveWorkflowBindingForLaunch(scope, message.bindingKey);
       const snapshotReader = dataManager as DataManager & {
         getChangeWorkflowSnapshot?: (
           name: string,
-          scope?: OpenSpecScope
+          scope?: OpenSpecScope,
+          binding?: WorkflowBindingIdentity
         ) => Promise<ChangeWorkflowSnapshot | undefined>;
       };
       let expectedBindingKey: string | undefined;
       if (typeof snapshotReader.getChangeWorkflowSnapshot === 'function') {
         try {
-          expectedBindingKey = (await snapshotReader.getChangeWorkflowSnapshot(changeName, scope))?.bindingKey;
+          expectedBindingKey = (
+            await snapshotReader.getChangeWorkflowSnapshot(changeName, scope, workflowBinding)
+          )?.bindingKey;
         } catch (error) {
           logger.warn('Failed to validate workflow action binding', error as Error);
           if (correlated) {
-            postWorkflowReceipt(webview, {
-              requestId,
-              changeName,
-              bindingKey: message.bindingKey ?? 'unknown',
-              action,
-              target: 'unknown',
-              status: 'failed',
-              message: 'Unable to validate the current Change binding.',
-            });
+            postLaunchValidationFailure(
+              webview,
+              {
+                requestId,
+                changeName,
+                bindingKey: message.bindingKey ?? 'unknown',
+                action,
+                target: 'unknown',
+                status: 'failed',
+                message: t('workflow.bindingValidationFailed'),
+              },
+              `Workflow binding validation error for ${changeName}: ${(error as Error).message}`,
+              t('workflow.bindingValidationFailed'),
+            );
             break;
           }
         }
       }
       const receiptBindingKey = message.bindingKey ?? expectedBindingKey ?? 'legacy';
       if (correlated && (!message.requestId || !message.bindingKey)) {
-        postWorkflowReceipt(webview, {
-          requestId,
-          changeName,
-          bindingKey: receiptBindingKey,
-          action,
-          target: 'unknown',
-          status: 'failed',
-          message: 'A request id and bound Change root are required.',
-        });
+        postLaunchValidationFailure(
+          webview,
+          {
+            requestId,
+            changeName,
+            bindingKey: receiptBindingKey,
+            action,
+            target: 'unknown',
+            status: 'failed',
+            message: t('workflow.bindingRequestIncomplete'),
+          },
+          `Workflow launch rejected for ${changeName}: missing requestId or bindingKey`,
+          t('workflow.bindingRequestIncomplete'),
+        );
         break;
       }
       if (message.bindingKey && expectedBindingKey && message.bindingKey !== expectedBindingKey) {
-        postWorkflowReceipt(webview, {
-          requestId,
-          changeName,
-          bindingKey: message.bindingKey,
-          action,
-          target: 'unknown',
-          status: 'failed',
-          message: 'The workflow request belongs to a different Change root.',
-        });
+        postLaunchValidationFailure(
+          webview,
+          {
+            requestId,
+            changeName,
+            bindingKey: message.bindingKey,
+            action,
+            target: 'unknown',
+            status: 'failed',
+            message: t('workflow.bindingMismatch'),
+          },
+          `Workflow binding mismatch for ${changeName}: expected=${expectedBindingKey}, received=${message.bindingKey}`,
+          t('workflow.bindingMismatch'),
+        );
         break;
       }
 

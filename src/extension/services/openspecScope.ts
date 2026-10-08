@@ -8,6 +8,7 @@
 
 import type { OpenSpecCapabilities } from './openspecFeatures';
 import type { OpenSpecRuntimeSource } from './openspecCliResolver';
+import type { WorkflowBindingIdentity } from '../../shared/changeWorkflow';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -26,6 +27,8 @@ export interface OpenSpecScope {
   label: string;
   rootPath: string;
   source: OpenSpecScopeSource;
+  /** When set, workflow binding keys use this identity instead of inferring from `source`. */
+  workflowBinding?: WorkflowBindingIdentity;
   storeId?: string;
   /** How the OpenSpec CLI runtime was resolved for this scope (installed/customPath/localSource). */
   runtimeSource: OpenSpecRuntimeSource;

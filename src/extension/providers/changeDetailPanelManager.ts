@@ -48,6 +48,13 @@ export function createProjectBoundScope(
     label,
     rootPath: binding.rootPath,
     source: binding.storeId ? 'store' : 'declared',
+    workflowBinding: {
+      projectId: binding.projectId,
+      commandCwd: binding.commandCwd,
+      rootPath: binding.rootPath,
+      rootSource: binding.rootSource,
+      ...(binding.storeId ? { storeId: binding.storeId } : {}),
+    },
     ...(binding.storeId ? { storeId: binding.storeId } : {}),
     runtimeSource: 'installed',
     capabilities: {

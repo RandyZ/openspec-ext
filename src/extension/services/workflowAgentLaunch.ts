@@ -47,6 +47,13 @@ export interface WorkflowAgentLaunchResult {
 
 const PANEL_ADAPTER_IDS = new Set(['cursor', 'vscode-copilot', 'vscode-chat']);
 
+const LAUNCH_DEDUPE_MS = 2500;
+let lastWorkflowLaunch: { key: string; at: number } | undefined;
+
+function workflowLaunchDedupeKey(request: WorkflowAgentLaunchRequest): string {
+  return `${request.workspaceRoot}\u0000${request.changeName}\u0000${request.action}`;
+}
+
 function readAgentAutoSubmitMode(): AgentAutoSubmitMode {
   const raw = vscode.workspace.getConfiguration('openspec').get<string>('agentAutoSubmit');
   if (raw === 'never' || raw === 'always' || raw === 'readOnly') {
@@ -74,9 +81,35 @@ function notifyLaunchResult(
   vscode.window.showInformationMessage(t('agentLaunch.prefilled', { command }));
 }
 
+export function resetWorkflowLaunchDedupeForTests(): void {
+  lastWorkflowLaunch = undefined;
+}
+
 export async function launchWorkflowAgentCommand(
   request: WorkflowAgentLaunchRequest,
 ): Promise<WorkflowAgentLaunchResult> {
+  const dedupeKey = workflowLaunchDedupeKey(request);
+  const now = Date.now();
+  if (
+    lastWorkflowLaunch
+    && lastWorkflowLaunch.key === dedupeKey
+    && now - lastWorkflowLaunch.at < LAUNCH_DEDUPE_MS
+  ) {
+    const command = buildWorkflowCommand({
+      action: request.action,
+      changeName: request.changeName,
+      target: 'clipboard',
+    });
+    return {
+      success: true,
+      command,
+      target: 'agentPanel',
+      outcome: 'prefilled',
+      message: t('workflow.launchDeduped'),
+    };
+  }
+  lastWorkflowLaunch = { key: dedupeKey, at: now };
+
   const launchConfig = getWorkflowLaunchConfig();
   const launchConfigView = toWorkflowLaunchConfigView(launchConfig);
   const autoSubmit = shouldAutoSubmitWorkflowAction(request.action, readAgentAutoSubmitMode());

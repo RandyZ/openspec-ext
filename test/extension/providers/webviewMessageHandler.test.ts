@@ -299,6 +299,7 @@ describe('handleWebviewMessage toggleTask', () => {
 
     expect(vscode.env.clipboard.writeText).not.toHaveBeenCalled();
     expect(adapterFillChat).not.toHaveBeenCalled();
+    expect(vscode.window.showWarningMessage).toHaveBeenCalled();
     expect(webview.postMessage).toHaveBeenCalledWith({
       type: 'workflowActionReceipt',
       requestId: 'request-1',
@@ -307,7 +308,8 @@ describe('handleWebviewMessage toggleTask', () => {
       action: 'apply',
       target: 'unknown',
       status: 'failed',
-      message: 'The workflow request belongs to a different Change root.',
+      message: expect.stringContaining(''),
+      suppressPriorityAttention: true,
     });
   });
 

@@ -1004,6 +1004,9 @@ export class OpenSpecCliService {
 
   private defaultWorkflowBinding(scope?: ScopeOption | OpenSpecScope): WorkflowBindingIdentity {
     const scoped = scope as Partial<OpenSpecScope> | undefined;
+    if (scoped?.workflowBinding) {
+      return scoped.workflowBinding;
+    }
     return {
       projectId: this.workspaceRoot,
       commandCwd: this.workspaceRoot,
