@@ -643,6 +643,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
             agentAdapters: presentation.agentAdapters as ExecutorLaunchPresentation['agentAdapters'],
             workflowLaunchConfig: presentation.workflowLaunchConfig as ExecutorLaunchPresentation['workflowLaunchConfig'],
             uiWorkflowLaunchConfig: presentation.uiWorkflowLaunchConfig as ExecutorLaunchPresentation['uiWorkflowLaunchConfig'],
+            isCursorHost: presentation.isCursorHost === true,
           }));
         }
       } else if (data.type === 'taskExecutionFinished' && data.changeName === changeName) {
