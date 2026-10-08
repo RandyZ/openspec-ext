@@ -52,16 +52,21 @@ describe('processLaunchWorkflowAction', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    launchWorkflowAgentCommand.mockResolvedValue({
-      success: false,
-      message: 'spawn agent ENOENT',
-      target: 'agentCli',
-      layer: 'agentCli',
-      command: '/opsx-apply x',
-    });
-    notifyWorkflowLaunchFailure.mockImplementation(async (_reason: string, retry?: () => void) => {
-      if (retry) await retry();
-    });
+    launchWorkflowAgentCommand
+      .mockResolvedValueOnce({
+        success: false,
+        message: 'spawn agent ENOENT',
+        target: 'agentCli',
+        layer: 'agentCli',
+        command: '/opsx-apply x',
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        target: 'agentPanel',
+        layer: 'composerCreateNew',
+        outcome: 'prefilled',
+        command: '/opsx-apply x',
+      });
   });
 
   it('re-enters the launch pipeline when Retry is chosen after failure', async () => {
@@ -88,6 +93,10 @@ describe('processLaunchWorkflowAction', () => {
     });
 
     expect(notifyWorkflowLaunchFailure).toHaveBeenCalledTimes(1);
+    expect(launchWorkflowAgentCommand).toHaveBeenCalledTimes(1);
+    const retry = notifyWorkflowLaunchFailure.mock.calls[0]?.[1];
+    expect(retry).toBeTypeOf('function');
+    await retry?.();
     expect(launchWorkflowAgentCommand).toHaveBeenCalledTimes(2);
     const posts = vi.mocked(webview.postMessage).mock.calls.map((call) => call[0]);
     expect(posts.some((msg) => msg.status === 'running')).toBe(true);

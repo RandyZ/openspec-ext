@@ -262,7 +262,7 @@
     "build:webview": "vite build",
     "dev:webview": "vite",
     "postinstall": "node scripts/link-vitest-pnpm.js",
-    "test": "vitest run",
+    "test": "NODE_OPTIONS=--max-old-space-size=8192 vitest run",
     "test:watch": "vitest",
     "package": "node scripts/package-with-marketplace-readme.js",
     "verify:vsix-webview": "node scripts/verify-vsix-webview.js",
