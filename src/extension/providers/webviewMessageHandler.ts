@@ -5,7 +5,7 @@ import { logger } from '../utils/logger';
 import { DataManager } from '../services/dataManager';
 import { getChangesBasePath } from '../utils/workspaceRoot';
 import { isPathUnderRoot } from '../utils/pathSafety';
-import { getAdapterById, getCurrentAdapter } from '../adapters';
+import { getCurrentAdapter } from '../adapters';
 import type {
   ArtifactOutputDescriptor,
   CacheStatsView,
@@ -22,11 +22,7 @@ import {
 } from '../services/interactiveAgentTerminalManager';
 import { confirmDirectArchive } from '../commands/archiveConfirm';
 import { formatBytes } from '../utils/formatBytes';
-import {
-  isCopyOnlyWorkflowMode,
-  shouldForceCursorWorkflowRoute,
-  toWorkflowLaunchConfigView,
-} from '../../shared/workflowLaunchConfig';
+import { toWorkflowLaunchConfigView } from '../../shared/workflowLaunchConfig';
 import type {
   InteractiveWorkflowAction,
   InteractiveWorkflowState,
