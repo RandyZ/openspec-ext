@@ -539,14 +539,6 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     }
   }, [activeTab, changeName, postMessage, scopeId]);
 
-  useEffect(() => {
-    if (activeTab !== 'verifyArchive') return;
-    postMessage(sendMessage.getInteractiveWorkflowState(changeName, scopeId));
-    if (pendingInteractiveAction) {
-      postMessage(sendMessage.runInteractiveWorkflow(changeName, pendingInteractiveAction, scopeId));
-      setPendingInteractiveAction(null);
-    }
-  }, [activeTab, changeName, pendingInteractiveAction, postMessage, scopeId]);
 
 
   const handleOpenInEditor = () => {
@@ -608,12 +600,18 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     ));
   };
 
+  useEffect(() => {
+    if (activeTab !== 'verifyArchive' || !pendingInteractiveAction) return;
+    handleLaunchWorkflow(pendingInteractiveAction);
+    setPendingInteractiveAction(null);
+  }, [activeTab, pendingInteractiveAction]);
+
   const handleResolvedAction = (
     action: 'explore' | 'continue' | 'ff' | 'apply' | 'verify' | 'archive' | 'sync'
   ) => {
     if (action === 'verify' || action === 'archive') {
       setActiveTab('verifyArchive');
-      setPendingInteractiveAction(action);
+      handleLaunchWorkflow(action);
       return;
     }
     handleLaunchWorkflow(action);
@@ -748,11 +746,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
               isArchived={isArchived}
               canArchiveNow={canArchiveNow}
               archiveNowDisabledReason={archiveNowDisabledReason}
-              sessions={interactiveState.sessions}
-              onRun={(action) => postMessage(sendMessage.runInteractiveWorkflow(changeName, action, scopeId))}
-              onReveal={(action) => postMessage(sendMessage.revealInteractiveWorkflow(changeName, action, scopeId))}
-              onStop={(action) => postMessage(sendMessage.stopInteractiveWorkflow(changeName, action, scopeId))}
-              onClear={(action) => postMessage(sendMessage.clearInteractiveWorkflow(changeName, action, scopeId))}
+              onRun={(action) => handleLaunchWorkflow(action)}
               onArchiveNow={handleArchiveNow}
             />
 

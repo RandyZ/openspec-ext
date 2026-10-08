@@ -1,5 +1,10 @@
 export type WorkflowLaunchMode = 'clipboard' | 'adapter';
-export type CursorLaunchMode = 'deeplink' | 'chatCommand' | 'clipboard' | 'agentCli';
+export type CursorLaunchMode =
+  | 'agentPanel'
+  | 'deeplink'
+  | 'chatCommand'
+  | 'clipboard'
+  | 'agentCli';
 export type PreferredAgentAdapter =
   | 'clipboard'
   | 'cursor'
@@ -65,7 +70,7 @@ export function resolveWorkflowLaunchConfig(
     workflowLaunchMode === 'adapter' &&
     preferredAgentAdapter === 'cursor'
   ) {
-    cursorLaunchMode = 'deeplink';
+    cursorLaunchMode = 'agentPanel';
   }
 
   return {

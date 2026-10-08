@@ -389,14 +389,14 @@ describe('ChangeCard badge and action consistency', () => {
   });
 });
 
-describe('Dashboard ready-to-verify Verify & Archive path', () => {
-  it('routes verify/archive through openChangeDetailInEditor with scopeId', () => {
+describe('Dashboard ready-to-verify Verify path', () => {
+  it('routes verify through unified launchWorkflowAction with scopeId', () => {
     const source = readFileSync(
       path.resolve(__dirname, '../../../src/webview/components/Dashboard.tsx'),
       'utf8'
     );
-    expect(source).toContain("action === 'verify' || action === 'archive'");
-    expect(source).toContain("openChangeDetailInEditor(changeName, 'verifyArchive', action, state.data?.scope?.id)");
+    expect(source).toContain('launchWorkflowAction');
+    expect(source).not.toContain("openChangeDetailInEditor(changeName, 'verifyArchive', action, state.data?.scope?.id)");
     expect(source).toContain('getDashboardActionScopeId(projectSidebar, state.data?.scope?.id)');
   });
 

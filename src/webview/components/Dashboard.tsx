@@ -610,21 +610,6 @@ export const Dashboard: React.FC = () => {
   };
 
   const handleLaunchWorkflow = (action: WorkflowAction, changeName: string, bindingKey?: string) => {
-    if (action === 'verify' || action === 'archive') {
-      postMessage(
-        projectSidebar
-          ? sendMessage.openChangeDetailInEditor(
-            changeName,
-            'verifyArchive',
-            action,
-            undefined,
-            projectSidebar.project,
-            projectSidebar.binding,
-          )
-          : sendMessage.openChangeDetailInEditor(changeName, 'verifyArchive', action, state.data?.scope?.id)
-      );
-      return;
-    }
     const requestId = createWorkflowRequestId('dashboard');
     if (bindingKey) {
       const key = `${changeName}\u0000${bindingKey}`;
@@ -781,7 +766,7 @@ export const Dashboard: React.FC = () => {
               const ctaLabel = group.key === 'needs-attention'
                 ? t('verifyArchive.reviewArchive')
                 : group.key === 'ready-to-verify'
-                  ? t('detail.verifyArchive')
+                  ? t('verifyArchive.runVerify')
                   : recommended
                     ? getWorkflowActionButtonLabel(recommended.label, priorityWorkflowConfig)
                     : null;

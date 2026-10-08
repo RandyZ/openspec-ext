@@ -46,14 +46,14 @@ describe('workflow launch config', () => {
     });
   });
 
-  it('defaults Cursor hosts to launch mode with deeplink when settings are missing', () => {
+  it('defaults Cursor hosts to launch mode with agentPanel when settings are missing', () => {
     vi.mocked(vscode.env).appName = 'Cursor';
     mockConfig({});
 
     expect(getWorkflowLaunchConfig()).toEqual({
       workflowLaunchMode: 'adapter',
       preferredAgentAdapter: 'cursor',
-      cursorLaunchMode: 'deeplink',
+      cursorLaunchMode: 'agentPanel',
       cursorAgentModel: 'auto',
       cursorLaunchModeExplicit: false,
     });

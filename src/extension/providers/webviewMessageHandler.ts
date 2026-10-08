@@ -13,7 +13,9 @@ import type {
 } from '../../webview/types/messages';
 import { t } from '../../i18n';
 import { buildWorkflowLaunchPayload } from '../../shared/workflowCommand';
+import type { WorkflowAction } from '../../shared/workflowCommand';
 import { getWorkflowLaunchConfig } from '../services/workflowLaunchConfig';
+import { launchWorkflowAgentCommand } from '../services/workflowAgentLaunch';
 import { postExecutorLaunchPresentationFromHost } from '../services/executorLaunchPresentation';
 import {
   InteractiveAgentTerminalManager,
@@ -1087,79 +1089,37 @@ export async function handleWebviewMessage(
           `effectiveAdapterId=${effectiveAdapterId ?? 'none'}`
       );
 
-      if (isCopyOnlyWorkflowMode(launchConfigView)) {
-        const payload = buildWorkflowLaunchPayload({
-          action,
-          changeName,
-          workflowLaunchMode: 'clipboard',
-        });
-        logger.debug(`[workflow] copy-only route: command=${payload.command}`);
-        try {
-          await vscode.env.clipboard.writeText(payload.command);
-          vscode.window.showInformationMessage(t('workflow.copiedCommand', { command: payload.command }));
-          postReceipt('clipboard', 'copied', 'Command copied. Paste or send it to continue.');
-        } catch (error) {
-          postReceipt('clipboard', 'failed', (error as Error).message);
-        }
-        break;
-      }
-
-      const adapter = shouldForceCursorWorkflowRoute(launchConfig)
-        && launchConfig.preferredAgentAdapter !== 'clipboard'
-        ? await getAdapterById('cursor')
-        : await getCurrentAdapter();
-      if (!adapter) {
-        const payload = buildWorkflowLaunchPayload({
-          action,
-          changeName,
-          workflowLaunchMode: 'clipboard',
-        });
-        logger.warn(`[workflow] no available adapter for effectiveAdapterId=${effectiveAdapterId}; copied fallback command=${payload.command}`);
-        try {
-          await vscode.env.clipboard.writeText(payload.command);
-          vscode.window.showInformationMessage(t('workflow.adapterFallback'));
-          postReceipt('clipboard', 'fallback', t('workflow.adapterFallback'));
-        } catch (error) {
-          postReceipt('clipboard', 'failed', (error as Error).message);
-        }
-        break;
-      }
-
-      const payload = buildWorkflowLaunchPayload({
-        action,
-        changeName,
-        workflowLaunchMode: 'adapter',
-        adapterId: adapter.id,
-      });
-      logger.info(`[workflow] launching via adapter: id=${adapter.id}, displayName=${adapter.displayName}, command=${payload.command}`);
       try {
-        const result = await adapter.fillChat({
+        const launchResult = await launchWorkflowAgentCommand({
+          action: action as WorkflowAction,
           changeName,
-          taskIndex: -1,
-          taskText: '',
-          contextFiles: [],
           workspaceRoot: scopeRootPath,
-          promptOverride: payload.command,
         });
         logger.info(
-          `[workflow] adapter result: id=${result.adapterId}, success=${result.success}, message=${result.message ?? ''}`
+          `[workflow] agent launch: target=${launchResult.target}, layer=${launchResult.layer ?? 'n/a'}, ` +
+            `outcome=${launchResult.outcome ?? 'n/a'}, command=${launchResult.command}`
         );
-        if (result.success) {
-          postReceipt(payload.target, 'delivered', result.message ?? 'Workflow command delivered to the selected target.');
+        const receiptTarget = launchResult.target === 'agentPanel'
+          ? 'cursor'
+          : launchResult.target === 'agentCli'
+            ? 'cursor'
+            : launchResult.target === 'externalAdapter'
+              ? buildWorkflowLaunchPayload({
+                action: action as WorkflowAction,
+                changeName,
+                workflowLaunchMode: 'adapter',
+                adapterId: effectiveAdapterId ?? undefined,
+              }).target
+              : 'clipboard';
+        if (launchResult.success) {
+          const status = launchResult.outcome === 'copied' ? 'copied' : 'delivered';
+          postReceipt(receiptTarget, status, launchResult.message);
         } else {
-          await vscode.env.clipboard.writeText(payload.command);
-          vscode.window.showInformationMessage(t('workflow.adapterFallback'));
-          postReceipt('clipboard', 'fallback', t('workflow.adapterFallback'));
+          postReceipt(receiptTarget, 'failed', launchResult.message);
         }
       } catch (error) {
-        logger.error('launchWorkflowAction adapter failed', error as Error);
-        try {
-          await vscode.env.clipboard.writeText(payload.command);
-          vscode.window.showInformationMessage(t('workflow.adapterFallback'));
-          postReceipt('clipboard', 'fallback', t('workflow.adapterFallback'));
-        } catch (fallbackError) {
-          postReceipt(payload.target, 'failed', (fallbackError as Error).message || (error as Error).message);
-        }
+        logger.error('launchWorkflowAction failed', error as Error);
+        postReceipt('unknown', 'failed', (error as Error).message);
       }
       break;
     }
@@ -1243,15 +1203,7 @@ export async function handleWebviewMessage(
     case 'getInteractiveWorkflowState': {
       const { changeName } = message;
       if (typeof changeName !== 'string' || !changeName.trim()) break;
-      const { rootPath: scopeRootPath, scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
-      const state = interactiveTerminalManager
-        ? interactiveTerminalManager.getState(scopeRootPath, changeName, scope)
-        : buildInteractiveWorkflowErrorState(
-          changeName,
-          'verify',
-          t('verifyArchive.managerUnavailable')
-        );
-      postInteractiveWorkflowState(webview, changeName, state);
+      postInteractiveWorkflowState(webview, changeName, { changeName, sessions: {} });
       break;
     }
 
@@ -1561,13 +1513,6 @@ async function handleInteractiveWorkflowAction(params: {
       `Invalid interactive workflow action: ${String(params.action)}`
     );
   }
-  if (!params.interactiveTerminalManager) {
-    return buildInteractiveWorkflowErrorState(
-      params.changeName,
-      params.action,
-      t('verifyArchive.managerUnavailable')
-    );
-  }
   if (params.changeName.startsWith('archive:') && params.action === 'archive') {
     return buildInteractiveWorkflowErrorState(
       params.changeName,
@@ -1576,36 +1521,24 @@ async function handleInteractiveWorkflowAction(params: {
     );
   }
 
-  switch (params.kind) {
-    case 'run':
-      return params.interactiveTerminalManager.start({
-        workspaceRoot: params.workspaceRoot,
-        changeName: params.changeName,
+  if (params.kind === 'run') {
+    try {
+      await launchWorkflowAgentCommand({
         action: params.action,
-        scope: params.scope,
+        changeName: params.changeName,
+        workspaceRoot: params.workspaceRoot,
       });
-    case 'reveal':
-      return params.interactiveTerminalManager.reveal(
-        params.workspaceRoot,
+    } catch (error) {
+      return buildInteractiveWorkflowErrorState(
         params.changeName,
         params.action,
-        params.scope
+        (error as Error).message || t('agentLaunch.failed'),
       );
-    case 'stop':
-      return params.interactiveTerminalManager.stop(
-        params.workspaceRoot,
-        params.changeName,
-        params.action,
-        params.scope
-      );
-    case 'clear':
-      return params.interactiveTerminalManager.clear(
-        params.workspaceRoot,
-        params.changeName,
-        params.action,
-        params.scope
-      );
+    }
+    return { changeName: params.changeName, sessions: {} };
   }
+
+  return { changeName: params.changeName, sessions: {} };
 }
 
 /**

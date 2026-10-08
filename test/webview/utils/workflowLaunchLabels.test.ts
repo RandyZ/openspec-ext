@@ -58,7 +58,7 @@ describe('workflow launch labels', () => {
         preferredAgentAdapter: 'cursor',
         cursorLaunchMode: 'deeplink',
       }),
-    ).toBe('Runs in Cursor');
+    ).toBe('Opens Agent panel');
   });
 
   it('shows Chat wording for Cursor chat command routing', () => {

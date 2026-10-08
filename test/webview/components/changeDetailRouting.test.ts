@@ -36,9 +36,9 @@ describe('ChangeDetail workflow routing', () => {
     expect(source).not.toContain('const ALL_TABS');
   });
 
-  it('routes Verify and Archive through the dedicated interactive tab', () => {
+  it('routes Verify and Archive through unified workflow launch', () => {
     expect(source).toContain("action === 'verify' || action === 'archive'");
-    expect(source).toContain('setPendingInteractiveAction(action)');
+    expect(source).toContain('handleLaunchWorkflow(action)');
     expect(source).toContain('onAction={handleResolvedAction}');
   });
 
@@ -73,13 +73,13 @@ describe('ChangeDetail workflow routing', () => {
     expect(source).toContain('canArchiveNow');
     expect(source).toContain('onArchiveNow');
     expect(source).toContain('sendMessage.archiveChange(changeName, scopeId)');
-    expect(source).toContain('runInteractiveWorkflow(changeName, action, scopeId)');
+    expect(source).toContain('handleLaunchWorkflow(action)');
 
     const interactiveHandler = source.slice(
       source.indexOf('const handleResolvedAction'),
       source.indexOf('const handleConfirmTaskToggle')
     );
-    expect(interactiveHandler).toContain('setPendingInteractiveAction(action)');
+    expect(interactiveHandler).toContain('handleLaunchWorkflow(action)');
     expect(interactiveHandler).not.toContain('archiveChange');
 
     const panel = source.slice(

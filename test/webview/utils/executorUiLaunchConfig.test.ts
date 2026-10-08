@@ -104,7 +104,7 @@ describe('executorUiLaunchConfig', () => {
     });
 
     expect(getExecutorUiModeLabel(uiConfig)).toBe('cursor');
-    expect(getWorkflowLaunchModeHint(uiConfig)).toBe('Runs in Cursor');
+    expect(getWorkflowLaunchModeHint(uiConfig)).toBe('Opens Agent panel');
   });
 
   it('resolves select value to clipboard when currentId is illegal', () => {

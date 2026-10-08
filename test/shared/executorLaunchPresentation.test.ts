@@ -36,7 +36,7 @@ describe('buildExecutorLaunchPresentation', () => {
     expect(presentation.uiWorkflowLaunchConfig.effectiveAdapterId).toBe('cursor');
     expect(getTaskNextButtonLabel(presentation.uiWorkflowLaunchConfig)).toBe('Next with Agent');
     expect(getWorkflowActionButtonLabel('Continue planning', presentation.uiWorkflowLaunchConfig)).toBe('Open Cursor · Continue planning');
-    expect(getWorkflowLaunchModeHint(presentation.uiWorkflowLaunchConfig)).toBe('Runs in Cursor');
+    expect(getWorkflowLaunchModeHint(presentation.uiWorkflowLaunchConfig)).toBe('Opens Agent panel');
   });
 
   it('cursor executor with both adapters available resolves to Next', () => {
@@ -97,6 +97,6 @@ describe('b663c24 regression: settings cursor + runtime clipboard only', () => {
     expect(getWorkflowActionButtonLabel('Continue planning', presentation.uiWorkflowLaunchConfig)).toBe(
       'Open Cursor · Continue planning',
     );
-    expect(getWorkflowLaunchModeHint(presentation.uiWorkflowLaunchConfig)).toBe('Runs in Cursor');
+    expect(getWorkflowLaunchModeHint(presentation.uiWorkflowLaunchConfig)).toBe('Opens Agent panel');
   });
 });

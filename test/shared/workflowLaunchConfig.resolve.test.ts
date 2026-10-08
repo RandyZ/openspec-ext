@@ -16,13 +16,13 @@ const baseConfig: WorkflowLaunchConfigWithExplicit = {
 };
 
 describe('resolveWorkflowLaunchConfig', () => {
-  it('defaults Cursor hosts to launch mode with deeplink when settings are unset', () => {
+  it('defaults Cursor hosts to launch mode with agentPanel when settings are unset', () => {
     const resolved = resolveWorkflowLaunchConfig(baseConfig, { isCursorHost: true });
 
     expect(resolved).toMatchObject({
       workflowLaunchMode: 'adapter',
       preferredAgentAdapter: 'cursor',
-      cursorLaunchMode: 'deeplink',
+      cursorLaunchMode: 'agentPanel',
     });
     expect(getEffectiveWorkflowAdapterId(resolved)).toBe('cursor');
   });
@@ -54,7 +54,7 @@ describe('resolveWorkflowLaunchConfig', () => {
   it('never smart-defaults agentCli; only explicit cursorLaunchMode may select it', () => {
     const resolved = resolveWorkflowLaunchConfig(baseConfig, { isCursorHost: true });
 
-    expect(resolved.cursorLaunchMode).toBe('deeplink');
+    expect(resolved.cursorLaunchMode).toBe('agentPanel');
 
     const explicitAgentCli = resolveWorkflowLaunchConfig(
       {

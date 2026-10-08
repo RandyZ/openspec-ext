@@ -16,9 +16,16 @@ vi.mock('child_process', () => ({
   spawn: mocks.spawn,
 }));
 
+const launchAgentPanelPrompt = vi.hoisted(() => vi.fn());
+
+vi.mock('@extension/services/agentPanelLauncher', () => ({
+  launchAgentPanelPrompt,
+}));
+
 vi.mock('vscode', () => ({
   env: {
     appName: 'Cursor',
+    uriScheme: 'cursor',
     clipboard: {
       writeText: vi.fn(),
     },
@@ -64,8 +71,13 @@ describe('cursorAdapter fillChat launch modes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockConfig({
-      cursorLaunchMode: 'deeplink',
+      cursorLaunchMode: 'agentPanel',
       cursorAgentModel: 'auto',
+    });
+    launchAgentPanelPrompt.mockResolvedValue({
+      success: true,
+      layer: 'composerCreateNew',
+      outcome: 'prefilled',
     });
     openExternal.mockResolvedValue(true);
     executeCommand.mockResolvedValue(undefined);
@@ -83,7 +95,7 @@ describe('cursorAdapter fillChat launch modes', () => {
     expect(await cursorAdapter.isAvailable()).toBe(true);
   });
 
-  it('copies command and opens Cursor deeplink in deeplink mode', async () => {
+  it('copies command and opens the Agent panel for default panel mode', async () => {
     await cursorAdapter.fillChat({
       changeName: 'demo-change',
       taskIndex: -1,
@@ -94,32 +106,11 @@ describe('cursorAdapter fillChat launch modes', () => {
     });
 
     expect(writeText).toHaveBeenCalledWith('/opsx-apply demo-change');
-    expect(openExternal).toHaveBeenCalledWith(
-      'cursor://anysphere.cursor-deeplink/prompt?text=%2Fopsx-apply%20demo-change'
-    );
+    expect(launchAgentPanelPrompt).toHaveBeenCalledWith({
+      text: '/opsx-apply demo-change',
+      autoSubmit: false,
+    });
     expect(showInformationMessage).toHaveBeenCalledWith(expect.stringContaining('/opsx-apply'));
-  });
-
-  it('copies command and opens chat query in chatCommand mode', async () => {
-    mockConfig({
-      cursorLaunchMode: 'chatCommand',
-      cursorAgentModel: 'auto',
-    });
-
-    await cursorAdapter.fillChat({
-      changeName: 'demo-change',
-      taskIndex: -1,
-      taskText: '',
-      contextFiles: [],
-      workspaceRoot: '/workspace',
-      promptOverride: '/opsx-apply demo-change',
-    });
-
-    expect(writeText).toHaveBeenCalledWith('/opsx-apply demo-change');
-    expect(executeCommand).toHaveBeenCalledWith('workbench.action.chat.open', {
-      query: '/opsx-apply demo-change',
-      isPartialQuery: true,
-    });
   });
 
   it('only copies command in clipboard mode', async () => {
@@ -211,8 +202,12 @@ describe('cursorAdapter fillChat launch modes', () => {
     }
   });
 
-  it('falls back to copied command notification when deeplink fails', async () => {
-    openExternal.mockRejectedValue(new Error('no handler'));
+  it('shows copied notification when panel launch falls back to clipboard', async () => {
+    launchAgentPanelPrompt.mockResolvedValueOnce({
+      success: true,
+      layer: 'clipboard',
+      outcome: 'copied',
+    });
 
     await cursorAdapter.fillChat({
       changeName: 'demo-change',

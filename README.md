@@ -14,7 +14,7 @@ OpenSpec brings change planning and execution into the editor. Review what needs
 - **Stores and Worksets**: Use registered Stores as planning roots, then browse, inspect, create, and open trusted multi-folder Worksets without leaving the sidebar.
 - **Recommended actions**: A compact, resolver-backed action rail surfaces up to three next steps by priority: Needs Attention, Ready to Verify, then Recommended.
 - **Change detail**: Proposal, Specs, Design, Tasks, and Verify & Archive tabs with markdown rendering, task progress, and workflow controls.
-- **Safe workflow routing**: Review and verify actions open the appropriate detail or interactive terminal flow; high-impact archive actions stay confirmation-protected.
+- **Safe workflow routing**: Workflow buttons open the IDE Agent panel with `/opsx-*` commands; high-impact archive actions stay confirmation-protected.
 - **CLI integration**: OpenSpec CLI list, status, new, archive, Store, and Workset flows with retry, timeout, and `openspec.cliPath` fallback.
 - **Editor-native**: Uses VS Code theme tokens, Codicons, keyboard-accessible controls, and narrow-sidebar-friendly layouts.
 
@@ -105,7 +105,8 @@ Open Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`):
 | `openspec.taskExecutionMode` | `fillChat` | When clicking task execute: `auto` = run via adapter; `fillChat` = fill chat or copy to clipboard |
 | `openspec.workflowLaunchMode` | `clipboard` (VS Code) / smart launch in Cursor | **Launch with adapter (recommended)** or **Copy command only (safe)**. In Cursor with unset settings, defaults to launch mode. |
 | `openspec.preferredAgentAdapter` | `clipboard` (VS Code) / `cursor` in Cursor launch mode | Preferred agent executor when launch mode is adapter: `clipboard`, `cursor`, `vscode-copilot`, `claude-code`, or `opencode` |
-| `openspec.cursorLaunchMode` | `clipboard` (stored default) / `deeplink` in Cursor launch mode | Cursor launch behavior: `deeplink`, `chatCommand`, `clipboard`, or explicit `agentCli` (**may modify workspace files**; never auto-selected) |
+| `openspec.agentAutoSubmit` | `readOnly` | Auto-send in Cursor Agent panel: `never`, `readOnly` (explore/verify only), or `always` (composer layer only) |
+| `openspec.cursorLaunchMode` | `clipboard` (stored default) / `agentPanel` in Cursor launch mode | `agentPanel` (IDE Agent with fallback), `clipboard`, or explicit `agentCli` (**may modify workspace files**) |
 | `openspec.taskDependencyPolicy` | `block` | When preceding tasks are incomplete: `block` = prevent execution; `warn` = show warning and allow proceed |
 | `openspec.cursorAgentModel` | `auto` | Cursor Agent CLI model for explicit Agent CLI execution. Use `auto` or a specific model name |
 | `openspec.agentModel` | `auto` | Legacy Cursor Agent CLI model setting; prefer `openspec.cursorAgentModel` |
@@ -114,11 +115,10 @@ Open Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`):
 **Task execution & Adapters**
 
 - **Clipboard** (`clipboard`): Always available. Select **Copy command only (safe)** when you only want `/opsx:*` commands copied.
-- **Cursor** (`cursor`): In Cursor, defaults to opening the prompt deeplink (`deeplink`) or Chat (`chatCommand`). `agentCli` is available only when explicitly selected and may modify workspace files.
+- **Cursor** (`cursor`): In Cursor, defaults to the Agent panel (`agentPanel`) with runtime fallback (composer → chat → deeplink → clipboard). `agentCli` is opt-in and may modify workspace files.
 - **OpenCode** (`opencode`): Uses `/opsx-<action>` command format when routed through the adapter.
 - In Cursor, unset workflow settings smart-default to launch mode with the Cursor adapter. Choose **Copy command only (safe)** in settings to restore copy-only behavior. If launch fails, the extension falls back to clipboard with a visible notice.
-- Verify and Archive are intentionally different: they open the dedicated `Verify & Archive` tab and run inside a real VS Code terminal editor instead of the headless `agentCli` path.
-- Within that tab, `Review & Archive` keeps Agent review interactive, while `Archive Now` is the explicit direct-archive escape path and is disabled until the bound workflow is complete.
+- Verify and Archive use the same Agent panel launch path as Apply and Continue. The **Verify & Archive** tab also offers **Archive Now** (direct filesystem archive) when the workflow is complete.
 
 ### Dashboard
 
