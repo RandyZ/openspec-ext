@@ -66,7 +66,7 @@ describe('ChangeDetail workflow routing', () => {
   });
 
   it('loads bound task progress before resolving Archive Now on the Verify & Archive tab', () => {
-    expect(source).toContain("sendMessage.getArtifactContent(changeName, 'tasks', scopeId)");
+    expect(source).toContain("requestArtifact('tasks')");
   });
 
   it('keeps interactive review separate from resolver-gated direct archive', () => {

@@ -19,6 +19,7 @@ import {
 import { t } from '../../i18n';
 import type { WorkflowAction } from '../../shared/workflowCommand';
 import type { WorkflowLaunchConfigView } from '../utils/workflowLaunchLabels';
+import type { WorkflowActionReceipt } from '../../shared/changeWorkflow';
 
 export type ChangesSectionLayout = 'wide' | 'narrow' | 'auto';
 
@@ -31,6 +32,7 @@ interface ChangesSectionProps {
   onCopyApply?: (changeName: string) => void;
   onLaunchWorkflow?: (action: WorkflowAction, changeName: string, bindingKey?: string) => void;
   workflowLaunchPendingKeys?: ReadonlySet<string>;
+  workflowActionReceipts?: readonly WorkflowActionReceipt[];
   archivedItems?: ArchivedChangeInfo[];
   onOpenArchivedChange?: (directoryName: string) => void;
   workflowLaunchConfig?: WorkflowLaunchConfigView | null;
@@ -103,6 +105,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
   onCopyApply,
   onLaunchWorkflow,
   workflowLaunchPendingKeys,
+  workflowActionReceipts = [],
   archivedItems = [],
   onOpenArchivedChange,
   workflowLaunchConfig,
@@ -286,6 +289,17 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
                 onLaunchWorkflow={onLaunchWorkflow}
                 workflowLaunchConfig={workflowLaunchConfig}
                 workflowLaunchPendingKeys={workflowLaunchPendingKeys}
+                workflowLaunchFailureHint={(() => {
+                  const bindingKey = item.change.workflowSnapshot?.bindingKey;
+                  if (!bindingKey) return null;
+                  const failed = workflowActionReceipts.find((receipt) =>
+                    receipt.changeName === item.change.name
+                    && receipt.bindingKey === bindingKey
+                    && receipt.status === 'failed'
+                    && receipt.message,
+                  );
+                  return failed?.message ? { message: failed.message } : null;
+                })()}
               />
             ) : (
               <ArchivedChangeCard

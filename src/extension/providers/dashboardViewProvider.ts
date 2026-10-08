@@ -35,6 +35,7 @@ import {
 import { getOpenSpecProjectRoots } from '../utils/workspaceRoot';
 import { createProjectContext } from '../services/projectDataGateway';
 import { isPathInWorkspaceFolders } from '../utils/workspaceFolders';
+import { registerWorkflowReceiptWebview } from '../services/workflowWebviewRegistry';
 
 type ProjectPageCache = Pick<OpenSpecCacheService, 'readProjectPage' | 'writeProjectPage'>;
 type PendingExplorerContext = { message: ExtensionMessage; sent: boolean };
@@ -153,10 +154,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     webviewView.webview.html = getWebviewContent(webviewView.webview, this.extensionPath);
 
     // Setup message handler
+    const receiptRegistration = registerWorkflowReceiptWebview(webviewView.webview);
     this.setupMessageHandler(webviewView.webview);
 
     // Handle view disposal
     webviewView.onDidDispose(() => {
+      receiptRegistration.dispose();
       this._view = undefined;
     });
 
@@ -733,8 +736,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     );
     this.dashboardPanel = panel;
     panel.webview.html = getWebviewContent(panel.webview, this.extensionPath);
+    const panelReceiptRegistration = registerWorkflowReceiptWebview(panel.webview);
     this.setupMessageHandler(panel.webview);
     panel.onDidDispose(() => {
+      panelReceiptRegistration.dispose();
       this.dashboardPanel = undefined;
     });
     logger.info('Dashboard editor panel opened');

@@ -72,6 +72,7 @@ export interface ChangeCardProps {
   onLaunchWorkflow?: (action: WorkflowAction, changeName: string, bindingKey?: string) => void;
   workflowLaunchConfig?: WorkflowLaunchConfigView | null;
   workflowLaunchPendingKeys?: ReadonlySet<string>;
+  workflowLaunchFailureHint?: { message: string } | null;
 }
 
 export const ChangeCard: React.FC<ChangeCardProps> = ({
@@ -82,6 +83,7 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
   onLaunchWorkflow,
   workflowLaunchConfig,
   workflowLaunchPendingKeys,
+  workflowLaunchFailureHint,
 }) => {
   const [hover, setHover] = React.useState(false);
   const [focusWithin, setFocusWithin] = React.useState(false);
@@ -248,15 +250,12 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
           {onLaunchWorkflow &&
             workflowActions.map((descriptor) => {
               const label = descriptor.label;
-              const isInteractiveVerifyOrArchive =
-                descriptor.action === 'verify' || descriptor.action === 'archive';
-              const buttonLabel = isInteractiveVerifyOrArchive
-                ? (isWorkflowLaunchPending ? t('workflow.launching') : label)
-                : getWorkflowActionButtonLabel(label, workflowLaunchConfig, {
-                  launching: isWorkflowLaunchPending,
-                });
-              const title = isInteractiveVerifyOrArchive
-                ? label
+              const buttonLabel = getWorkflowActionButtonLabel(label, workflowLaunchConfig, {
+                launching: isWorkflowLaunchPending,
+              });
+              const receiptForCard = workflowLaunchFailureHint;
+              const title = receiptForCard?.message
+                ? `${getWorkflowActionTitle(label, workflowLaunchConfig) ?? label}: ${receiptForCard.message}`
                 : getWorkflowActionTitle(label, workflowLaunchConfig);
 
               return (

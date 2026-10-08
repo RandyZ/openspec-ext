@@ -24,6 +24,7 @@ import {
   type AgentLaunchOutcome,
 } from './agentPanelLauncher';
 import { isCursorHost } from '../utils/isCursorHost';
+import { notifyWorkflowCommandCopied } from './workflowClipboardNotify';
 
 export type WorkflowAgentLaunchTarget =
   | 'clipboard'
@@ -58,7 +59,7 @@ function resolveLaunchTargetFromPayload(
   return 'externalAdapter';
 }
 
-function buildResolvedLaunchPayload(
+export function buildResolvedLaunchPayload(
   action: WorkflowAction,
   changeName: string,
 ): ReturnType<typeof buildWorkflowLaunchPayload> {
@@ -99,19 +100,37 @@ function notifyLaunchResult(
   result: WorkflowAgentLaunchResult,
   command: string,
 ): void {
-  if (result.target === 'clipboard' || result.outcome === 'copied') {
-    vscode.window.showInformationMessage(t('agentLaunch.copied', { command }));
+  if (result.outcome === 'deduped') {
+    void vscode.window.showInformationMessage(t('workflow.launchDeduped'));
     return;
   }
-  if (result.outcome === 'started') {
-    vscode.window.showInformationMessage(t('agentLaunch.started', { command }));
+  if (result.target === 'clipboard' || result.outcome === 'copied') {
+    notifyWorkflowCommandCopied(command);
     return;
   }
   if (result.layer === 'deeplink') {
-    vscode.window.showInformationMessage(t('agentLaunch.deeplinkPrefilled', { command }));
+    void vscode.window.showInformationMessage(t('agentLaunch.deeplinkPrefilled', { command }));
     return;
   }
-  vscode.window.showInformationMessage(t('agentLaunch.prefilled', { command }));
+  void vscode.window.showInformationMessage(t('agentLaunch.openedPanel', { command }));
+}
+
+export async function notifyWorkflowLaunchFailure(
+  reason: string,
+  retry?: () => void | Promise<void>,
+): Promise<void> {
+  const retryLabel = t('workflow.retryLaunch');
+  const settingsLabel = t('workflow.openSettings');
+  const picked = await vscode.window.showErrorMessage(
+    t('agentLaunch.failedWithReason', { reason }),
+    retryLabel,
+    settingsLabel,
+  );
+  if (picked === retryLabel && retry) {
+    await retry();
+  } else if (picked === settingsLabel) {
+    void vscode.commands.executeCommand('workbench.action.openSettings', '@ext:randysss.openspec-workflow');
+  }
 }
 
 export function resetWorkflowLaunchDedupeForTests(): void {
@@ -130,13 +149,16 @@ export async function launchWorkflowAgentCommand(
   ) {
     const payload = buildResolvedLaunchPayload(request.action, request.changeName);
     const view = toWorkflowLaunchConfigView(getWorkflowLaunchConfig());
-    return {
+    const deduped: WorkflowAgentLaunchResult = {
       success: true,
       command: payload.command,
       target: resolveLaunchTargetFromPayload(payload, view),
-      outcome: 'prefilled',
+      layer: undefined,
+      outcome: 'deduped',
       message: t('workflow.launchDeduped'),
     };
+    notifyLaunchResult(deduped, payload.command);
+    return deduped;
   }
   lastWorkflowLaunch = { key: dedupeKey, at: now };
 
@@ -190,7 +212,7 @@ export async function launchWorkflowAgentCommand(
         message: cliResult.message,
       };
       if (cliResult.success) {
-        vscode.window.showInformationMessage(t('agentLaunch.agentCliStarted', { command: payload.command }));
+        void vscode.window.showInformationMessage(t('agentLaunch.agentCliStarted', { command: payload.command }));
       }
       return result;
     }
@@ -251,7 +273,7 @@ export async function launchWorkflowAgentCommand(
   }
 
   await vscode.env.clipboard.writeText(clipboardPayload.command);
-  vscode.window.showInformationMessage(t('workflow.adapterFallback'));
+  notifyWorkflowCommandCopied(clipboardPayload.command);
   return {
     success: true,
     command: clipboardPayload.command,

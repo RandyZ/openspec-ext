@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { buildCursorPromptDeeplink } from './cursorDeeplink';
 import { logger } from '../utils/logger';
+import { t } from '../../i18n';
 
 export type AgentLaunchLayer =
   | 'composerCreateNew'
@@ -9,7 +10,7 @@ export type AgentLaunchLayer =
   | 'clipboard'
   | 'vscodeChat';
 
-export type AgentLaunchOutcome = 'started' | 'prefilled' | 'copied' | 'failed';
+export type AgentLaunchOutcome = 'started' | 'prefilled' | 'copied' | 'failed' | 'deduped';
 
 export interface AgentLaunchResult {
   success: boolean;
@@ -111,13 +112,14 @@ async function tryCursorComposerCreateNew(
       logger.warn(
         `composer.createNew did not confirm a new pane within ${COMPOSER_SUCCESS_WAIT_MS}ms (background check)`,
       );
+      void vscode.window.showWarningMessage(t('agentLaunch.submitNotConfirmed'));
     }
   })();
 
   return {
     success: true,
     layer: 'composerCreateNew',
-    outcome: request.autoSubmit ? 'started' : 'prefilled',
+    outcome: 'prefilled',
   };
 }
 

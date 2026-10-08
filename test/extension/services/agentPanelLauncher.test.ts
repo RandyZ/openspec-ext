@@ -17,6 +17,9 @@ vi.mock('vscode', () => ({
   Uri: {
     parse: (value: string) => ({ toString: () => value }),
   },
+  window: {
+    showWarningMessage: vi.fn(),
+  },
   env: {
     openExternal: vi.fn(async () => false),
     clipboard: { writeText: vi.fn() },
@@ -55,7 +58,7 @@ describe('agentPanelLauncher', () => {
     );
 
     expect(result.layer).toBe('composerCreateNew');
-    expect(result.outcome).toBe('started');
+    expect(result.outcome).toBe('prefilled');
     expect(executeCommand).toHaveBeenCalledWith(
       'composer.createNew',
       expect.objectContaining({ autoSubmit: true, view: 'pane' }),

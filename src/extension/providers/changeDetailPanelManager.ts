@@ -3,6 +3,8 @@ import * as path from 'path';
 import { logger } from '../utils/logger';
 import { DataManager } from '../services/dataManager';
 import { InteractiveAgentTerminalManager } from '../services/interactiveAgentTerminalManager';
+import { registerWorkflowReceiptWebview } from '../services/workflowWebviewRegistry';
+import { pathsEqualForWorkspace } from '../utils/workspacePathCompare';
 import {
   handleWebviewMessage,
   getWebviewContent,
@@ -347,6 +349,7 @@ export class ChangeDetailPanelManager {
     this.pendingSetContext.set(panel.webview, { changeName, options: boundOptions });
 
     panel.webview.html = getWebviewContent(panel.webview, this.extensionPath);
+    const receiptRegistration = registerWorkflowReceiptWebview(panel.webview);
 
     // Proactively send setContext so webview can show ChangeDetail without waiting for first message
     setTimeout(() => {
@@ -399,6 +402,7 @@ export class ChangeDetailPanelManager {
     });
 
     panel.onDidDispose(() => {
+      receiptRegistration.dispose();
       this.panels.delete(key);
       this.panelRootPaths.delete(key);
       this.panelScopes.delete(panel.webview);
@@ -423,7 +427,7 @@ export class ChangeDetailPanelManager {
       if (
         rootPath !== undefined
         && panelRootPath !== undefined
-        && path.normalize(panelRootPath) !== path.normalize(rootPath)
+        && !pathsEqualForWorkspace(panelRootPath, rootPath)
       ) continue;
       try {
         panel.webview.postMessage({ type: 'artifactInvalidated', changeName, artifactTypes });

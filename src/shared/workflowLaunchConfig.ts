@@ -103,6 +103,9 @@ export function isCopyOnlyWorkflowMode(config: WorkflowLaunchConfigView): boolea
 
 /** Label/intent: adapter mode with a non-clipboard preferred adapter uses Agent verbs. */
 export function shouldUseAgentWorkflowLabels(config: WorkflowLaunchConfigView): boolean {
+  if (config.cursorLaunchMode === 'clipboard') {
+    return false;
+  }
   if (config.workflowLaunchMode === 'adapter' && config.preferredAgentAdapter !== 'clipboard') {
     return true;
   }

@@ -35,6 +35,7 @@ import type {
   InteractiveWorkflowAction,
   InteractiveWorkflowState,
 } from '../../shared/interactiveWorkflow';
+import { ArtifactFetchCoordinator } from '../utils/artifactFetchCoordinator';
 
 const MISSING_ARTIFACT_MESSAGE = t('artifact.missing');
 
@@ -129,6 +130,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   const { postMessage, onMessage } = useVscode();
   const [activeTab, setActiveTab] = useState<string>(initialTab ?? 'proposal');
   const contentCacheRef = useRef<Map<string, string>>(new Map());
+  const artifactFetchCoordinatorRef = useRef(new ArtifactFetchCoordinator());
   const persistedExecutorRef = useRef<string | null>(null);
   const [completedTasks, setCompletedTasks] = useState(0);
   const [totalTasks, setTotalTasks] = useState(0);
@@ -257,12 +259,15 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   }, [interactiveAction]);
 
   const requestArtifact = (artifactType: string, outputPath?: string) => {
-    setLoading(true);
-    setError(null);
-    setErrorCode(undefined);
-    setArtifactStateMessage(null);
-    setContent(null);
-    postMessage(sendMessage.getArtifactContent(changeName, artifactType, scopeId, outputPath));
+    const key = cacheKey(scopeId, artifactType, outputPath ?? selectedOutputPaths[artifactType]);
+    artifactFetchCoordinatorRef.current.schedule(key, () => {
+      setLoading(true);
+      setError(null);
+      setErrorCode(undefined);
+      setArtifactStateMessage(null);
+      setContent(null);
+      postMessage(sendMessage.getArtifactContent(changeName, artifactType, scopeId, outputPath));
+    });
   };
 
   const requestSpecsList = () => {
@@ -281,7 +286,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
       setError(null);
       setContent(null);
       if (!isArchived) {
-        postMessage(sendMessage.getArtifactContent(changeName, 'tasks', scopeId));
+        requestArtifact('tasks');
       }
       return;
     }
@@ -337,12 +342,6 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
       setLoading(false);
       setError(null);
       setErrorCode(undefined);
-      postMessage(sendMessage.getArtifactContent(
-        changeName,
-        activeTab,
-        scopeId,
-        selectedOutputPaths[activeTab]
-      ));
       return;
     }
     requestArtifact(activeTab);
@@ -367,6 +366,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         setArchivedLocally(true);
       } else if (msg.type === 'artifactContent' && msg.changeName === changeName) {
         const key = cacheKey(scopeId, msg.artifactType, msg.artifactPath);
+        artifactFetchCoordinatorRef.current.complete(key);
         contentCacheRef.current.set(key, msg.content ?? '');
         setContent(msg.content ?? '');
         setArtifactStateMessage(null);
@@ -408,6 +408,8 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
           setPendingWorkflowAction(null);
         }
       } else if (msg.type === 'artifactContentError' && msg.changeName === changeName) {
+        const errorKey = cacheKey(scopeId, msg.artifactType ?? activeTab, selectedOutputPaths[msg.artifactType ?? activeTab]);
+        artifactFetchCoordinatorRef.current.complete(errorKey);
         setError(msg.message ?? 'Failed to load');
         setErrorCode(msg.code);
         setLoading(false);

@@ -479,25 +479,28 @@ export const Dashboard: React.FC = () => {
       } else if (message.type === 'workflowLaunchConfig') {
         setWorkflowLaunchConfig(message.config ?? null);
       } else if (message.type === 'workflowActionReceipt') {
-        const pending = pendingWorkflowRequestsRef.current.get(message.requestId);
-        const key = `${message.changeName}\u0000${message.bindingKey}`;
+        const receipt = message as WorkflowActionReceipt;
+        const pending = pendingWorkflowRequestsRef.current.get(receipt.requestId);
+        const key = `${receipt.changeName}\u0000${receipt.bindingKey}`;
+        if (receipt.status !== 'running') {
+          setWorkflowReceipts((previous) => [
+            ...previous.filter((item) => (
+              item.changeName !== receipt.changeName
+              || item.bindingKey !== receipt.bindingKey
+            )),
+            receipt,
+          ]);
+        }
         if (
           pending
-          && pending.changeName === message.changeName
-          && pending.bindingKey === message.bindingKey
-          && latestWorkflowRequestRef.current.get(key) === message.requestId
+          && pending.changeName === receipt.changeName
+          && pending.bindingKey === receipt.bindingKey
+          && latestWorkflowRequestRef.current.get(key) === receipt.requestId
         ) {
-          setWorkflowReceipts((previous) => [
-            ...previous.filter((receipt) => (
-              receipt.changeName !== message.changeName
-              || receipt.bindingKey !== message.bindingKey
-            )),
-            message as WorkflowActionReceipt,
-          ]);
-          if (message.status !== 'running') {
-            pendingWorkflowRequestsRef.current.delete(message.requestId);
+          if (receipt.status !== 'running') {
+            pendingWorkflowRequestsRef.current.delete(receipt.requestId);
           }
-          workflowLaunchPending.handleReceipt(message as WorkflowActionReceipt);
+          workflowLaunchPending.handleReceipt(receipt);
         }
       } else if (message.type === 'cacheStats') {
         setCacheStats(message.stats ?? null);
@@ -1034,6 +1037,7 @@ export const Dashboard: React.FC = () => {
                   onCopyApply={handleCopyApply}
                   onLaunchWorkflow={handleLaunchWorkflow}
                   workflowLaunchPendingKeys={workflowLaunchPending.pendingKeys}
+                  workflowActionReceipts={workflowReceipts}
                   archivedItems={pendingScopeId ? [] : (data.archivedChanges ?? [])}
                   onOpenArchivedChange={handleOpenArchivedChange}
                   workflowLaunchConfig={workflowLaunchConfig}

@@ -163,7 +163,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
     logger.info('OpenSpec extension activated successfully');
     console.log('OpenSpec extension is now active!');
-    void promptReloadAfterInstallOrUpdate(context);
+    setTimeout(() => {
+      void promptReloadAfterInstallOrUpdate(context);
+    }, 4000);
   } catch (error) {
     logger.error('Failed to activate OpenSpec extension', error as Error);
     vscode.window.showErrorMessage(

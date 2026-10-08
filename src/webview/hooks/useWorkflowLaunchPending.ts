@@ -3,6 +3,7 @@ import { createWorkflowRequestId } from '../../shared/changeWorkflow';
 import type { WorkflowActionReceipt } from '../../shared/changeWorkflow';
 
 export const WORKFLOW_LAUNCH_PENDING_TIMEOUT_MS = 45_000;
+export const WORKFLOW_LAUNCH_PENDING_MIN_VISIBLE_MS = 400;
 
 export function workflowLaunchPendingKey(changeName: string, bindingKey: string): string {
   return `${changeName}\u0000${bindingKey}`;
@@ -13,6 +14,7 @@ export function useWorkflowLaunchPending(onTimeout?: () => void) {
   const pendingRequestsRef = useRef(new Map<string, { changeName: string; bindingKey: string }>());
   const latestRequestRef = useRef(new Map<string, string>());
   const timeoutHandlesRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const pendingStartedAtRef = useRef(new Map<string, number>());
 
   const clearPendingKey = useCallback((key: string) => {
     setPendingKeys((previous) => {
@@ -38,6 +40,7 @@ export function useWorkflowLaunchPending(onTimeout?: () => void) {
     pendingRequestsRef.current.set(requestId, { changeName, bindingKey });
     latestRequestRef.current.set(key, requestId);
     setPendingKeys((previous) => new Set(previous).add(key));
+    pendingStartedAtRef.current.set(key, Date.now());
 
     const existing = timeoutHandlesRef.current.get(key);
     if (existing) clearTimeout(existing);
@@ -65,7 +68,17 @@ export function useWorkflowLaunchPending(onTimeout?: () => void) {
     }
     if (message.status === 'running') return;
     pendingRequestsRef.current.delete(message.requestId);
-    clearPendingKey(key);
+    const startedAt = pendingStartedAtRef.current.get(key) ?? Date.now();
+    const delay = Math.max(0, WORKFLOW_LAUNCH_PENDING_MIN_VISIBLE_MS - (Date.now() - startedAt));
+    if (delay > 0) {
+      setTimeout(() => {
+        clearPendingKey(key);
+        pendingStartedAtRef.current.delete(key);
+      }, delay);
+    } else {
+      clearPendingKey(key);
+      pendingStartedAtRef.current.delete(key);
+    }
   }, [clearPendingKey]);
 
   useEffect(() => () => {
