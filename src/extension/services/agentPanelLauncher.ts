@@ -36,8 +36,8 @@ export interface AgentPanelLauncherDeps {
 }
 
 const COMPOSER_SUCCESS_WAIT_MS = 1500;
-
-let composerCreateNewInFlight = false;
+/** Only treat createNew as failed (chat fallback) if it rejects within this window. */
+const COMPOSER_CREATE_NEW_QUICK_FAIL_MS = 50;
 
 let cachedCommands: Set<string> | undefined;
 let cachedCommandsAt = 0;
@@ -89,15 +89,6 @@ async function tryCursorComposerCreateNew(
   }
   const executeCommand = deps.executeCommand ?? vscode.commands.executeCommand.bind(vscode.commands);
 
-  if (composerCreateNewInFlight) {
-    return {
-      success: true,
-      layer: 'composerCreateNew',
-      outcome: 'deduped',
-    };
-  }
-  composerCreateNewInFlight = true;
-
   const beforeIds = await readComposerPaneIds(executeCommand, cmds);
   const payload = {
     openInNewTab: true,
@@ -111,16 +102,35 @@ async function tryCursorComposerCreateNew(
     ...(request.autoSubmit ? { autoSubmit: true } : {}),
   };
 
+  const sleep = deps.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
+
+  let createNewPending: Thenable<unknown>;
   try {
-    await executeCommand('composer.createNew', payload);
+    createNewPending = executeCommand('composer.createNew', payload);
   } catch (error) {
     logger.warn('composer.createNew failed', error as Error);
     return undefined;
-  } finally {
-    composerCreateNewInFlight = false;
   }
 
-  const sleep = deps.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const quickOutcome = await Promise.race([
+    Promise.resolve(createNewPending).then(
+      () => 'settled' as const,
+      () => 'rejected' as const,
+    ),
+    sleep(COMPOSER_CREATE_NEW_QUICK_FAIL_MS).then(() => 'slow' as const),
+  ]);
+
+  if (quickOutcome === 'rejected') {
+    logger.warn('composer.createNew rejected quickly');
+    return undefined;
+  }
+
+  if (quickOutcome === 'slow') {
+    void Promise.resolve(createNewPending).catch((error: unknown) => {
+      logger.warn('composer.createNew failed after invoke', error as Error);
+    });
+  }
+
   void (async () => {
     await sleep(COMPOSER_SUCCESS_WAIT_MS);
     const afterIds = await readComposerPaneIds(executeCommand, cmds);
@@ -231,10 +241,6 @@ async function clipboardFallback(
 export function resetAgentPanelLauncherCommandCache(): void {
   cachedCommands = undefined;
   cachedCommandsAt = 0;
-}
-
-export function resetAgentPanelLauncherInFlightState(): void {
-  composerCreateNewInFlight = false;
 }
 
 export async function launchAgentPanelPrompt(

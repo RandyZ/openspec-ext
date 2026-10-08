@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   launchAgentPanelPrompt,
   resetAgentPanelLauncherCommandCache,
-  resetAgentPanelLauncherInFlightState,
 } from '@extension/services/agentPanelLauncher';
 
 vi.mock('@extension/utils/logger', () => ({
@@ -33,7 +32,6 @@ vi.mock('vscode', () => ({
 describe('agentPanelLauncher', () => {
   beforeEach(() => {
     resetAgentPanelLauncherCommandCache();
-    resetAgentPanelLauncherInFlightState();
   });
 
   it('uses composer.createNew on Cursor when available and ids increase', async () => {
@@ -158,17 +156,13 @@ describe('agentPanelLauncher', () => {
     );
   });
 
-  it('invokes composer.createNew at most once while a launch is in flight', async () => {
-    let releaseCreateNew: (() => void) | undefined;
-    const createNewGate = new Promise<void>((resolve) => {
-      releaseCreateNew = resolve;
-    });
-    const executeCommand = vi.fn(async (command: string) => {
-      if (command === 'composer.getOrderedSelectedComposerIds') return ['a'];
+  it('returns quickly when composer.createNew never resolves (autoSubmit) and does not block a second launch', async () => {
+    const executeCommand = vi.fn((command: string) => {
+      if (command === 'composer.getOrderedSelectedComposerIds') return Promise.resolve(['a']);
       if (command === 'composer.createNew') {
-        await createNewGate;
+        return new Promise(() => undefined);
       }
-      return undefined;
+      return Promise.resolve(undefined);
     });
 
     const deps = {
@@ -176,18 +170,63 @@ describe('agentPanelLauncher', () => {
       getCommands: async () => new Set([
         'composer.createNew',
         'composer.getOrderedSelectedComposerIds',
+        'workbench.action.chat.open',
       ]),
       executeCommand,
-      sleep: async () => undefined,
+      sleep: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
     };
 
-    const first = launchAgentPanelPrompt({ text: 'one', autoSubmit: false }, deps);
-    const second = launchAgentPanelPrompt({ text: 'two', autoSubmit: false }, deps);
-    releaseCreateNew?.();
-    const [firstResult, secondResult] = await Promise.all([first, second]);
+    const started = Date.now();
+    const first = await launchAgentPanelPrompt(
+      { text: '/opsx:verify change-a', autoSubmit: true },
+      deps,
+    );
+    const firstElapsed = Date.now() - started;
 
-    expect(firstResult.layer).toBe('composerCreateNew');
-    expect(secondResult.outcome).toBe('deduped');
-    expect(executeCommand.mock.calls.filter(([c]) => c === 'composer.createNew')).toHaveLength(1);
+    expect(first.layer).toBe('composerCreateNew');
+    expect(firstElapsed).toBeLessThan(300);
+    expect(executeCommand).not.toHaveBeenCalledWith(
+      'workbench.action.chat.open',
+      expect.anything(),
+    );
+
+    const secondStarted = Date.now();
+    const second = await launchAgentPanelPrompt(
+      { text: '/opsx:verify change-b', autoSubmit: true },
+      deps,
+    );
+    const secondElapsed = Date.now() - secondStarted;
+
+    expect(second.layer).toBe('composerCreateNew');
+    expect(secondElapsed).toBeLessThan(300);
+    expect(executeCommand.mock.calls.filter(([c]) => c === 'composer.createNew')).toHaveLength(2);
+  });
+
+  it('falls back to chat.open when composer.createNew rejects quickly', async () => {
+    const executeCommand = vi.fn((command: string) => {
+      if (command === 'composer.getOrderedSelectedComposerIds') return Promise.resolve(['a']);
+      if (command === 'composer.createNew') {
+        return Promise.reject(new Error('createNew unavailable'));
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const result = await launchAgentPanelPrompt(
+      { text: '/opsx:apply demo', autoSubmit: false },
+      {
+        isCursorHost: () => true,
+        getCommands: async () => new Set([
+          'composer.createNew',
+          'composer.getOrderedSelectedComposerIds',
+          'workbench.action.chat.open',
+        ]),
+        executeCommand,
+        sleep: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
+      },
+    );
+
+    expect(result.layer).toBe('chatOpen');
+    expect(executeCommand).toHaveBeenCalledWith('composer.createNew', expect.any(Object));
+    expect(executeCommand).toHaveBeenCalledWith('workbench.action.chat.open', { query: '/opsx:apply demo' });
   });
 });
