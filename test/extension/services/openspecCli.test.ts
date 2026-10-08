@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { OpenSpecCliService } from '@extension/services/openspecCli';
+import { resetOpenSpecCliVersionProbeSessionCache } from '@extension/services/openspecCliResolver';
 
 vi.mock('vscode', () => ({
   workspace: {
@@ -142,6 +143,7 @@ describe('OpenSpecCliService', () => {
 
   beforeEach(() => {
     OpenSpecCliService.resetVersionCacheForTests();
+    resetOpenSpecCliVersionProbeSessionCache();
     vi.mocked(spawn).mockReset();
   });
 
@@ -910,6 +912,7 @@ describe('CLI activation diagnostics', () => {
 
   beforeEach(async () => {
     OpenSpecCliService.resetVersionCacheForTests();
+    resetOpenSpecCliVersionProbeSessionCache();
     vi.clearAllMocks();
     vi.mocked(spawn).mockReset();
     // Reset vscode mock to default (empty cliPath)
@@ -1163,6 +1166,8 @@ describe('argsPrefix and scope support', () => {
   const workspaceRoot = '/fake/workspace';
 
   beforeEach(() => {
+    OpenSpecCliService.resetVersionCacheForTests();
+    resetOpenSpecCliVersionProbeSessionCache();
     vi.mocked(spawn).mockReset();
   });
 
@@ -1218,6 +1223,28 @@ describe('argsPrefix and scope support', () => {
     expect(spawnCalls.length).toBe(2);
     expect(spawnCalls[1].command).toBe('openspec');
     expect(spawnCalls[1].args).toEqual(['list', '--json']);
+  });
+
+  it('spawns --version once across several CLI refreshes (multiple runJson calls)', async () => {
+    resetOpenSpecCliVersionProbeSessionCache();
+    OpenSpecCliService.resetVersionCacheForTests();
+    const spawnCalls: Array<{ command: string; args: readonly string[] }> = [];
+    vi.mocked(spawn).mockImplementation((command: string, args: readonly string[], _options?: unknown) => {
+      spawnCalls.push({ command, args });
+      if (args[0] === '--version') {
+        return createSpawnSuccessProcess('1.3.1') as never;
+      }
+      return createSpawnSuccessProcess(JSON.stringify({ ok: true })) as never;
+    });
+
+    const service = new OpenSpecCliService(workspaceRoot);
+    await service.runJson(['change', 'show', 'demo', '--json']);
+    await service.runJson(['change', 'show', 'demo', '--json']);
+    await service.runJson(['list', '--json']);
+
+    const versionCalls = spawnCalls.filter((c) => c.args[0] === '--version');
+    expect(versionCalls).toHaveLength(1);
+    expect(spawnCalls.length).toBe(4);
   });
 
   it('runJson prepends argsPrefix in local source mode', async () => {
@@ -1409,6 +1436,8 @@ describe('Windows shell-free spawning', () => {
   const workspaceRoot = '/fake/workspace';
 
   beforeEach(() => {
+    OpenSpecCliService.resetVersionCacheForTests();
+    resetOpenSpecCliVersionProbeSessionCache();
     vi.mocked(spawn).mockReset();
   });
 

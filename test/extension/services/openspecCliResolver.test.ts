@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { spawn } from 'child_process';
-import { OpenSpecCliResolutionError, OpenSpecCliResolver } from '@extension/services/openspecCliResolver';
+import {
+  OpenSpecCliResolutionError,
+  OpenSpecCliResolver,
+  resetOpenSpecCliVersionProbeSessionCache,
+} from '@extension/services/openspecCliResolver';
 
 let cliPath = '';
 let cliMode = 'auto';
@@ -68,6 +72,7 @@ describe('OpenSpecCliResolver', () => {
     cliMode = 'auto';
     localOpenSpecSourcePath = '';
     calls.length = 0;
+    resetOpenSpecCliVersionProbeSessionCache();
     vi.mocked(spawn).mockReset();
     vi.unstubAllEnvs();
   });
@@ -226,6 +231,24 @@ describe('OpenSpecCliResolver', () => {
 
     expect(calls.map((c) => c.command)).toEqual(['/first/openspec', '/second/openspec']);
   });
+
+  it('probes --version once per CLI path across resolver instances and repeated resolveRuntime calls', async () => {
+    vi.mocked(spawn).mockImplementation((command: string, args: string[]) => {
+      calls.push({ command, args });
+      return createProcess('1.3.1') as any;
+    });
+
+    const resolverA = new OpenSpecCliResolver('/workspace');
+    const resolverB = new OpenSpecCliResolver('/other-root');
+    await resolverA.resolveRuntime();
+    await resolverB.resolveRuntime();
+    await resolverA.resolveRuntime();
+    await resolverB.resolve();
+
+    const versionCalls = calls.filter((c) => c.args[0] === '--version');
+    expect(versionCalls).toHaveLength(1);
+    expect(versionCalls[0].command).toBe('openspec');
+  });
 });
 
 describe('OpenSpecCliResolver runtime mode', () => {
@@ -236,6 +259,7 @@ describe('OpenSpecCliResolver runtime mode', () => {
     cliMode = 'auto';
     localOpenSpecSourcePath = '';
     calls.length = 0;
+    resetOpenSpecCliVersionProbeSessionCache();
     vi.mocked(spawn).mockReset();
   });
 

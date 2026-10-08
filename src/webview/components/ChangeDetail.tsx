@@ -147,6 +147,13 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   const contentCacheRef = useRef<Map<string, string>>(new Map());
   const artifactFetchCoordinatorRef = useRef(new ArtifactFetchCoordinator());
   const verifyArchiveTasksLoadedRef = useRef<string | null>(null);
+  const initialArtifactFetchKeyRef = useRef<string | null>(null);
+  const workflowReceiptBeforeLaunchRef = useRef<{
+    requestId: string;
+    bindingKey: string;
+    status: string;
+    message?: string;
+  } | null>(null);
   const activeTabRef = useRef(activeTab);
   activeTabRef.current = activeTab;
   const workflowLaunchPending = useWorkflowLaunchPending();
@@ -304,6 +311,10 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   })).filter((group) => group.artifacts.length > 0)), [navigationArtifacts]);
 
   useEffect(() => {
+    initialArtifactFetchKeyRef.current = null;
+  }, [changeName, scopeId]);
+
+  useEffect(() => {
     if (initialTab && tabs.some((tab) => tab.id === initialTab)) {
       setActiveTab(initialTab);
     } else if (!tabs.some((tab) => tab.id === activeTab)) {
@@ -403,7 +414,11 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     }
 
     if (activeTab === 'specs') {
-      requestSpecsList();
+      const specsLoadKey = `${changeName}\u0000${scopeId ?? ''}\u0000specs`;
+      if (initialArtifactFetchKeyRef.current !== specsLoadKey) {
+        initialArtifactFetchKeyRef.current = specsLoadKey;
+        requestSpecsList();
+      }
       return;
     }
 
@@ -416,6 +431,11 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
       setErrorCode(undefined);
       return;
     }
+    const fetchIdentity = `${changeName}\u0000${scopeId ?? ''}\u0000${activeTab}\u0000${selectedOutputPaths[activeTab] ?? ''}`;
+    if (initialArtifactFetchKeyRef.current === fetchIdentity) {
+      return;
+    }
+    initialArtifactFetchKeyRef.current = fetchIdentity;
     requestArtifact(activeTab);
   }, [
     changeName,
@@ -527,7 +547,12 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         } else if (data.suppressPriorityAttention === true && data.status === 'completed') {
           setPendingLaunchAction(null);
           setPendingLaunchSurface(null);
+          if (workflowReceiptBeforeLaunchRef.current) {
+            setWorkflowReceipt(workflowReceiptBeforeLaunchRef.current);
+            workflowReceiptBeforeLaunchRef.current = null;
+          }
         } else {
+          workflowReceiptBeforeLaunchRef.current = null;
           setWorkflowReceipt({
             requestId: String(data.requestId),
             bindingKey: String(data.bindingKey),
@@ -664,6 +689,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
             scheduleTasksRefetch: () => requestArtifact('tasks'),
           });
         } else if (invalidated.includes(activeTabRef.current)) {
+          initialArtifactFetchKeyRef.current = null;
           if (activeTabRef.current === 'specs') {
             requestSpecsList();
           } else if (activeTabRef.current !== 'verifyArchive') {
@@ -745,6 +771,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
 
   const handleRefresh = () => {
     contentCacheRef.current.clear();
+    initialArtifactFetchKeyRef.current = null;
     postMessage(sendMessage.refresh());
     if (activeTab === 'verifyArchive') {
       postMessage(sendMessage.getInteractiveWorkflowState(changeName, scopeId));
@@ -810,6 +837,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     if (pendingLaunchAction === action && workflowLaunchPending.isPending(changeName, workflowSnapshot.bindingKey)) {
       return;
     }
+    workflowReceiptBeforeLaunchRef.current = workflowReceipt;
     setPendingLaunchAction(action);
     setPendingLaunchSurface(surface);
     const { requestId } = workflowLaunchPending.registerLaunch(changeName, workflowSnapshot.bindingKey);
