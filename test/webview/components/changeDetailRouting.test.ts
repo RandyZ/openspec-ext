@@ -55,6 +55,22 @@ describe('ChangeDetail workflow routing', () => {
     expect(source).toContain('receiptStatus={workflowReceipt?.status}');
   });
 
+  it('restores the pre-launch workflow receipt when host dedupes a double-click launch', () => {
+    expect(source).toContain('workflowReceiptBeforeLaunchRef');
+    expect(source).toContain('workflowReceiptBeforeLaunchRef.current = workflowReceipt');
+    const suppressBlock = source.slice(
+      source.indexOf('data.suppressPriorityAttention === true && data.status === \'completed\''),
+      source.indexOf('} else {', source.indexOf('data.suppressPriorityAttention === true')),
+    );
+    expect(suppressBlock).toContain('setWorkflowReceipt(workflowReceiptBeforeLaunchRef.current)');
+  });
+
+  it('dedupes the initial artifact fetch when navigation snapshot re-renders the same tab', () => {
+    expect(source).toContain('initialArtifactFetchKeyRef');
+    expect(source).toContain('initialArtifactFetchKeyRef.current === fetchIdentity');
+    expect(source).toContain('initialArtifactFetchKeyRef.current = fetchIdentity');
+  });
+
   it('routes artifact create with AI through workflow launch instead of direct command manager calls', () => {
     expect(source).not.toContain('sendMessage.requestCreateArtifact');
     expect(source).toContain("handleLaunchWorkflow('continue')");

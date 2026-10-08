@@ -37,6 +37,8 @@ export interface AgentPanelLauncherDeps {
 
 const COMPOSER_SUCCESS_WAIT_MS = 1500;
 
+let composerCreateNewInFlight = false;
+
 let cachedCommands: Set<string> | undefined;
 let cachedCommandsAt = 0;
 const COMMAND_CACHE_TTL_MS = 60_000;
@@ -87,6 +89,15 @@ async function tryCursorComposerCreateNew(
   }
   const executeCommand = deps.executeCommand ?? vscode.commands.executeCommand.bind(vscode.commands);
 
+  if (composerCreateNewInFlight) {
+    return {
+      success: true,
+      layer: 'composerCreateNew',
+      outcome: 'deduped',
+    };
+  }
+  composerCreateNewInFlight = true;
+
   const beforeIds = await readComposerPaneIds(executeCommand, cmds);
   const payload = {
     openInNewTab: true,
@@ -100,9 +111,14 @@ async function tryCursorComposerCreateNew(
     ...(request.autoSubmit ? { autoSubmit: true } : {}),
   };
 
-  void executeCommand('composer.createNew', payload).then(undefined, (error: unknown) => {
+  try {
+    await executeCommand('composer.createNew', payload);
+  } catch (error) {
     logger.warn('composer.createNew failed', error as Error);
-  });
+    return undefined;
+  } finally {
+    composerCreateNewInFlight = false;
+  }
 
   const sleep = deps.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
   void (async () => {
@@ -215,6 +231,10 @@ async function clipboardFallback(
 export function resetAgentPanelLauncherCommandCache(): void {
   cachedCommands = undefined;
   cachedCommandsAt = 0;
+}
+
+export function resetAgentPanelLauncherInFlightState(): void {
+  composerCreateNewInFlight = false;
 }
 
 export async function launchAgentPanelPrompt(

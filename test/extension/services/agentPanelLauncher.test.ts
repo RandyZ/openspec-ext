@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   launchAgentPanelPrompt,
   resetAgentPanelLauncherCommandCache,
+  resetAgentPanelLauncherInFlightState,
 } from '@extension/services/agentPanelLauncher';
 
 vi.mock('@extension/utils/logger', () => ({
@@ -32,6 +33,7 @@ vi.mock('vscode', () => ({
 describe('agentPanelLauncher', () => {
   beforeEach(() => {
     resetAgentPanelLauncherCommandCache();
+    resetAgentPanelLauncherInFlightState();
   });
 
   it('uses composer.createNew on Cursor when available and ids increase', async () => {
@@ -126,5 +128,66 @@ describe('agentPanelLauncher', () => {
     expect(result.layer).toBe('clipboard');
     expect(result.outcome).toBe('copied');
     expect(writeClipboard).toHaveBeenCalledWith('/opsx-verify demo');
+  });
+
+  it('awaits composer.createNew and does not open chat when composer succeeds', async () => {
+    const executeCommand = vi.fn(async (command: string) => {
+      if (command === 'composer.getOrderedSelectedComposerIds') return ['a'];
+      return undefined;
+    });
+
+    const result = await launchAgentPanelPrompt(
+      { text: '/opsx:apply demo', autoSubmit: false },
+      {
+        isCursorHost: () => true,
+        getCommands: async () => new Set([
+          'composer.createNew',
+          'composer.getOrderedSelectedComposerIds',
+          'workbench.action.chat.open',
+        ]),
+        executeCommand,
+        sleep: async () => undefined,
+      },
+    );
+
+    expect(result.layer).toBe('composerCreateNew');
+    expect(executeCommand).toHaveBeenCalledWith('composer.createNew', expect.any(Object));
+    expect(executeCommand).not.toHaveBeenCalledWith(
+      'workbench.action.chat.open',
+      expect.anything(),
+    );
+  });
+
+  it('invokes composer.createNew at most once while a launch is in flight', async () => {
+    let releaseCreateNew: (() => void) | undefined;
+    const createNewGate = new Promise<void>((resolve) => {
+      releaseCreateNew = resolve;
+    });
+    const executeCommand = vi.fn(async (command: string) => {
+      if (command === 'composer.getOrderedSelectedComposerIds') return ['a'];
+      if (command === 'composer.createNew') {
+        await createNewGate;
+      }
+      return undefined;
+    });
+
+    const deps = {
+      isCursorHost: () => true,
+      getCommands: async () => new Set([
+        'composer.createNew',
+        'composer.getOrderedSelectedComposerIds',
+      ]),
+      executeCommand,
+      sleep: async () => undefined,
+    };
+
+    const first = launchAgentPanelPrompt({ text: 'one', autoSubmit: false }, deps);
+    const second = launchAgentPanelPrompt({ text: 'two', autoSubmit: false }, deps);
+    releaseCreateNew?.();
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+
+    expect(firstResult.layer).toBe('composerCreateNew');
+    expect(secondResult.outcome).toBe('deduped');
+    expect(executeCommand.mock.calls.filter(([c]) => c === 'composer.createNew')).toHaveLength(1);
   });
 });
