@@ -93,6 +93,7 @@
   "detail.nav.skipped": "Skipped",
   "detail.verifyArchive": "Verify & Archive",
   "detail.loadingTaskProgress": "Loading task progress…",
+  "detail.tasksProgressUnknown": "Task progress unavailable",
 
   "fillChat.failed": "fillChat failed: {error}",
 

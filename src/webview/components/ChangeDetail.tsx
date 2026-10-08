@@ -47,8 +47,10 @@ import {
 } from '../utils/changeDetailArtifactInvalidation';
 import { isArchiveNowAllowed } from '../utils/changeDetailArchiveGating';
 import {
+  isArchiveNowBlockedByTasksProgress,
   readArtifactCacheStale,
   shouldCompleteVerifyArchiveTasksFetch,
+  shouldShowActiveTabLoadingForArtifactFetch,
 } from '../utils/changeDetailTasksFetch';
 import type { WorkflowActionReceipt } from '../../shared/changeWorkflow';
 
@@ -183,6 +185,8 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   const [artifactStateMessage, setArtifactStateMessage] = useState<string | null>(null);
   const [pendingLaunchAction, setPendingLaunchAction] = useState<WorkflowAction | null>(null);
   const [verifyArchiveTasksLoading, setVerifyArchiveTasksLoading] = useState(false);
+  const [tasksProgressError, setTasksProgressError] = useState<string | null>(null);
+  const [tasksProgressUnknown, setTasksProgressUnknown] = useState(false);
   const verifyArchiveTasksLoadingRef = useRef(verifyArchiveTasksLoading);
   verifyArchiveTasksLoadingRef.current = verifyArchiveTasksLoading;
   const dispatchExtensionMessageRef = useRef<(msg: unknown) => void>(() => undefined);
@@ -248,12 +252,25 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
       (action) => action.action === 'archive' && action.highImpact === true
     )
   );
-  const canArchiveNow = isArchiveNowAllowed(resolverAllowsArchiveNow, verifyArchiveTasksLoading);
+  const tasksProgressBlocked = isArchiveNowBlockedByTasksProgress({
+    tasksProgressError,
+    tasksProgressUnknown,
+    verifyArchiveTasksLoading,
+  });
+  const canArchiveNow = isArchiveNowAllowed(
+    resolverAllowsArchiveNow,
+    verifyArchiveTasksLoading,
+    tasksProgressBlocked,
+  );
   const archiveNowDisabledReason = isArchived
     ? t('verifyArchive.archiveDisabledArchived')
-    : verifyArchiveTasksLoading
-      ? t('detail.loadingTaskProgress')
-      : t('verifyArchive.archiveDisabledIncomplete');
+    : tasksProgressError
+      ? tasksProgressError
+      : verifyArchiveTasksLoading
+        ? t('detail.loadingTaskProgress')
+        : tasksProgressUnknown
+          ? t('detail.tasksProgressUnknown')
+          : t('verifyArchive.archiveDisabledIncomplete');
   const showVerifyArchiveTab = debug || !isArchived || archivedLocally;
   const navigationArtifacts = useMemo(() => {
     if (workflowSnapshot) return workflowSnapshot.artifacts;
@@ -312,11 +329,13 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     const fetchKey = resolveFetchKey(artifactType);
     const resolvedOutputPath = outputPath ?? selectedOutputPathsRef.current[artifactType];
     artifactFetchCoordinatorRef.current.schedule(fetchKey, () => {
-      setLoading(true);
-      setError(null);
-      setErrorCode(undefined);
-      setArtifactStateMessage(null);
-      setContent(null);
+      if (shouldShowActiveTabLoadingForArtifactFetch(activeTabRef.current, artifactType)) {
+        setLoading(true);
+        setError(null);
+        setErrorCode(undefined);
+        setArtifactStateMessage(null);
+        setContent(null);
+      }
       postMessage(sendMessage.getArtifactContent(
         changeName,
         artifactType,
@@ -480,6 +499,8 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         setError(null);
         const cacheStale = readArtifactCacheStale(data.cache);
         if (data.artifactType === 'tasks' && typeof data.content === 'string') {
+          setTasksProgressError(null);
+          setTasksProgressUnknown(false);
           const { completed, total } = countTaskProgress(data.content);
           setTotalTasks(total);
           setCompletedTasks(completed);
@@ -525,22 +546,28 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         );
         artifactFetchCoordinatorRef.current.complete(fetchKey);
         if (artifactType === 'tasks') {
+          const message = typeof data.message === 'string' ? data.message : t('artifact.readError');
+          setTasksProgressError(message);
+          setTasksProgressUnknown(true);
+          setCompletedTasks(0);
+          setTotalTasks(0);
           setVerifyArchiveTasksLoading(false);
-        }
-        if (data.code === 'WORKSPACE_ROOT_STALE') {
-          setArtifactStateMessage(
-            typeof data.message === 'string' ? data.message : t('workflow.workspaceRootStale'),
-          );
-          setLoading(false);
-          setError(null);
-          setErrorCode(String(data.code));
-          setContent(null);
-        } else {
-          setError(typeof data.message === 'string' ? data.message : 'Failed to load');
-          setErrorCode(typeof data.code === 'string' ? data.code : undefined);
-          setLoading(false);
-          setContent(null);
-          setArtifactStateMessage(null);
+        } else if (shouldShowActiveTabLoadingForArtifactFetch(activeTabRef.current, artifactType)) {
+          if (data.code === 'WORKSPACE_ROOT_STALE') {
+            setArtifactStateMessage(
+              typeof data.message === 'string' ? data.message : t('workflow.workspaceRootStale'),
+            );
+            setLoading(false);
+            setError(null);
+            setErrorCode(String(data.code));
+            setContent(null);
+          } else {
+            setError(typeof data.message === 'string' ? data.message : 'Failed to load');
+            setErrorCode(typeof data.code === 'string' ? data.code : undefined);
+            setLoading(false);
+            setContent(null);
+            setArtifactStateMessage(null);
+          }
         }
       } else if (data.type === 'deltaSpecList' && data.changeName === changeName) {
         const specIds = Array.isArray(data.specIds) ? data.specIds as string[] : [];
@@ -851,7 +878,11 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
           <div className="inline-flex items-center gap-2 mt-2 px-2.5 py-1 rounded text-xs" style={{ background: 'var(--vscode-editor-inactiveSelectionBackground)', color: 'var(--vscode-descriptionForeground)' }}>
             {verifyArchiveTasksLoading && activeTab === 'verifyArchive'
               ? t('detail.loadingTaskProgress')
-              : getStatusSummary(existingArtifactIds, completedTasks, totalTasks, isArchived)}
+              : tasksProgressError
+                ? tasksProgressError
+                : tasksProgressUnknown
+                  ? t('detail.tasksProgressUnknown')
+                  : getStatusSummary(existingArtifactIds, completedTasks, totalTasks, isArchived)}
           </div>
           {workflowSnapshot && (
             <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px]" style={{ color: 'var(--vscode-descriptionForeground)' }}>
@@ -948,6 +979,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
               isArchived={isArchived}
               canArchiveNow={canArchiveNow}
               archiveNowDisabledReason={archiveNowDisabledReason}
+              tasksProgressError={tasksProgressError}
               pendingAction={verifyArchivePendingAction}
               workflowLaunchConfig={executorUiLaunchConfig}
               onRun={(action) => handleLaunchWorkflow(action, 'verifyArchive')}

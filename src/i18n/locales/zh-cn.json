@@ -95,6 +95,7 @@
   "detail.nav.skipped": "已跳过",
   "detail.verifyArchive": "验证与归档",
   "detail.loadingTaskProgress": "正在加载任务进度…",
+  "detail.tasksProgressUnknown": "任务进度不可用",
 
   "fillChat.failed": "fillChat 失败: {error}",
 

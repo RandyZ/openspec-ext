@@ -12,6 +12,7 @@ export interface VerifyArchivePanelProps {
   isArchived: boolean;
   canArchiveNow?: boolean;
   archiveNowDisabledReason?: string;
+  tasksProgressError?: string | null;
   pendingAction?: InteractiveWorkflowAction | null;
   workflowLaunchConfig?: WorkflowLaunchConfigView | null;
   onRun: (action: InteractiveWorkflowAction) => void;
@@ -56,16 +57,30 @@ export const VerifyArchivePanel: React.FC<VerifyArchivePanelProps> = ({
   isArchived,
   canArchiveNow = false,
   archiveNowDisabledReason,
+  tasksProgressError,
   pendingAction,
   workflowLaunchConfig,
   onRun,
   onArchiveNow,
 }) => {
-  const directArchiveDisabledReason = archiveNowDisabledReason
+  const directArchiveDisabledReason = tasksProgressError
+    ?? archiveNowDisabledReason
     ?? (isArchived ? t('verifyArchive.archiveDisabledArchived') : t('verifyArchive.archiveDisabledIncomplete'));
 
   return (
     <div className="flex flex-col gap-4">
+      {tasksProgressError && (
+        <div
+          role="alert"
+          style={{
+            ...cardStyle,
+            borderColor: 'var(--vscode-inputValidation-errorBorder)',
+            color: 'var(--vscode-errorForeground)',
+          }}
+        >
+          {tasksProgressError}
+        </div>
+      )}
       <div style={cardStyle}>
         <div className="text-sm font-semibold mb-2">{t('verifyArchive.title')}</div>
         <p style={mutedTextStyle}>{getVerifyArchiveDescription(workflowLaunchConfig)}</p>

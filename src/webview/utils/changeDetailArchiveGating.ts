@@ -2,6 +2,7 @@
 export function isArchiveNowAllowed(
   resolverAllowsArchiveNow: boolean,
   verifyArchiveTasksLoading: boolean,
+  tasksProgressBlocked = false,
 ): boolean {
-  return resolverAllowsArchiveNow && !verifyArchiveTasksLoading;
+  return resolverAllowsArchiveNow && !verifyArchiveTasksLoading && !tasksProgressBlocked;
 }
