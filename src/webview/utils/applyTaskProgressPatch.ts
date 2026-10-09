@@ -1,18 +1,22 @@
 import type { ChangeInfo } from '../types/messages';
 import type { ChangeTaskProgressPatch } from '../../shared/changeTaskProgressPatch';
-import { enrichChangeWithLifecycle } from '../../shared/changeLifecycle';
+import {
+  enrichChangeWithLifecycle,
+  type ActiveChangeLifecycleStatus,
+  type ChangeAttention,
+  type LifecycleArtifactInput,
+} from '../../shared/changeLifecycle';
 
-type ChangeTaskProgressRow = Pick<
-  ChangeInfo,
-  | 'name'
-  | 'completedTasks'
-  | 'totalTasks'
-  | 'status'
-  | 'lastModified'
-  | 'artifacts'
-  | 'lifecycleStatus'
-  | 'attention'
->;
+export type ChangeTaskProgressRow = {
+  name: string;
+  completedTasks: number;
+  totalTasks: number;
+  status: ChangeInfo['status'];
+  lastModified: string;
+  lifecycleStatus?: ActiveChangeLifecycleStatus;
+  attention?: ChangeAttention;
+  artifacts?: LifecycleArtifactInput[];
+};
 
 export function applyTaskProgressPatchToChange<T extends ChangeTaskProgressRow>(
   change: T,
