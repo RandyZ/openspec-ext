@@ -21,6 +21,7 @@ import {
   type ChangeWorkflowSnapshot,
 } from '../../shared/changeWorkflow';
 import type { ChangeTaskProgressPatch } from '../../shared/changeTaskProgressPatch';
+import { changeTaskProgressPatchAppliesToPanel } from '../../shared/changeTaskProgressScope';
 import type { OpenSpecScope } from '../services/openspecScope';
 import type { OpenSpecRootBinding, ProjectContext } from '../services/types';
 
@@ -432,6 +433,15 @@ export class ChangeDetailPanelManager {
   public broadcastTaskProgressPatch(patch: ChangeTaskProgressPatch): void {
     for (const [key, panel] of this.panels) {
       if (!this.keyMatchesChange(key, patch.changeName)) continue;
+      const panelRootPath = this.panelRootPaths.get(key);
+      const panelScope = this.panelScopes.get(panel.webview);
+      if (!changeTaskProgressPatchAppliesToPanel(patch, {
+        changeName: patch.changeName,
+        scopeId: panelScope?.id,
+        planningRoot: panelRootPath,
+      })) {
+        continue;
+      }
       try {
         panel.webview.postMessage(patch);
       } catch (err) {

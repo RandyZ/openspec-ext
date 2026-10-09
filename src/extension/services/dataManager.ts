@@ -28,6 +28,8 @@ import {
   taskProgressFromTasksMarkdown,
 } from './changeTaskProgressFromFile';
 import type { ChangeTaskProgressPatch } from '../../shared/changeTaskProgressPatch';
+import { taskProgressCrossesLifecycleBoundary } from '../../shared/taskProgressLifecycleBoundary';
+import { reconcileChangeLifecycleFromCli } from './changeStatusFromCli';
 
 export interface ScopeInfo {
   id: string;
@@ -136,8 +138,8 @@ export class DataManager {
   private refreshCallbacks: Set<(data: DashboardData) => void> = new Set();
   private taskProgressPatchCallbacks: Set<(patch: ChangeTaskProgressPatch) => void> = new Set();
   private artifactChangedCallbacks: Set<(event: ArtifactChangedEvent) => void> = new Set();
-  private tasksOnlyRefreshTimer: ReturnType<typeof setTimeout> | undefined;
-  private tasksOnlyRefreshPending: { changeName: string; scope?: OpenSpecScope } | undefined;
+  private tasksStatusReconcileTimer: ReturnType<typeof setTimeout> | undefined;
+  private tasksStatusReconcilePending: { changeName: string; scope?: OpenSpecScope } | undefined;
   private cliAvailable = false;
 
   // Scope-aware additions
@@ -595,9 +597,12 @@ export class DataManager {
     });
 
     if (onlyTasksMd) {
-      const changeName = [...tasksPatchedChanges].at(-1);
-      if (changeName) {
-        this.scheduleTasksOnlyBackgroundRefresh(changeName, scope);
+      for (const changeName of tasksPatchedChanges) {
+        this.notifyArtifactChanged({
+          changeName,
+          artifactTypes: ['tasks'],
+          rootPath: this.canonicalRootPath(this.watchedProjectRoot),
+        });
       }
       return;
     }
@@ -1370,60 +1375,50 @@ export class DataManager {
     await fs.promises.writeFile(filePath, YAML.stringify(data), 'utf8');
   }
 
-  private scheduleTasksOnlyBackgroundRefresh(changeName: string, scope?: OpenSpecScope): void {
-    this.tasksOnlyRefreshPending = { changeName, scope };
-    if (this.tasksOnlyRefreshTimer) {
-      clearTimeout(this.tasksOnlyRefreshTimer);
+  private scheduleTasksStatusReconcile(changeName: string, scope?: OpenSpecScope): void {
+    this.tasksStatusReconcilePending = { changeName, scope };
+    if (this.tasksStatusReconcileTimer) {
+      clearTimeout(this.tasksStatusReconcileTimer);
     }
-    this.tasksOnlyRefreshTimer = setTimeout(() => {
-      this.tasksOnlyRefreshTimer = undefined;
-      const pending = this.tasksOnlyRefreshPending;
-      this.tasksOnlyRefreshPending = undefined;
+    this.tasksStatusReconcileTimer = setTimeout(() => {
+      this.tasksStatusReconcileTimer = undefined;
+      const pending = this.tasksStatusReconcilePending;
+      this.tasksStatusReconcilePending = undefined;
       if (!pending) return;
-      void this.publishTaskProgressFromFile(pending.changeName, pending.scope).catch((error) => {
-        logger.warn('Failed deferred tasks-only reconcile', error as Error);
+      void this.reconcileChangeStatusAfterTasksBoundary(pending.changeName, pending.scope).catch((error) => {
+        logger.warn('Failed debounced tasks status reconcile', error as Error);
       });
-    }, 2000);
+    }, 750);
   }
 
-  private async publishTaskProgressFromFile(
+  private async reconcileChangeStatusAfterTasksBoundary(
     changeName: string,
     scope?: OpenSpecScope,
   ): Promise<void> {
+    if (!this.cliAvailable) return;
     const services = this.getScopedServices(scope);
-    let content: string;
+    const existing = this.cachedData?.changes.find((c) => c.name === changeName);
+    let content = '';
     try {
       content = await services.contentAccess.readArtifact(changeName, 'tasks');
     } catch {
-      return;
+      content = '';
     }
-    if (!content.trim()) {
-      return;
-    }
-
-    let progress = taskProgressFromTasksMarkdown(content);
-    if (this.cachedData && this.isCurrentScope(scope)) {
-      const existing = this.cachedData.changes.find((c) => c.name === changeName);
-      if (
-        existing
-        && progress.totalTasks === 0
-        && existing.totalTasks > 0
-        && (content.includes('[') || content.includes('- '))
-      ) {
-        progress = {
-          completedTasks: existing.completedTasks,
-          totalTasks: existing.totalTasks,
-          status: existing.status,
-        };
-      }
-    }
+    const fileProgress = taskProgressFromTasksMarkdown(content);
+    const reconciled = await reconcileChangeLifecycleFromCli({
+      changeName,
+      scope,
+      cli: services.cli,
+      existing,
+      fileProgress,
+    });
+    if (!reconciled) return;
 
     if (this.cachedData && this.isCurrentScope(scope)) {
       const index = this.cachedData.changes.findIndex((c) => c.name === changeName);
       if (index >= 0) {
-        const updatedChange = applyTaskProgressToChange(this.cachedData.changes[index], progress);
         const changes = [...this.cachedData.changes];
-        changes[index] = enrichChangeWithLifecycle(updatedChange);
+        changes[index] = reconciled;
         this.cachedData = {
           ...this.cachedData,
           changes,
@@ -1433,15 +1428,88 @@ export class DataManager {
       }
     }
 
+    this.emitTaskProgressPatch(changeName, scope, reconciled, content);
+  }
+
+  private emitTaskProgressPatch(
+    changeName: string,
+    scope: OpenSpecScope | undefined,
+    change: ChangeInfo,
+    tasksContent: string,
+  ): void {
+    const services = this.getScopedServices(scope);
     this.notifyTaskProgressPatch({
       type: 'changeTaskProgressPatch',
       changeName,
       scopeId: scope?.id,
-      completedTasks: progress.completedTasks,
-      totalTasks: progress.totalTasks,
-      tasksContent: content,
+      changeRootPath: services.rootPath,
+      completedTasks: change.completedTasks,
+      totalTasks: change.totalTasks,
+      tasksContent,
+      lifecycleStatus: change.lifecycleStatus,
+      attention: change.attention,
       revisedAt: Date.now(),
     });
+  }
+
+  private async publishTaskProgressFromFile(
+    changeName: string,
+    scope?: OpenSpecScope,
+  ): Promise<void> {
+    const services = this.getScopedServices(scope);
+    let content = '';
+    let missingFile = false;
+    try {
+      content = await services.contentAccess.readArtifact(changeName, 'tasks');
+    } catch {
+      missingFile = true;
+      content = '';
+    }
+
+    const progress = taskProgressFromTasksMarkdown(content);
+    const previous = this.cachedData?.changes.find((c) => c.name === changeName);
+    const boundaryCrossed = missingFile
+      || taskProgressCrossesLifecycleBoundary(
+        previous
+          ? { completedTasks: previous.completedTasks, totalTasks: previous.totalTasks }
+          : undefined,
+        progress,
+      );
+
+    let updatedChange: ChangeInfo | undefined;
+    if (this.cachedData && this.isCurrentScope(scope)) {
+      const index = this.cachedData.changes.findIndex((c) => c.name === changeName);
+      if (index >= 0) {
+        updatedChange = applyTaskProgressToChange(this.cachedData.changes[index], progress);
+        const changes = [...this.cachedData.changes];
+        changes[index] = updatedChange;
+        this.cachedData = {
+          ...this.cachedData,
+          changes,
+          changeStatusCounts: buildChangeStatusCounts(changes, this.cachedData.archivedChanges),
+          lastRefresh: Date.now(),
+        };
+      }
+    }
+
+    if (updatedChange) {
+      this.emitTaskProgressPatch(changeName, scope, updatedChange, content);
+    } else {
+      this.notifyTaskProgressPatch({
+        type: 'changeTaskProgressPatch',
+        changeName,
+        scopeId: scope?.id,
+        changeRootPath: services.rootPath,
+        completedTasks: progress.completedTasks,
+        totalTasks: progress.totalTasks,
+        tasksContent: content,
+        revisedAt: Date.now(),
+      });
+    }
+
+    if (boundaryCrossed) {
+      this.scheduleTasksStatusReconcile(changeName, scope);
+    }
   }
 
   onTaskProgressPatch(callback: (patch: ChangeTaskProgressPatch) => void): vscode.Disposable {

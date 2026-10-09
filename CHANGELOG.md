@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5-agent-panel.6] - 2026-10-09
+
+### Fixed
+
+- Detail task progress: match `changeTaskProgressPatch` by OpenSpec root + change name (project-bound `scopeId` no longer drops watcher patches); tasks-only watcher events send background `artifactInvalidated` safety net.
+- Lifecycle after tasks.md: debounced single-change `getChangeStatus` when file counts cross a lifecycle boundary; empty/deleted `tasks.md` immediately publishes 0/0; ordinary checkbox edits stay CLI-free.
+
 ## [0.2.5-agent-panel.5] - 2026-10-09
 
 ### Fixed

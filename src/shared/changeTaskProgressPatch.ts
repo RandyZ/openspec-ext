@@ -1,10 +1,16 @@
+import type { ActiveChangeLifecycleStatus, ChangeAttention } from './changeLifecycle';
+
 export interface ChangeTaskProgressPatch {
   type: 'changeTaskProgressPatch';
   changeName: string;
   scopeId?: string;
+  /** Canonical OpenSpec root for this change; used to match project-bound detail panels. */
+  changeRootPath?: string;
   completedTasks: number;
   totalTasks: number;
   tasksContent?: string;
+  lifecycleStatus?: ActiveChangeLifecycleStatus;
+  attention?: ChangeAttention;
   revisedAt: number;
 }
 

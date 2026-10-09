@@ -479,7 +479,11 @@ describe('DataManager dashboard data loading', () => {
       uri: { fsPath: '/tmp/openspec/changes/same-change/tasks.md' },
     }]);
 
-    expect(artifactChanged).not.toHaveBeenCalled();
+    expect(artifactChanged).toHaveBeenCalledWith(expect.objectContaining({
+      changeName: 'same-change',
+      artifactTypes: ['tasks'],
+      rootPath: '/tmp',
+    }));
     expect((manager as any).publishTaskProgressFromFile).toHaveBeenCalledWith(
       'same-change',
       undefined,
@@ -529,6 +533,89 @@ describe('DataManager dashboard data loading', () => {
     await vi.advanceTimersByTimeAsync(2500);
     expect(refreshSpy).not.toHaveBeenCalled();
     expect(execOpenSpec).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('publishes zero task counts when tasks.md is empty', async () => {
+    const manager = new DataManager('/tmp');
+    const patchSpy = vi.fn();
+    manager.onTaskProgressPatch(patchSpy);
+    Object.assign(manager as any, {
+      cliAvailable: true,
+      cliService: {
+        checkAvailability: vi.fn().mockResolvedValue(true),
+        getChangeStatus: vi.fn().mockResolvedValue({ artifacts: [] }),
+      },
+      contentAccess: {
+        readArtifact: vi.fn().mockResolvedValue(''),
+      },
+      cachedData: {
+        changes: [{
+          name: 'same-change',
+          completedTasks: 3,
+          totalTasks: 3,
+          status: 'complete',
+          lastModified: '2026-01-01',
+          lifecycleStatus: 'ready-to-verify',
+          artifacts: [{ id: 'tasks', outputPath: 't.md', status: 'done' }],
+        }],
+        archivedChanges: [],
+        changeStatusCounts: { all: 1, planning: 0, readyToApply: 0, applying: 0, readyToVerify: 1, archived: 0, needsAttention: 0 },
+      },
+    });
+    vi.spyOn(manager as any, 'isCurrentScope').mockReturnValue(true);
+
+    await (manager as any).publishTaskProgressFromFile('same-change', undefined);
+
+    expect(patchSpy).toHaveBeenCalledWith(expect.objectContaining({
+      changeName: 'same-change',
+      completedTasks: 0,
+      totalTasks: 0,
+      tasksContent: '',
+    }));
+  });
+
+  it('debounces a single status reconcile when task counts cross a lifecycle boundary', async () => {
+    vi.useFakeTimers();
+    const getChangeStatus = vi.fn().mockResolvedValue({
+      artifacts: [{ id: 'tasks', outputPath: 'tasks.md', status: 'done' }],
+    });
+    const manager = new DataManager('/tmp');
+    const patchSpy = vi.fn();
+    manager.onTaskProgressPatch(patchSpy);
+    Object.assign(manager as any, {
+      cliAvailable: true,
+      cliService: {
+        checkAvailability: vi.fn().mockResolvedValue(true),
+        getChangeStatus,
+      },
+      contentAccess: {
+        readArtifact: vi.fn()
+          .mockResolvedValueOnce('- [x] A\n- [x] B\n- [x] C\n')
+          .mockResolvedValue('- [x] A\n- [x] B\n- [x] C\n'),
+      },
+      cachedData: {
+        changes: [{
+          name: 'same-change',
+          completedTasks: 0,
+          totalTasks: 3,
+          status: 'in-progress',
+          lastModified: '2026-01-01',
+          lifecycleStatus: 'ready-to-apply',
+          artifacts: [{ id: 'tasks', outputPath: 'tasks.md', status: 'done' }],
+        }],
+        archivedChanges: [],
+        changeStatusCounts: { all: 1, planning: 0, readyToApply: 1, applying: 0, readyToVerify: 0, archived: 0, needsAttention: 0 },
+      },
+    });
+    vi.spyOn(manager as any, 'isCurrentScope').mockReturnValue(true);
+
+    await (manager as any).publishTaskProgressFromFile('same-change', undefined);
+    expect(getChangeStatus).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(800);
+    expect(getChangeStatus).toHaveBeenCalledTimes(1);
+    expect(getChangeStatus).toHaveBeenCalledWith('same-change', undefined);
     vi.useRealTimers();
   });
 

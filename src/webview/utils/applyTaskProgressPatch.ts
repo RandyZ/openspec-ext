@@ -1,7 +1,18 @@
 import type { ChangeInfo } from '../types/messages';
 import type { ChangeTaskProgressPatch } from '../../shared/changeTaskProgressPatch';
+import { enrichChangeWithLifecycle } from '../../shared/changeLifecycle';
 
-type ChangeTaskProgressRow = Pick<ChangeInfo, 'name' | 'completedTasks' | 'totalTasks' | 'status'>;
+type ChangeTaskProgressRow = Pick<
+  ChangeInfo,
+  | 'name'
+  | 'completedTasks'
+  | 'totalTasks'
+  | 'status'
+  | 'lastModified'
+  | 'artifacts'
+  | 'lifecycleStatus'
+  | 'attention'
+>;
 
 export function applyTaskProgressPatchToChange<T extends ChangeTaskProgressRow>(
   change: T,
@@ -13,12 +24,26 @@ export function applyTaskProgressPatchToChange<T extends ChangeTaskProgressRow>(
     : patch.completedTasks === patch.totalTasks
       ? 'complete'
       : 'in-progress';
-  return {
+  const merged: T = {
     ...change,
     completedTasks: patch.completedTasks,
     totalTasks: patch.totalTasks,
     status,
+    ...(patch.lifecycleStatus ? { lifecycleStatus: patch.lifecycleStatus } : {}),
+    ...(patch.attention !== undefined ? { attention: patch.attention } : {}),
   };
+  if (patch.lifecycleStatus) {
+    return merged;
+  }
+  if (change.artifacts && change.artifacts.length > 0) {
+    return enrichChangeWithLifecycle({
+      ...change,
+      completedTasks: patch.completedTasks,
+      totalTasks: patch.totalTasks,
+      status,
+    }) as T;
+  }
+  return merged;
 }
 
 export function applyTaskProgressPatchToChanges<T extends ChangeTaskProgressRow>(
