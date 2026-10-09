@@ -37,6 +37,15 @@ vi.mock('@extension/services/workflowLaunchConfig', () => ({
     cursorAgentModel: 'auto',
     cursorLaunchModeExplicit: false,
   })),
+  getWorkflowLaunchConfigViewForUi: vi.fn(() => ({
+    workflowLaunchMode: 'clipboard',
+    preferredAgentAdapter: 'clipboard',
+    cursorLaunchMode: 'clipboard',
+    cursorAgentModel: 'auto',
+    cursorLaunchModeExplicit: false,
+    effectiveAdapterId: null,
+    agentAutoSubmit: 'readOnly',
+  })),
 }));
 
 describe('agent unavailable webview handler', () => {

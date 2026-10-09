@@ -42,6 +42,32 @@ describe('check-typecheck-baseline.sh', () => {
       encoding: 'utf8',
     });
     expect(result.status).not.toBe(0);
-    expect(`${result.stdout}${result.stderr}`).toContain("no 'error TS' lines were counted");
+    expect(`${result.stdout}${result.stderr}`).toMatch(/abnormal signal|no 'error TS' lines were counted/);
+  });
+
+  it('fails on abnormal exit even when partial error TS lines were emitted', () => {
+    const result = spawnSync('bash', [scriptPath], {
+      env: {
+        ...process.env,
+        CHECK_TYPECHECK_TSC_INVOKE: 'echo "error TS9999: partial crash" >&2; echo "Killed" >&2; exit 134',
+        TSC_BASELINE_ERROR_COUNT: '12',
+      },
+      encoding: 'utf8',
+    });
+    expect(result.status).not.toBe(0);
+    expect(`${result.stdout}${result.stderr}`).toContain('abnormal signal/code 134');
+  });
+
+  it('fails when tsc exits non-zero without Found N errors summary', () => {
+    const result = spawnSync('bash', [scriptPath], {
+      env: {
+        ...process.env,
+        CHECK_TYPECHECK_TSC_INVOKE: 'echo "error TS9999: stray" >&2; exit 2',
+        TSC_BASELINE_ERROR_COUNT: '12',
+      },
+      encoding: 'utf8',
+    });
+    expect(result.status).not.toBe(0);
+    expect(`${result.stdout}${result.stderr}`).toContain("without a 'Found N error(s)' summary");
   });
 });

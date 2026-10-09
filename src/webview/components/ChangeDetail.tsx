@@ -350,11 +350,17 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
       artifactType === 'specs' ? selectedSpecIdRef.current : undefined,
     );
 
-  const requestArtifact = (artifactType: string, outputPath?: string) => {
+  const requestArtifact = (
+    artifactType: string,
+    outputPath?: string,
+    options?: { background?: boolean },
+  ) => {
     const fetchKey = resolveFetchKey(artifactType);
     const resolvedOutputPath = outputPath ?? selectedOutputPathsRef.current[artifactType];
     artifactFetchCoordinatorRef.current.schedule(fetchKey, () => {
-      if (shouldShowActiveTabLoadingForArtifactFetch(activeTabRef.current, artifactType)) {
+      const showLoading = !options?.background
+        && shouldShowActiveTabLoadingForArtifactFetch(activeTabRef.current, artifactType);
+      if (showLoading) {
         setLoading(true);
         setError(null);
         setErrorCode(undefined);
@@ -723,7 +729,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
                 setVerifyArchiveTasksLoading(true);
               }
             },
-            scheduleTasksRefetch: () => requestArtifact('tasks'),
+            scheduleTasksRefetch: () => requestArtifact('tasks', undefined, { background: true }),
           });
         } else if (invalidated.includes(activeTabRef.current)) {
           initialArtifactFetchKeyRef.current = null;

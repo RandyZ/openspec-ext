@@ -151,7 +151,8 @@ export async function activate(context: vscode.ExtensionContext) {
           event.affectsConfiguration('openspec.workflowLaunchMode') ||
           event.affectsConfiguration('openspec.preferredAgentAdapter') ||
           event.affectsConfiguration('openspec.cursorLaunchMode') ||
-          event.affectsConfiguration('openspec.cursorAgentModel');
+          event.affectsConfiguration('openspec.cursorAgentModel') ||
+          event.affectsConfiguration('openspec.agentAutoSubmit');
         if (!launchConfigChanged) return;
         logger.info('[workflow] launch configuration changed; updating webviews');
         dashboardViewProvider.postWorkflowLaunchConfig();

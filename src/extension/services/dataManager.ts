@@ -137,6 +137,7 @@ export class DataManager {
   private taskProgressPatchCallbacks: Set<(patch: ChangeTaskProgressPatch) => void> = new Set();
   private artifactChangedCallbacks: Set<(event: ArtifactChangedEvent) => void> = new Set();
   private tasksOnlyRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+  private tasksOnlyRefreshPending: { changeName: string; scope?: OpenSpecScope } | undefined;
   private cliAvailable = false;
 
   // Scope-aware additions
@@ -531,71 +532,85 @@ export class DataManager {
 
     // Start file watcher
     this.fileWatcher.start((events) => {
-      // Collect artifact-specific changes to notify open panels
-      const artifactChanges = new Map<string, Set<string>>();
-
-      for (const e of events) {
-        const relative = path.relative(this.watchedProjectRoot, e.uri.fsPath).replace(/\\/g, '/');
-
-        // tasks.md auto-complete parents
-        const archiveTasksMatch = relative.match(/^openspec\/changes\/archive\/([^/]+)\/tasks\.md$/);
-        const draftTasksMatch = relative.match(/^openspec\/changes\/(?!archive)([^/]+)\/tasks\.md$/);
-        const tasksChangeName = archiveTasksMatch
-          ? `archive:${archiveTasksMatch[1]}`
-          : draftTasksMatch ? draftTasksMatch[1] : null;
-        if (tasksChangeName) {
-          this.contentAccess.autoCompleteParents(tasksChangeName).catch((err) =>
-            logger.warn('autoCompleteParents after tasks.md change', err as Error)
-          );
-          const scope = this.resolveScopeForRoot(this.watchedProjectRoot);
-          void this.publishTaskProgressFromFile(tasksChangeName, scope).catch((err) =>
-            logger.warn('publishTaskProgressFromFile after tasks.md change', err as Error)
-          );
-        }
-
-        // Detect which artifact changed and compute downstream invalidations
-        const parsed = this.parseArtifactFromPath(relative);
-        if (parsed) {
-          const { changeName, artifactType } = parsed;
-          if (!artifactChanges.has(changeName)) {
-            artifactChanges.set(changeName, new Set());
-          }
-          // Invalidate the changed artifact itself + its downstream dependents
-          const invalidate = [artifactType, ...(ARTIFACT_DOWNSTREAM[artifactType] ?? [])];
-          for (const t of invalidate) {
-            artifactChanges.get(changeName)!.add(t);
-          }
-        }
-      }
-
-      // Notify artifact-level change subscribers (e.g. open change detail panels)
-      for (const [changeName, types] of artifactChanges) {
-        this.notifyArtifactChanged({
-          changeName,
-          artifactTypes: [...types],
-          rootPath: this.canonicalRootPath(this.watchedProjectRoot),
-        });
-      }
-
-      const onlyTasksMd = events.length > 0 && events.every((event) => {
-        const relative = path.relative(this.watchedProjectRoot, event.uri.fsPath).replace(/\\/g, '/');
-        return /\/tasks\.md$/.test(relative);
-      });
-
-      if (onlyTasksMd) {
-        this.scheduleTasksOnlyBackgroundRefresh(this.resolveScopeForRoot(this.watchedProjectRoot));
-      } else {
-        logger.info(`File changes detected (${events.length} events), refreshing...`);
-        void (async () => {
-          await this.invalidateDashboardCache(this.resolveScopeForRoot(this.watchedProjectRoot));
-          await this.refresh();
-        })().catch((error) => {
-          logger.warn('Failed to refresh after file changes', error as Error);
-        });
-      }
+      void this.handleFileWatcherEvents(events);
     });
 
     this.warmDashboardData();
+  }
+
+  private async handleFileWatcherEvents(
+    events: Array<{ uri: { fsPath: string } }>,
+  ): Promise<void> {
+    const artifactChanges = new Map<string, Set<string>>();
+    const tasksPatchedChanges = new Set<string>();
+    const scope = this.resolveScopeForRoot(this.watchedProjectRoot);
+
+    for (const e of events) {
+      const relative = path.relative(this.watchedProjectRoot, e.uri.fsPath).replace(/\\/g, '/');
+
+      const archiveTasksMatch = relative.match(/^openspec\/changes\/archive\/([^/]+)\/tasks\.md$/);
+      const draftTasksMatch = relative.match(/^openspec\/changes\/(?!archive)([^/]+)\/tasks\.md$/);
+      const tasksChangeName = archiveTasksMatch
+        ? `archive:${archiveTasksMatch[1]}`
+        : draftTasksMatch ? draftTasksMatch[1] : null;
+      if (tasksChangeName) {
+        tasksPatchedChanges.add(tasksChangeName);
+        this.contentAccess.autoCompleteParents(tasksChangeName).catch((err) =>
+          logger.warn('autoCompleteParents after tasks.md change', err as Error)
+        );
+        try {
+          await this.publishTaskProgressFromFile(tasksChangeName, scope);
+        } catch (err) {
+          logger.warn('publishTaskProgressFromFile after tasks.md change', err as Error);
+        }
+      }
+
+      const parsed = this.parseArtifactFromPath(relative);
+      if (parsed) {
+        const { changeName, artifactType } = parsed;
+        if (artifactType === 'tasks') {
+          continue;
+        }
+        if (!artifactChanges.has(changeName)) {
+          artifactChanges.set(changeName, new Set());
+        }
+        const invalidate = [artifactType, ...(ARTIFACT_DOWNSTREAM[artifactType] ?? [])];
+        for (const t of invalidate) {
+          artifactChanges.get(changeName)!.add(t);
+        }
+      }
+    }
+
+    for (const [changeName, types] of artifactChanges) {
+      this.notifyArtifactChanged({
+        changeName,
+        artifactTypes: [...types],
+        rootPath: this.canonicalRootPath(this.watchedProjectRoot),
+      });
+    }
+
+    const onlyTasksMd = events.length > 0 && events.every((event) => {
+      const relative = path.relative(this.watchedProjectRoot, event.uri.fsPath).replace(/\\/g, '/');
+      return /\/tasks\.md$/.test(relative);
+    });
+
+    if (onlyTasksMd) {
+      const changeName = [...tasksPatchedChanges].at(-1);
+      if (changeName) {
+        this.scheduleTasksOnlyBackgroundRefresh(changeName, scope);
+      }
+      return;
+    }
+
+    if (events.length > 0) {
+      logger.info(`File changes detected (${events.length} events), refreshing...`);
+      try {
+        await this.invalidateDashboardCache(scope);
+        await this.refresh(scope);
+      } catch (error) {
+        logger.warn('Failed to refresh after file changes', error as Error);
+      }
+    }
   }
 
   /**
@@ -1355,17 +1370,18 @@ export class DataManager {
     await fs.promises.writeFile(filePath, YAML.stringify(data), 'utf8');
   }
 
-  private scheduleTasksOnlyBackgroundRefresh(scope?: OpenSpecScope): void {
+  private scheduleTasksOnlyBackgroundRefresh(changeName: string, scope?: OpenSpecScope): void {
+    this.tasksOnlyRefreshPending = { changeName, scope };
     if (this.tasksOnlyRefreshTimer) {
       clearTimeout(this.tasksOnlyRefreshTimer);
     }
     this.tasksOnlyRefreshTimer = setTimeout(() => {
       this.tasksOnlyRefreshTimer = undefined;
-      void (async () => {
-        await this.invalidateDashboardCache(scope);
-        await this.refresh(scope);
-      })().catch((error) => {
-        logger.warn('Failed deferred tasks-only refresh', error as Error);
+      const pending = this.tasksOnlyRefreshPending;
+      this.tasksOnlyRefreshPending = undefined;
+      if (!pending) return;
+      void this.publishTaskProgressFromFile(pending.changeName, pending.scope).catch((error) => {
+        logger.warn('Failed deferred tasks-only reconcile', error as Error);
       });
     }, 2000);
   }

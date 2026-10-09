@@ -123,6 +123,31 @@ describe('workflow launch labels', () => {
     expect(getVerifyArchiveHint('archive', config, { isCursorHost: true }, 'demo')).toContain('Enter');
   });
 
+  it('verify hint reflects never auto-submit (prefill, not send)', () => {
+    const config: WorkflowLaunchConfigView = {
+      ...baseConfig,
+      workflowLaunchMode: 'adapter',
+      preferredAgentAdapter: 'vscode-chat',
+      effectiveAdapterId: 'vscode-chat',
+      agentAutoSubmit: 'never',
+    };
+    const verifyHint = getVerifyArchiveHint('verify', config, undefined, 'demo-change');
+    expect(verifyHint).toContain('Enter');
+    expect(verifyHint).not.toContain('automatically');
+  });
+
+  it('verify hint reflects always auto-submit for verify and archive', () => {
+    const config: WorkflowLaunchConfigView = {
+      ...baseConfig,
+      workflowLaunchMode: 'adapter',
+      preferredAgentAdapter: 'vscode-chat',
+      effectiveAdapterId: 'vscode-chat',
+      agentAutoSubmit: 'always',
+    };
+    expect(getVerifyArchiveHint('verify', config, undefined, 'demo-change')).toContain('automatically');
+    expect(getVerifyArchiveHint('archive', config, undefined, 'demo-change')).toContain('automatically');
+  });
+
   it('shows generic launch wording for non-Cursor adapters', () => {
     expect(
       getWorkflowActionButtonLabel('Apply', {

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5-agent-panel.5] - 2026-10-09
+
+### Fixed
+
+- Detail page: `tasks.md` edits push `changeTaskProgressPatch` (counts + content) without `artifactInvalidated` / loading flash; tasks artifact reads skip CLI list/status; tasks-only watcher events no longer trigger full dashboard CLI refresh.
+- V&A hints: `agentAutoSubmit` included in executor launch presentation and refreshed on settings change; labels use host-effective mode (`never` / `readOnly` / `always`).
+- Optional missing artifacts log at debug instead of error.
+- zh-CN: keep **Dashboard** product label; lowercase **change** consistently.
+- Typecheck gate: fail on abnormal tsc exit (≥128) or missing `Found N error(s)` summary even when partial `error TS` lines exist.
+
 ## [0.2.5-agent-panel.4] - 2026-10-09
 
 ### Fixed

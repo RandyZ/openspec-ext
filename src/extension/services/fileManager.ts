@@ -89,7 +89,12 @@ export class FileManagerService implements IOpenSpecContentAccess {
       logger.debug(`Read artifact: ${changeName}/${artifactType}`);
       return content;
     } catch (error) {
-      logger.error(`Failed to read artifact: ${artifactPath}`, error as Error);
+      const code = (error as NodeJS.ErrnoException)?.code;
+      if (code === 'ENOENT') {
+        logger.debug(`Artifact not present: ${artifactPath}`);
+      } else {
+        logger.error(`Failed to read artifact: ${artifactPath}`, error as Error);
+      }
       throw error;
     }
   }

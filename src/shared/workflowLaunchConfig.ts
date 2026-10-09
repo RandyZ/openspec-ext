@@ -124,7 +124,9 @@ export function resolveWorkflowLabelLaunchConfig(
   hostSettingsConfig: WorkflowLaunchConfigView,
   uiConfig: WorkflowLaunchConfigView,
 ): WorkflowLaunchConfigView {
-  return isHostWorkflowLaunchCopyOnly(hostSettingsConfig) ? hostSettingsConfig : uiConfig;
+  const base = isHostWorkflowLaunchCopyOnly(hostSettingsConfig) ? hostSettingsConfig : uiConfig;
+  const agentAutoSubmit = hostSettingsConfig.agentAutoSubmit ?? uiConfig.agentAutoSubmit;
+  return agentAutoSubmit === undefined ? base : { ...base, agentAutoSubmit };
 }
 
 /** Label/intent: adapter mode with a non-clipboard preferred adapter uses Agent verbs. */

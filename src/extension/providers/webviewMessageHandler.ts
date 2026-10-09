@@ -14,7 +14,7 @@ import type {
 import { t } from '../../i18n';
 import { buildWorkflowLaunchPayload } from '../../shared/workflowCommand';
 import type { WorkflowAction } from '../../shared/workflowCommand';
-import { getWorkflowLaunchConfig } from '../services/workflowLaunchConfig';
+import { getWorkflowLaunchConfigViewForUi } from '../services/workflowLaunchConfig';
 import { launchWorkflowAgentCommand } from '../services/workflowAgentLaunch';
 import { postExecutorLaunchPresentationFromHost } from '../services/executorLaunchPresentation';
 import {
@@ -22,7 +22,6 @@ import {
 } from '../services/interactiveAgentTerminalManager';
 import { confirmDirectArchive } from '../commands/archiveConfirm';
 import { formatBytes } from '../utils/formatBytes';
-import { toWorkflowLaunchConfigView } from '../../shared/workflowLaunchConfig';
 import { isCursorHost } from '../utils/isCursorHost';
 import type {
   InteractiveWorkflowAction,
@@ -680,6 +679,36 @@ export async function handleWebviewMessage(
       const artifactType = message.artifactId ?? message.artifactType;
       if (!changeName || !artifactType) break;
       const { rootPath, scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
+      if (
+        artifactType === 'tasks'
+        && !changeName.startsWith('archive:')
+      ) {
+        try {
+          const content = await dataManager.readArtifact(changeName, 'tasks', scope);
+          await dataManager.writeArtifactContentCache?.({
+            changeName,
+            artifactType: 'tasks',
+            scope,
+            content,
+          });
+          webview.postMessage({
+            type: 'artifactContent',
+            changeName,
+            artifactType: 'tasks',
+            content,
+            cache: { source: 'fresh', stale: false },
+          });
+        } catch {
+          webview.postMessage({
+            type: 'artifactContentError',
+            changeName,
+            artifactType: 'tasks',
+            message: t('artifact.missingShort'),
+            code: 'ARTIFACT_MISSING',
+          });
+        }
+        break;
+      }
       if (!isPathInWorkspaceFolders(rootPath)) {
         webview.postMessage({
           type: 'artifactContentError',
@@ -1461,20 +1490,10 @@ export async function handleAgentUnavailableMessage(
   }
 }
 
-function readAgentAutoSubmitModeForUi(): 'never' | 'readOnly' | 'always' {
-  const raw = vscode.workspace.getConfiguration('openspec').get<string>('agentAutoSubmit');
-  if (raw === 'never' || raw === 'always' || raw === 'readOnly') return raw;
-  return 'readOnly';
-}
-
 export function getWorkflowLaunchConfigMessage() {
-  const config = getWorkflowLaunchConfig();
   return {
     type: 'workflowLaunchConfig' as const,
-    config: {
-      ...toWorkflowLaunchConfigView(config),
-      agentAutoSubmit: readAgentAutoSubmitModeForUi(),
-    },
+    config: getWorkflowLaunchConfigViewForUi(),
     isCursorHost: isCursorHost(),
   };
 }

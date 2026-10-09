@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   isCopyOnlyWorkflowMode,
   resolveWorkflowLaunchConfig,
+  resolveWorkflowLabelLaunchConfig,
   shouldUseAgentWorkflowLabels,
   toWorkflowLaunchConfigView,
   type WorkflowLaunchConfigWithExplicit,
@@ -102,5 +103,18 @@ describe('copy-only vs implicit cursorLaunchMode=clipboard (regression .17)', ()
     );
     expect(isCopyOnlyWorkflowMode(view)).toBe(false);
     expect(shouldUseAgentWorkflowLabels(view)).toBe(true);
+  });
+
+  it('keeps host agentAutoSubmit when resolving label launch config', () => {
+    const host = toWorkflowLaunchConfigView({
+      workflowLaunchMode: 'adapter',
+      preferredAgentAdapter: 'cursor',
+      cursorLaunchMode: 'agentPanel',
+      cursorAgentModel: 'auto',
+      cursorLaunchModeExplicit: false,
+    });
+    const ui = { ...host, agentAutoSubmit: 'readOnly' as const };
+    const hostNever = { ...host, agentAutoSubmit: 'never' as const };
+    expect(resolveWorkflowLabelLaunchConfig(hostNever, ui).agentAutoSubmit).toBe('never');
   });
 });

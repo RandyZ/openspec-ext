@@ -10,6 +10,15 @@ vi.mock('@extension/services/workflowLaunchConfig', () => ({
     cursorAgentModel: 'auto',
     cursorLaunchModeExplicit: true,
   })),
+  getWorkflowLaunchConfigViewForUi: vi.fn(() => ({
+    workflowLaunchMode: 'adapter',
+    preferredAgentAdapter: 'cursor',
+    cursorLaunchMode: 'deeplink',
+    cursorAgentModel: 'auto',
+    cursorLaunchModeExplicit: true,
+    effectiveAdapterId: 'cursor',
+    agentAutoSubmit: 'readOnly',
+  })),
 }));
 
 describe('createExecutorLaunchPresentation', () => {

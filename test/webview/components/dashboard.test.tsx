@@ -420,7 +420,7 @@ describe('Dashboard recommended action rail', () => {
     expect(html).toContain('aria-label="工作流优先级"');
     expect(html).toContain('需要关注');
     expect(html).toContain('可以验证');
-    expect(html).toContain('aria-label="审查并归档（Change：attention-change）"');
+    expect(html).toContain('aria-label="审查并归档（change：attention-change）"');
     setLocale('en');
   });
 

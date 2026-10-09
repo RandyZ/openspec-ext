@@ -5,10 +5,7 @@ import {
   getWorkflowCommandTargetForAdapter,
   buildWorkflowCommand,
 } from '../../shared/workflowCommand';
-import {
-  type AgentAutoSubmitMode,
-  shouldAutoSubmitWorkflowAction,
-} from '../../shared/agentAutoSubmit';
+import { shouldAutoSubmitWorkflowAction } from '../../shared/agentAutoSubmit';
 import {
   isCopyOnlyWorkflowMode,
   shouldForceCursorWorkflowRoute,
@@ -17,7 +14,7 @@ import {
 import { getCurrentAdapter, getAdapterById } from '../adapters';
 import { cursorAdapter } from '../adapters/cursor-adapter';
 import { t } from '../../i18n';
-import { getWorkflowLaunchConfig } from './workflowLaunchConfig';
+import { getAgentAutoSubmitMode, getWorkflowLaunchConfig } from './workflowLaunchConfig';
 import {
   launchAgentPanelPrompt,
   type AgentLaunchLayer,
@@ -91,13 +88,6 @@ function workflowLaunchDedupeKey(request: WorkflowAgentLaunchRequest): string {
   return `${request.workspaceRoot}\u0000${request.changeName}\u0000${request.action}`;
 }
 
-function readAgentAutoSubmitMode(): AgentAutoSubmitMode {
-  const raw = vscode.workspace.getConfiguration('openspec').get<string>('agentAutoSubmit');
-  if (raw === 'never' || raw === 'always' || raw === 'readOnly') {
-    return raw;
-  }
-  return 'readOnly';
-}
 
 function notifyLaunchResult(
   result: WorkflowAgentLaunchResult,
@@ -216,7 +206,7 @@ async function executeWorkflowAgentLaunch(
 ): Promise<WorkflowAgentLaunchResult> {
   const launchConfig = getWorkflowLaunchConfig();
   const launchConfigView = toWorkflowLaunchConfigView(launchConfig);
-  const autoSubmit = shouldAutoSubmitWorkflowAction(request.action, readAgentAutoSubmitMode());
+  const autoSubmit = shouldAutoSubmitWorkflowAction(request.action, getAgentAutoSubmitMode());
 
   const clipboardPayload = buildResolvedLaunchPayload(request.action, request.changeName);
 
