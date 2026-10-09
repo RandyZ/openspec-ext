@@ -12,9 +12,11 @@ describe('check-typecheck-baseline.sh', () => {
     expect(script).not.toMatch(/\brg\b/);
   });
 
-  it('uses strict bash, baseline 12, and rejects tsc crash without error TS lines', () => {
+  it('uses strict bash, baseline 12, pretty tsc output, and rejects tsc crash without error TS lines', () => {
     expect(script).toContain('set -euo pipefail');
     expect(script).toContain('TSC_BASELINE_ERROR_COUNT:-12');
+    expect(script).toContain('--pretty true');
+    expect(script).toContain('strip_ansi');
     expect(script).toContain("no 'error TS' lines were counted");
   });
 
