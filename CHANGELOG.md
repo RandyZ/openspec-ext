@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5-agent-panel.4] - 2026-10-09
+
+### Fixed
+
+- Typecheck gate: fail when `tsc` exits non-zero but emits zero `error TS` lines; baseline lowered to **12**.
+- zh-CN: Needs Attention filter/badge, lifecycle empty states, archive verify dialog, Proposal Why, V&A intro wording, and remaining English UI fragments.
+
 ## [0.2.5-agent-panel.3] - 2026-10-09
 
 ### Fixed

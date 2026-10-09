@@ -294,8 +294,8 @@ describe('Project-first Header', () => {
     );
 
     expect(html).toContain('aria-label="项目导航"');
-    expect(html).toContain('浏览本地 Changes');
-    expect(html).toContain('浏览本地 Specs');
+    expect(html).toContain('浏览本地 Change');
+    expect(html).toContain('浏览本地 Spec');
     expect(html).toContain('在编辑器中打开项目 Dashboard');
     // The Worksets launcher keeps its browsing-for-current-Project accessible
     // name in zh-cn too (short visible label, descriptive accessible name).

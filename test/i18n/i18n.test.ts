@@ -92,8 +92,8 @@ describe('i18n', () => {
       expect(t('verify.completeness')).toContain('完整性');
       expect(t('verify.correctness')).toContain('正确性');
       expect(t('verify.coherence')).toContain('一致性');
-      expect(t('verifyArchive.runVerify')).toBe('Run Verify');
-      expect(t('verifyArchive.clearSession')).toBe('Clear Session');
+      expect(t('verifyArchive.runVerify')).toBe('运行验证');
+      expect(t('verifyArchive.clearSession')).toBe('清除会话');
       expect(t('verifyArchive.reviewArchive')).toBe('审查并归档');
       expect(t('verifyArchive.archiveNow')).toBe('立即归档');
       expect(t('extension.emptyWorkspaceMessage')).toBe(
