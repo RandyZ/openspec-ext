@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5-agent-panel.7] - 2026-10-09
+
+### Fixed
+
+- CI: resolve ESLint `no-useless-assignment` in tasks.md reconcile helpers (`dataManager.ts`).
+
 ## [0.2.5-agent-panel.6] - 2026-10-09
 
 ### Fixed

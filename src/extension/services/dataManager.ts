@@ -1398,7 +1398,7 @@ export class DataManager {
     if (!this.cliAvailable) return;
     const services = this.getScopedServices(scope);
     const existing = this.cachedData?.changes.find((c) => c.name === changeName);
-    let content = '';
+    let content: string;
     try {
       content = await services.contentAccess.readArtifact(changeName, 'tasks');
     } catch {
@@ -1457,7 +1457,7 @@ export class DataManager {
     scope?: OpenSpecScope,
   ): Promise<void> {
     const services = this.getScopedServices(scope);
-    let content = '';
+    let content: string;
     let missingFile = false;
     try {
       content = await services.contentAccess.readArtifact(changeName, 'tasks');
