@@ -37,6 +37,21 @@ vi.mock('@extension/utils/logger', () => ({
   },
 }));
 
+vi.mock('@extension/utils/workspaceFolders', () => ({
+  isPathInWorkspaceFolders: () => true,
+}));
+
+vi.mock('@extension/services/workflowAgentLaunch', () => ({
+  buildResolvedLaunchPayload: () => ({
+    command: '/opsx-apply demo-change',
+    target: 'cursor',
+  }),
+}));
+
+vi.mock('@extension/services/workflowClipboardNotify', () => ({
+  notifyWorkflowCommandCopied: vi.fn(),
+}));
+
 const getConfiguration = vi.mocked(vscode.workspace.getConfiguration);
 
 function mockConfig(values: Record<string, unknown>) {
@@ -90,7 +105,7 @@ describe('TaskExecutorService workflow command generation', () => {
 
     await service.execute('demo-change', 0, 'Task');
 
-    expect(writeText).toHaveBeenCalledWith('/opsx:apply demo-change');
+    expect(writeText).toHaveBeenCalledWith('/opsx-apply demo-change');
     expect(fillChat).not.toHaveBeenCalled();
   });
 

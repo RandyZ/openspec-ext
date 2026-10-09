@@ -4,11 +4,11 @@ import type { TaskExecuteRequest } from './agentExecutor.types';
 import type { IOpenSpecContentAccess } from './contentAccess';
 import { getCurrentAdapter } from '../adapters';
 import { t } from '../../i18n';
-import {
-  buildWorkflowCommand,
-  getWorkflowCommandTargetForAdapter,
-} from '../../shared/workflowCommand';
 import { getWorkflowLaunchConfig } from './workflowLaunchConfig';
+import { isCopyOnlyWorkflowMode, toWorkflowLaunchConfigView } from '../../shared/workflowLaunchConfig';
+import { buildResolvedLaunchPayload } from './workflowAgentLaunch';
+import { notifyWorkflowCommandCopied } from './workflowClipboardNotify';
+import { isPathInWorkspaceFolders } from '../utils/workspaceFolders';
 
 export class TaskExecutorService {
   constructor(
@@ -21,6 +21,10 @@ export class TaskExecutorService {
    * @returns { success: boolean } so the UI can clear the "running" state.
    */
   async execute(changeName: string, taskIndex: number, taskText: string): Promise<{ success: boolean }> {
+    if (!isPathInWorkspaceFolders(this.workspaceRoot)) {
+      vscode.window.showWarningMessage(t('workflow.workspaceRootStale'));
+      return { success: false };
+    }
     const config = vscode.workspace.getConfiguration('openspec');
     const mode = config.get<'auto' | 'fillChat'>('taskExecutionMode') ?? 'fillChat';
     const policy = config.get<'block' | 'warn'>('taskDependencyPolicy') ?? 'block';
@@ -87,15 +91,12 @@ export class TaskExecutorService {
     }
 
     const launchConfig = getWorkflowLaunchConfig();
-    const clipboardPrompt = buildWorkflowCommand({
-      action: 'apply',
-      changeName,
-      target: 'clipboard',
-    });
+    const launchConfigView = toWorkflowLaunchConfigView(launchConfig);
+    const resolvedPayload = buildResolvedLaunchPayload('apply', changeName);
 
-    if (mode === 'fillChat' && launchConfig.workflowLaunchMode === 'clipboard') {
-      await vscode.env.clipboard.writeText(clipboardPrompt);
-      vscode.window.showInformationMessage(t('clipboard.copiedChat'));
+    if (mode === 'fillChat' && (launchConfig.workflowLaunchMode === 'clipboard' || isCopyOnlyWorkflowMode(launchConfigView))) {
+      await vscode.env.clipboard.writeText(resolvedPayload.command);
+      notifyWorkflowCommandCopied(resolvedPayload.command);
       return { success: true };
     }
 
@@ -107,12 +108,7 @@ export class TaskExecutorService {
       return { success: false };
     }
 
-    const target = getWorkflowCommandTargetForAdapter(adapter.id);
-    const promptOverride = buildWorkflowCommand({
-      action: 'apply',
-      changeName,
-      target,
-    });
+    const promptOverride = resolvedPayload.command;
 
     const request: TaskExecuteRequest = {
       changeName,
@@ -130,9 +126,12 @@ export class TaskExecutorService {
           : await adapter.fillChat(request);
 
       if (result.success) {
-        vscode.window.showInformationMessage(
-          result.message || t('task.processedVia', { adapter: adapter.displayName })
-        );
+        const panelLaunchAdapterIds = new Set(['vscode-chat', 'cursor', 'vscode-copilot']);
+        if (!panelLaunchAdapterIds.has(adapter.id)) {
+          vscode.window.showInformationMessage(
+            result.message || t('task.processedVia', { adapter: adapter.displayName })
+          );
+        }
       } else {
         vscode.window.showErrorMessage(result.message || t('task.executionFailed'));
       }

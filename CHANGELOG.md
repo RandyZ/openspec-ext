@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Workflow actions (Apply, Verify, Archive, Continue, etc.) now launch through a unified IDE Agent panel path on Cursor and VS Code instead of opening an editor-area `agent` terminal by default.
+- Cursor hosts use runtime command detection with layered fallback: `composer.createNew` → `workbench.action.chat.open` + `composerMode.agent` → deeplink → clipboard.
+- Added `openspec.agentAutoSubmit` (`never` / `readOnly` / `always`, default `readOnly`). Auto-send applies only when `composer.createNew` succeeds.
+- Legacy `openspec.cursorLaunchMode` values `deeplink` and `chatCommand` migrate to `agentPanel`. Dashboard Ready to Verify CTA label is now **Run Verify** (action matches label).
+
 ## [0.2.3] - 2026-09-22
 
 ### Added

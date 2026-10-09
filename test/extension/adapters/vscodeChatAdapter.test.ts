@@ -2,6 +2,12 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import * as vscode from 'vscode';
 import { vscodeChatAdapter } from '@extension/adapters/vscode-chat-adapter';
 
+const launchAgentPanelPrompt = vi.hoisted(() => vi.fn());
+
+vi.mock('@extension/services/agentPanelLauncher', () => ({
+  launchAgentPanelPrompt,
+}));
+
 vi.mock('vscode', () => ({
   env: {
     appName: 'Visual Studio Code',
@@ -18,6 +24,11 @@ vi.mock('vscode', () => ({
 describe('vscodeChatAdapter', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    launchAgentPanelPrompt.mockResolvedValue({
+      success: true,
+      layer: 'vscodeChat',
+      outcome: 'prefilled',
+    });
   });
 
   it('is available on VS Code hosts', async () => {
@@ -31,10 +42,10 @@ describe('vscodeChatAdapter', () => {
       taskText: 'Do thing',
     });
 
-    expect(vscode.commands.executeCommand).toHaveBeenCalledWith(
-      'workbench.action.chat.open',
-      expect.objectContaining({ query: '/opsx:apply demo' }),
-    );
+    expect(launchAgentPanelPrompt).toHaveBeenCalledWith({
+      text: '/opsx:apply demo',
+      autoSubmit: false,
+    });
     expect(result.adapterId).toBe('vscode-chat');
   });
 });

@@ -1,13 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { buildChangeStatusCounts } from '../../shared/changeLifecycle';
 import type { WorkflowAction } from '../../shared/workflowCommand';
-import { buildWorkflowCommand } from '../../shared/workflowCommand';
+import { buildWorkflowCommand, resolveWorkflowCommandTargetForUi } from '../../shared/workflowCommand';
 import { t } from '../../i18n';
 import { useVscode } from '../hooks/useVscode';
 import { ChangesSection } from './ChangesSection';
 import type { ProjectChangesExplorerData, ExtensionMessage } from '../types/messages';
+import { createWorkflowRequestId, type WorkflowActionReceipt } from '../../shared/changeWorkflow';
+import { isHostWorkflowLaunchCopyOnly } from '../../shared/workflowLaunchConfig';
+import { getCopyOnlyFallbackLaunchConfig } from '../utils/executorUiLaunchConfig';
 import { sendMessage } from '../types/messages';
 import type { WorkflowLaunchConfigView } from '../utils/workflowLaunchLabels';
+import { useWorkflowLaunchPending } from '../hooks/useWorkflowLaunchPending';
 
 export interface ChangesExplorerProps {
   data: ProjectChangesExplorerData;
@@ -16,6 +20,8 @@ export interface ChangesExplorerProps {
 export const ChangesExplorer: React.FC<ChangesExplorerProps> = ({ data }) => {
   const { postMessage, onMessage } = useVscode();
   const [workflowLaunchConfig, setWorkflowLaunchConfig] = useState<WorkflowLaunchConfigView | null>(null);
+  const [workflowLaunchIsCursorHost, setWorkflowLaunchIsCursorHost] = useState(false);
+  const workflowLaunchPending = useWorkflowLaunchPending();
   const counts = useMemo(
     () => buildChangeStatusCounts(data.changes, data.archivedChanges),
     [data.changes, data.archivedChanges],
@@ -25,11 +31,19 @@ export const ChangesExplorer: React.FC<ChangesExplorerProps> = ({ data }) => {
     const cleanup = onMessage((event: MessageEvent<ExtensionMessage>) => {
       if (event.data.type === 'workflowLaunchConfig') {
         setWorkflowLaunchConfig(event.data.config);
+        setWorkflowLaunchIsCursorHost(event.data.isCursorHost === true);
+      } else if (event.data.type === 'workflowActionReceipt') {
+        workflowLaunchPending.handleReceipt(event.data as WorkflowActionReceipt);
       }
     });
     postMessage(sendMessage.getWorkflowLaunchConfig());
     return cleanup;
-  }, [onMessage, postMessage]);
+  }, [onMessage, postMessage, workflowLaunchPending]);
+
+  const copyCommandTarget = resolveWorkflowCommandTargetForUi(
+    workflowLaunchConfig ?? getCopyOnlyFallbackLaunchConfig(),
+    { isCursorHost: workflowLaunchIsCursorHost },
+  );
 
   const openChange = (changeName: string) => {
     postMessage(sendMessage.openChangeDetailInEditor(
@@ -50,23 +64,24 @@ export const ChangesExplorer: React.FC<ChangesExplorerProps> = ({ data }) => {
     postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({
       action,
       changeName,
-      target: 'clipboard',
+      target: copyCommandTarget,
     })));
   };
 
   const launchWorkflow = (action: WorkflowAction, changeName: string, bindingKey?: string) => {
-    if (action === 'verify' || action === 'archive') {
-      postMessage(sendMessage.openChangeDetailInEditor(
-        changeName,
-        'verifyArchive',
-        action,
-        undefined,
-        data.project,
-        data.binding,
-      ));
-      return;
-    }
-    postMessage(sendMessage.launchWorkflowAction(action, changeName, undefined, undefined, bindingKey));
+    const copyOnlyLaunch = isHostWorkflowLaunchCopyOnly(
+      workflowLaunchConfig ?? getCopyOnlyFallbackLaunchConfig(),
+    );
+    const { requestId } = bindingKey && !copyOnlyLaunch
+      ? workflowLaunchPending.registerLaunch(changeName, bindingKey, 'explorer')
+      : { requestId: createWorkflowRequestId('explorer') };
+    postMessage(sendMessage.launchWorkflowAction(
+      action,
+      changeName,
+      undefined,
+      requestId,
+      bindingKey,
+    ));
   };
 
   return (
@@ -94,6 +109,7 @@ export const ChangesExplorer: React.FC<ChangesExplorerProps> = ({ data }) => {
         onCopyApply={(changeName) => copyWorkflow('apply', changeName)}
         onLaunchWorkflow={launchWorkflow}
         workflowLaunchConfig={workflowLaunchConfig}
+        workflowLaunchPendingKeys={workflowLaunchPending.pendingKeys}
         rootLabel={data.project.label}
       />
     </main>

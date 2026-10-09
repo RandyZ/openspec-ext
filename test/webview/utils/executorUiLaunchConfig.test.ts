@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { setLocale } from '../../../src/i18n';
 import type { WorkflowLaunchConfigView } from '../../../src/shared/workflowLaunchConfig';
+import { buildExecutorLaunchPresentation } from '../../../src/shared/executorLaunchPresentation';
 import {
   getExecutorUiModeLabel,
+  normalizeExecutorPresentation,
   resolveExecutorSelectValue,
   resolveExecutorUiLaunchConfig,
   shouldPersistNormalizedExecutor,
@@ -10,6 +12,7 @@ import {
   WEBVIEW_EXECUTOR_NORMALIZE_MARKER,
   WEBVIEW_EXECUTOR_UI_BUILD_MARKER,
 } from '../../../src/webview/utils/executorUiLaunchConfig';
+import { getExampleWorkflowCommand } from '../../../src/webview/utils/workflowLaunchLabels';
 import { getTaskNextButtonLabel } from '../../../src/webview/utils/taskNextButtonLabels';
 import { getWorkflowActionButtonLabel, getWorkflowLaunchModeHint } from '../../../src/webview/utils/workflowLaunchLabels';
 
@@ -104,13 +107,55 @@ describe('executorUiLaunchConfig', () => {
     });
 
     expect(getExecutorUiModeLabel(uiConfig)).toBe('cursor');
-    expect(getWorkflowLaunchModeHint(uiConfig)).toBe('Runs in Cursor');
+    expect(getWorkflowLaunchModeHint(uiConfig)).toBe('Opens Agent panel');
   });
 
   it('resolves select value to clipboard when currentId is illegal', () => {
     expect(resolveExecutorSelectValue(clipboardOnlyAdapters)).toBe('clipboard');
     expect(shouldPersistNormalizedExecutor('cursor', clipboardOnlyAdapters)).toBe('clipboard');
     expect(shouldPersistNormalizedExecutor('clipboard', { ...clipboardOnlyAdapters, currentId: 'clipboard' })).toBeNull();
+  });
+
+  it('preserves isCursorHost when ChangeDetail applies executorLaunchPresentation refresh', () => {
+    const copyOnlyConfig: WorkflowLaunchConfigView = {
+      workflowLaunchMode: 'clipboard',
+      preferredAgentAdapter: 'clipboard',
+      cursorLaunchMode: 'clipboard',
+      cursorAgentModel: 'auto',
+      cursorLaunchModeExplicit: false,
+      effectiveAdapterId: 'clipboard',
+    };
+    const incoming = buildExecutorLaunchPresentation(
+      copyOnlyConfig,
+      [{ id: 'clipboard', displayName: 'Clipboard' }],
+      'clipboard',
+    );
+    const message = { ...incoming, isCursorHost: true };
+
+    const withoutHostFlag = normalizeExecutorPresentation({
+      agentAdapters: message.agentAdapters,
+      workflowLaunchConfig: message.workflowLaunchConfig,
+      uiWorkflowLaunchConfig: message.uiWorkflowLaunchConfig,
+    });
+    expect(withoutHostFlag.isCursorHost).toBeUndefined();
+    expect(
+      getExampleWorkflowCommand('verify', withoutHostFlag.uiWorkflowLaunchConfig, {
+        isCursorHost: withoutHostFlag.isCursorHost === true,
+      }),
+    ).toBe('/opsx:verify my-change');
+
+    const withHostFlag = normalizeExecutorPresentation({
+      agentAdapters: message.agentAdapters,
+      workflowLaunchConfig: message.workflowLaunchConfig,
+      uiWorkflowLaunchConfig: message.uiWorkflowLaunchConfig,
+      isCursorHost: message.isCursorHost === true,
+    });
+    expect(withHostFlag.isCursorHost).toBe(true);
+    expect(
+      getExampleWorkflowCommand('verify', withHostFlag.uiWorkflowLaunchConfig, {
+        isCursorHost: withHostFlag.isCursorHost === true,
+      }),
+    ).toBe('/opsx-verify my-change');
   });
 
 });

@@ -21,6 +21,12 @@ export interface WorkflowCommandRequest {
   target: WorkflowCommandTarget;
 }
 
+import {
+  isCopyOnlyWorkflowMode,
+  toWorkflowLaunchConfigView,
+  type WorkflowLaunchConfigView,
+} from './workflowLaunchConfig';
+
 export type WorkflowLaunchMode = 'clipboard' | 'adapter';
 
 export interface WorkflowLaunchPayloadRequest {
@@ -67,12 +73,34 @@ export function getWorkflowCommandTargetForAdapter(
   }
 }
 
+export function resolveCopyOnlyWorkflowCommandTarget(
+  config: WorkflowLaunchConfigView,
+  runtime: { isCursorHost: boolean },
+): WorkflowCommandTarget {
+  return runtime.isCursorHost ? 'cursor' : 'clipboard';
+}
+
+/** Webview-safe target when copying commands; aligns with host buildResolvedLaunchPayload. */
+export function resolveWorkflowCommandTargetForUi(
+  config: WorkflowLaunchConfigView | null | undefined,
+  runtime?: { isCursorHost?: boolean },
+): WorkflowCommandTarget {
+  if (!config) return 'clipboard';
+  const view = toWorkflowLaunchConfigView(config);
+  if (isCopyOnlyWorkflowMode(view)) {
+    return resolveCopyOnlyWorkflowCommandTarget(view, {
+      isCursorHost: runtime?.isCursorHost ?? false,
+    });
+  }
+  return getWorkflowCommandTargetForAdapter(view.effectiveAdapterId);
+}
+
 export function buildWorkflowLaunchPayload(
   request: WorkflowLaunchPayloadRequest
 ): WorkflowLaunchPayload {
   const target =
     request.workflowLaunchMode === 'clipboard'
-      ? 'clipboard'
+      ? (request.adapterId === 'cursor' ? 'cursor' : 'clipboard')
       : getWorkflowCommandTargetForAdapter(request.adapterId);
   const command = buildWorkflowCommand({
     action: request.action,

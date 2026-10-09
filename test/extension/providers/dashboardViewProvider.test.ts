@@ -17,6 +17,7 @@ import {
 } from '@extension/services/openspecRootGate';
 
 const adapterFillChat = vi.hoisted(() => vi.fn());
+const launchWorkflowAgentCommand = vi.hoisted(() => vi.fn());
 
 // realpath is the Host's canonicalization step for Workset member paths. The
 // fake fixture paths do not exist on disk, so the identity implementation is
@@ -31,6 +32,10 @@ vi.mock('@extension/services/openspecRootGate', () => ({
   workspaceHasOpenSpecRoot: vi.fn(async () => true),
   workspaceHasOpenSpecRootSync: vi.fn(() => true),
   getPrimaryWorkspacePath: vi.fn(() => '/tmp/project'),
+}));
+
+vi.mock('@extension/services/workflowAgentLaunch', () => ({
+  launchWorkflowAgentCommand,
 }));
 
 vi.mock('@extension/adapters', () => ({
@@ -986,6 +991,11 @@ describe('DashboardViewProvider', () => {
       inspect: vi.fn(() => undefined),
     } as any);
     adapterFillChat.mockResolvedValue({ success: true, adapterId: 'cursor' });
+    launchWorkflowAgentCommand.mockResolvedValue({
+      success: true,
+      command: '/opsx-apply project-change',
+      target: 'agentPanel',
+    });
 
     provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
     await vi.runAllTimersAsync();
@@ -1007,9 +1017,11 @@ describe('DashboardViewProvider', () => {
     expect(createChange.mock.calls[0][1]).not.toEqual(
       expect.objectContaining({ rootPath: selectedStoreScope.rootPath }),
     );
-    expect(adapterFillChat).toHaveBeenCalledWith(expect.objectContaining({
+    expect(launchWorkflowAgentCommand).toHaveBeenCalledWith({
+      action: 'apply',
+      changeName: 'project-change',
       workspaceRoot: fixture.binding.rootPath,
-    }));
+    });
   });
 
   it('project Sidebar keeps navigation data when there are no active Changes', async () => {

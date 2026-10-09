@@ -7,6 +7,8 @@ import {
   type ResolvedWorkflowAction,
 } from '../../shared/changeWorkflow';
 import type { ChangeLifecycleStatus } from '../../shared/changeLifecycle';
+import { resolveChangeBindingKey } from '../utils/changeBindingKey';
+import type { OpenSpecRootBinding } from '../types/messages';
 import {
   getWorkflowActionButtonLabel,
   getWorkflowActionTitle,
@@ -71,6 +73,9 @@ export interface ChangeCardProps {
   onArchive?: (changeName: string) => void;
   onLaunchWorkflow?: (action: WorkflowAction, changeName: string, bindingKey?: string) => void;
   workflowLaunchConfig?: WorkflowLaunchConfigView | null;
+  workflowLaunchPendingKeys?: ReadonlySet<string>;
+  workflowLaunchFailureHint?: { message: string } | null;
+  projectBinding?: OpenSpecRootBinding | null;
 }
 
 export const ChangeCard: React.FC<ChangeCardProps> = ({
@@ -80,6 +85,9 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
   onCopyApply,
   onLaunchWorkflow,
   workflowLaunchConfig,
+  workflowLaunchPendingKeys,
+  workflowLaunchFailureHint,
+  projectBinding,
 }) => {
   const [hover, setHover] = React.useState(false);
   const [focusWithin, setFocusWithin] = React.useState(false);
@@ -100,6 +108,11 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
       ...resolvedActions.highImpact,
     ]
     : [];
+  const bindingKey = resolveChangeBindingKey(change, projectBinding);
+  const launchPendingKey = bindingKey ? `${change.name}\u0000${bindingKey}` : undefined;
+  const isWorkflowLaunchPending = launchPendingKey
+    ? workflowLaunchPendingKeys?.has(launchPendingKey) === true
+    : false;
   const needsAttention = change.attention?.required === true;
   const additionalActionCount = resolvedActions
     ? resolvedActions.available.length + resolvedActions.highImpact.length
@@ -240,13 +253,12 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
           {onLaunchWorkflow &&
             workflowActions.map((descriptor) => {
               const label = descriptor.label;
-              const isInteractiveVerifyOrArchive =
-                descriptor.action === 'verify' || descriptor.action === 'archive';
-              const buttonLabel = isInteractiveVerifyOrArchive
-                ? label
-                : getWorkflowActionButtonLabel(label, workflowLaunchConfig);
-              const title = isInteractiveVerifyOrArchive
-                ? label
+              const buttonLabel = getWorkflowActionButtonLabel(label, workflowLaunchConfig, {
+                launching: isWorkflowLaunchPending,
+              });
+              const receiptForCard = workflowLaunchFailureHint;
+              const title = receiptForCard?.message
+                ? `${getWorkflowActionTitle(label, workflowLaunchConfig) ?? label}: ${receiptForCard.message}`
                 : getWorkflowActionTitle(label, workflowLaunchConfig);
 
               return (

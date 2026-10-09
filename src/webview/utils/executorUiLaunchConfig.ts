@@ -134,9 +134,12 @@ export function normalizeExecutorPresentation(
   presentation: ExecutorLaunchPresentation,
 ): ExecutorLaunchPresentation {
   const normalizedAdapters = normalizePresentationAdapters(presentation);
-  return buildExecutorLaunchPresentation(
-    presentation.workflowLaunchConfig,
-    normalizedAdapters.available,
-    normalizedAdapters.currentId,
-  );
+  return {
+    ...buildExecutorLaunchPresentation(
+      presentation.workflowLaunchConfig,
+      normalizedAdapters.available,
+      normalizedAdapters.currentId,
+    ),
+    isCursorHost: presentation.isCursorHost,
+  };
 }

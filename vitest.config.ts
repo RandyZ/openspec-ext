@@ -6,6 +6,9 @@ export default defineConfig({
     environment: 'node',
     include: ['test/**/*.test.{ts,tsx}'],
     globals: true,
+    pool: 'forks',
+    maxWorkers: 1,
+    fileParallelism: false,
   },
   resolve: {
     alias: {

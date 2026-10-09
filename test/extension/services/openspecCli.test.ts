@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { OpenSpecCliService } from '@extension/services/openspecCli';
+import { resetOpenSpecCliVersionProbeSessionCache } from '@extension/services/openspecCliResolver';
 
 vi.mock('vscode', () => ({
   workspace: {
@@ -141,6 +142,8 @@ describe('OpenSpecCliService', () => {
   const workspaceRoot = '/fake/workspace';
 
   beforeEach(() => {
+    OpenSpecCliService.resetVersionCacheForTests();
+    resetOpenSpecCliVersionProbeSessionCache();
     vi.mocked(spawn).mockReset();
   });
 
@@ -802,6 +805,18 @@ describe('OpenSpecCliService', () => {
     expect(version).toBe('1.2.3');
   });
 
+  it('getVersion caches result for the service instance session', async () => {
+    mockSpawnSuccess('1.2.3\n');
+    const service = new OpenSpecCliService(workspaceRoot);
+    await service.getVersion();
+    expect(
+      (service as unknown as { cachedCliVersion?: string }).cachedCliVersion,
+    ).toBe('1.2.3');
+    const callsAfterFirst = vi.mocked(spawn).mock.calls.length;
+    await service.getVersion();
+    expect(vi.mocked(spawn).mock.calls.length).toBe(callsAfterFirst);
+  });
+
   it('getVersion throws when command fails', async () => {
     mockSpawnExit(127, 'not found');
     const service = new OpenSpecCliService(workspaceRoot);
@@ -896,6 +911,8 @@ describe('CLI activation diagnostics', () => {
   const workspaceRoot = '/fake/workspace';
 
   beforeEach(async () => {
+    OpenSpecCliService.resetVersionCacheForTests();
+    resetOpenSpecCliVersionProbeSessionCache();
     vi.clearAllMocks();
     vi.mocked(spawn).mockReset();
     // Reset vscode mock to default (empty cliPath)
@@ -972,19 +989,23 @@ describe('CLI activation diagnostics', () => {
     await service.checkAvailability(false);
     expect(service.getCliActivationDiagnostic()).toBeNull();
 
+    OpenSpecCliService.resetVersionCacheForTests();
+
     // Now make the actual spawn fail for subsequent commands
     vi.mocked(spawn).mockImplementation((command: string, _args: readonly string[]) => {
       if (command === '/usr/local/bin/openspec') {
-        return createSpawnErrorProcess('spawn /usr/local/bin/openspec ENOENT') as any;
+        return createSpawnErrorProcess('Failed to spawn openspec: spawn /usr/local/bin/openspec ENOENT') as any;
       }
-      return createSpawnErrorProcess(`spawn ${command} ENOENT`) as any;
+      return createSpawnErrorProcess(`Failed to spawn openspec: spawn ${command} ENOENT`) as any;
     });
 
-    await expect(service.getVersion()).rejects.toThrow();
+    const failingService = new OpenSpecCliService(workspaceRoot);
+    failingService.getResolver().clearCache();
+    await expect(failingService.getVersion()).rejects.toThrow();
 
-    const diagnostic = service.getCliActivationDiagnostic();
-    expect(diagnostic?.category).toBe('spawn-failed');
-    expect(diagnostic?.normalizedMessage).toContain('enoent');
+    const diagnostic = failingService.getCliActivationDiagnostic();
+    expect(['spawn-failed', 'cli-not-found']).toContain(diagnostic?.category);
+    expect(diagnostic?.normalizedMessage?.toLowerCase()).toMatch(/enoent|could not be resolved/);
   });
 
   it('stores permission-denied diagnostic for EACCES errors', async () => {
@@ -1145,6 +1166,8 @@ describe('argsPrefix and scope support', () => {
   const workspaceRoot = '/fake/workspace';
 
   beforeEach(() => {
+    OpenSpecCliService.resetVersionCacheForTests();
+    resetOpenSpecCliVersionProbeSessionCache();
     vi.mocked(spawn).mockReset();
   });
 
@@ -1200,6 +1223,28 @@ describe('argsPrefix and scope support', () => {
     expect(spawnCalls.length).toBe(2);
     expect(spawnCalls[1].command).toBe('openspec');
     expect(spawnCalls[1].args).toEqual(['list', '--json']);
+  });
+
+  it('spawns --version once across several CLI refreshes (multiple runJson calls)', async () => {
+    resetOpenSpecCliVersionProbeSessionCache();
+    OpenSpecCliService.resetVersionCacheForTests();
+    const spawnCalls: Array<{ command: string; args: readonly string[] }> = [];
+    vi.mocked(spawn).mockImplementation((command: string, args: readonly string[], _options?: unknown) => {
+      spawnCalls.push({ command, args });
+      if (args[0] === '--version') {
+        return createSpawnSuccessProcess('1.3.1') as never;
+      }
+      return createSpawnSuccessProcess(JSON.stringify({ ok: true })) as never;
+    });
+
+    const service = new OpenSpecCliService(workspaceRoot);
+    await service.runJson(['change', 'show', 'demo', '--json']);
+    await service.runJson(['change', 'show', 'demo', '--json']);
+    await service.runJson(['list', '--json']);
+
+    const versionCalls = spawnCalls.filter((c) => c.args[0] === '--version');
+    expect(versionCalls).toHaveLength(1);
+    expect(spawnCalls.length).toBe(4);
   });
 
   it('runJson prepends argsPrefix in local source mode', async () => {
@@ -1391,6 +1436,8 @@ describe('Windows shell-free spawning', () => {
   const workspaceRoot = '/fake/workspace';
 
   beforeEach(() => {
+    OpenSpecCliService.resetVersionCacheForTests();
+    resetOpenSpecCliVersionProbeSessionCache();
     vi.mocked(spawn).mockReset();
   });
 

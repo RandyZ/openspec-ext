@@ -18,6 +18,8 @@ export interface ExecutorLaunchPresentation {
   agentAdapters: AgentAdaptersState;
   workflowLaunchConfig: WorkflowLaunchConfigView;
   uiWorkflowLaunchConfig: WorkflowLaunchConfigView;
+  /** Extension host runtime (Cursor vs VS Code) for copy-command formatting in the webview. */
+  isCursorHost?: boolean;
 }
 
 export function normalizeAgentAdaptersState(

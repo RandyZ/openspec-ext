@@ -86,10 +86,17 @@ export function parseWindowsCmdShimEntry(content: string): string | undefined {
 }
 
 export class OpenSpecCliService {
+  private static versionByRuntimeKey = new Map<string, string>();
+
+  static resetVersionCacheForTests(): void {
+    OpenSpecCliService.versionByRuntimeKey.clear();
+  }
+
   private workspaceRoot: string;
   private resolver: OpenSpecCliResolver;
   private cliActivationDiagnostic: CliActivationDiagnostic | null = null;
   private shownCliDiagnosticKeys = new Set<string>();
+  private cachedCliVersion?: string;
   /** Resolved shell-free spawn targets for Windows launcher commands. */
   private windowsSpawnTargets = new Map<string, WindowsSpawnTarget>();
 
@@ -248,9 +255,13 @@ export class OpenSpecCliService {
    * Get OpenSpec CLI version
    */
   async getVersion(): Promise<string> {
+    if (this.cachedCliVersion) {
+      return this.cachedCliVersion;
+    }
     try {
       const output = await this.execOpenSpec(['--version']);
-      return output.trim();
+      this.cachedCliVersion = output.trim();
+      return this.cachedCliVersion;
     } catch (error) {
       logger.error('Failed to get OpenSpec version', error as Error);
       throw error;
@@ -659,8 +670,36 @@ export class OpenSpecCliService {
    * execution path for every CLI command, so localSource/customPath/installed modes
    * all flow through the same code.
    */
+  private runtimeVersionCacheKey(runtime: ResolvedOpenSpecRuntime): string {
+    const configuredCliPath = vscode.workspace.getConfiguration('openspec').get<string>('cliPath') ?? '';
+    const command = path.isAbsolute(runtime.command)
+      ? path.resolve(runtime.command)
+      : runtime.command;
+    const argsPrefix = runtime.argsPrefix
+      .map((arg) => (path.isAbsolute(arg) ? path.resolve(arg) : arg))
+      .join('\u0000');
+    const configuredKey = configuredCliPath
+      ? (path.isAbsolute(configuredCliPath) ? path.resolve(configuredCliPath) : configuredCliPath)
+      : '';
+    return `${command}\u0000${argsPrefix}\u0000${runtime.source}\u0000${configuredKey}`;
+  }
+
   private async execOpenSpecOnce(args: string[], timeoutMs: number): Promise<string> {
     const runtime = await this.resolver.resolveRuntime();
+    const isVersionProbe = args.length === 1 && args[0] === '--version';
+    const versionCacheKey = isVersionProbe ? this.runtimeVersionCacheKey(runtime) : undefined;
+    if (versionCacheKey) {
+      const cachedVersion = OpenSpecCliService.versionByRuntimeKey.get(versionCacheKey);
+      if (cachedVersion !== undefined) {
+        return cachedVersion.endsWith('\n') ? cachedVersion : `${cachedVersion}\n`;
+      }
+      const resolvedVersion = runtime.version?.trim();
+      if (resolvedVersion) {
+        OpenSpecCliService.versionByRuntimeKey.set(versionCacheKey, resolvedVersion);
+        this.cachedCliVersion = resolvedVersion;
+        return `${resolvedVersion}\n`;
+      }
+    }
     const isLocalSource = runtime.source === 'localSource';
     // Windows + non-local-source: never route through cmd.exe. Shell parsing would
     // corrupt arguments that must reach the CLI verbatim — a workset member path
@@ -709,6 +748,11 @@ export class OpenSpecCliService {
           );
           reject(error);
         } else {
+          const trimmed = stdout.trim();
+          if (versionCacheKey) {
+            OpenSpecCliService.versionByRuntimeKey.set(versionCacheKey, trimmed);
+            this.cachedCliVersion = trimmed;
+          }
           resolve(stdout);
         }
       });
@@ -1004,6 +1048,9 @@ export class OpenSpecCliService {
 
   private defaultWorkflowBinding(scope?: ScopeOption | OpenSpecScope): WorkflowBindingIdentity {
     const scoped = scope as Partial<OpenSpecScope> | undefined;
+    if (scoped?.workflowBinding) {
+      return scoped.workflowBinding;
+    }
     return {
       projectId: this.workspaceRoot,
       commandCwd: this.workspaceRoot,

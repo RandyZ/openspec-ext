@@ -9,15 +9,25 @@ import { ConfirmDialog } from './ui/ConfirmDialog';
 import { VerifyArchivePanel } from './VerifyArchivePanel';
 import { IconButton } from './ui/IconButton';
 import { t } from '../../i18n';
-import { buildWorkflowCommand, type WorkflowAction } from '../../shared/workflowCommand';
+import {
+  buildWorkflowCommand,
+  resolveWorkflowCommandTargetForUi,
+  type WorkflowAction,
+} from '../../shared/workflowCommand';
+import { useWorkflowLaunchPending } from '../hooks/useWorkflowLaunchPending';
 import {
   createWorkflowRequestId,
   resolveWorkflowActions,
   type ChangeWorkflowSnapshot,
 } from '../../shared/changeWorkflow';
+import {
+  isHostWorkflowLaunchCopyOnly,
+  resolveWorkflowLabelLaunchConfig,
+} from '../../shared/workflowLaunchConfig';
 import { getWorkflowLaunchModeHint } from '../utils/workflowLaunchLabels';
 import type { ExecutorLaunchPresentation } from '../../shared/executorLaunchPresentation';
 import {
+  getCopyOnlyFallbackLaunchConfig,
   getExecutorUiModeLabel,
   normalizeExecutorPresentation,
   normalizePresentationAdapters,
@@ -30,6 +40,24 @@ import type {
   InteractiveWorkflowAction,
   InteractiveWorkflowState,
 } from '../../shared/interactiveWorkflow';
+import { ArtifactFetchCoordinator } from '../utils/artifactFetchCoordinator';
+import {
+  artifactContentCacheKey,
+  artifactFetchCoordinatorKey,
+} from '../utils/artifactFetchKeys';
+import {
+  completeArtifactFetchAndStoreContent,
+  handleTasksArtifactInvalidated,
+  tasksFetchCoordinatorKey,
+} from '../utils/changeDetailArtifactInvalidation';
+import { isArchiveNowAllowed } from '../utils/changeDetailArchiveGating';
+import {
+  isArchiveNowBlockedByTasksProgress,
+  readArtifactCacheStale,
+  shouldCompleteVerifyArchiveTasksFetch,
+  shouldShowActiveTabLoadingForArtifactFetch,
+} from '../utils/changeDetailTasksFetch';
+import type { WorkflowActionReceipt } from '../../shared/changeWorkflow';
 
 const MISSING_ARTIFACT_MESSAGE = t('artifact.missing');
 
@@ -49,9 +77,7 @@ export interface ChangeDetailProps {
   initialExecutorPresentation?: ExecutorLaunchPresentation | null;
 }
 
-// Cache key includes scopeId so the same change name in two roots never shares content.
-const cacheKey = (scopeId: string | undefined, type: string, specId?: string | null) =>
-  `${scopeId ? `${scopeId}::` : ''}${type === 'specs' && specId ? `specs:${specId}` : specId ? `${type}:${specId}` : type}`;
+const cacheKey = artifactContentCacheKey;
 
 function getCreateDisabledReason(
   artifactType: string,
@@ -124,6 +150,20 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   const { postMessage, onMessage } = useVscode();
   const [activeTab, setActiveTab] = useState<string>(initialTab ?? 'proposal');
   const contentCacheRef = useRef<Map<string, string>>(new Map());
+  const artifactFetchCoordinatorRef = useRef(new ArtifactFetchCoordinator());
+  const verifyArchiveTasksLoadedRef = useRef<string | null>(null);
+  const initialArtifactFetchKeyRef = useRef<string | null>(null);
+  const workflowReceiptBeforeLaunchRef = useRef<{
+    requestId: string;
+    bindingKey: string;
+    status: string;
+    message?: string;
+  } | null>(null);
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
+  const workflowLaunchPending = useWorkflowLaunchPending();
+  type LaunchSurface = 'actionBar' | 'verifyArchive';
+  const [pendingLaunchSurface, setPendingLaunchSurface] = useState<LaunchSurface | null>(null);
   const persistedExecutorRef = useRef<string | null>(null);
   const [completedTasks, setCompletedTasks] = useState(0);
   const [totalTasks, setTotalTasks] = useState(0);
@@ -133,8 +173,12 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   const [errorCode, setErrorCode] = useState<string | undefined>(undefined);
   const [deltaSpecIds, setDeltaSpecIds] = useState<string[]>([]);
   const [selectedSpecId, setSelectedSpecId] = useState<string | null>(null);
+  const selectedSpecIdRef = useRef<string | null>(null);
+  selectedSpecIdRef.current = selectedSpecId;
   const [artifactOutputs, setArtifactOutputs] = useState<Record<string, ArtifactOutputDescriptor[]>>({});
   const [selectedOutputPaths, setSelectedOutputPaths] = useState<Record<string, string | undefined>>({});
+  const selectedOutputPathsRef = useRef(selectedOutputPaths);
+  selectedOutputPathsRef.current = selectedOutputPaths;
   const [executorPresentation, setExecutorPresentation] = useState<ExecutorLaunchPresentation | null>(
     initialExecutorPresentation ? normalizeExecutorPresentation(initialExecutorPresentation) : null,
   );
@@ -151,7 +195,13 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   const [pendingInteractiveAction, setPendingInteractiveAction] = useState<InteractiveWorkflowAction | null>(interactiveAction ?? null);
   const [copiedName, setCopiedName] = useState(false);
   const [artifactStateMessage, setArtifactStateMessage] = useState<string | null>(null);
-  const [pendingWorkflowAction, setPendingWorkflowAction] = useState<WorkflowAction | null>(null);
+  const [pendingLaunchAction, setPendingLaunchAction] = useState<WorkflowAction | null>(null);
+  const [verifyArchiveTasksLoading, setVerifyArchiveTasksLoading] = useState(false);
+  const [tasksProgressError, setTasksProgressError] = useState<string | null>(null);
+  const [tasksProgressUnknown, setTasksProgressUnknown] = useState(false);
+  const verifyArchiveTasksLoadingRef = useRef(verifyArchiveTasksLoading);
+  verifyArchiveTasksLoadingRef.current = verifyArchiveTasksLoading;
+  const dispatchExtensionMessageRef = useRef<(msg: unknown) => void>(() => undefined);
   const [archivedLocally, setArchivedLocally] = useState(false);
   const [workflowReceipt, setWorkflowReceipt] = useState<{
     requestId: string;
@@ -182,7 +232,28 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     () => resolveExecutorUiLaunchConfig(executorPresentation),
     [executorPresentation],
   );
-  const tasksLaunchModeHint = getWorkflowLaunchModeHint(executorUiLaunchConfig);
+  const hostWorkflowLaunchConfig = executorPresentation?.workflowLaunchConfig
+    ?? getCopyOnlyFallbackLaunchConfig();
+  const copyOnlyWorkflowLaunch = isHostWorkflowLaunchCopyOnly(hostWorkflowLaunchConfig);
+  const workflowLabelLaunchConfig = resolveWorkflowLabelLaunchConfig(
+    hostWorkflowLaunchConfig,
+    executorUiLaunchConfig,
+  );
+  const isCursorHost = executorPresentation?.isCursorHost ?? false;
+  const executorLaunchConfigKey = useMemo(
+    () => [
+      executorUiLaunchConfig.effectiveAdapterId ?? '',
+      executorUiLaunchConfig.cursorLaunchMode ?? '',
+      executorUiLaunchConfig.workflowLaunchMode ?? '',
+      executorUiLaunchConfig.preferredAgentAdapter ?? '',
+    ].join('\u0000'),
+    [executorUiLaunchConfig],
+  );
+
+  useEffect(() => {
+    setWorkflowReceipt(null);
+  }, [executorLaunchConfigKey]);
+  const tasksLaunchModeHint = getWorkflowLaunchModeHint(workflowLabelLaunchConfig);
   const executorUiModeLabel = getExecutorUiModeLabel(executorUiLaunchConfig);
   const executorSelectValue = resolveExecutorSelectValue(agentAdapters);
   const resolvedWorkflowActions = useMemo(
@@ -196,14 +267,30 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
       : undefined,
     [workflowSnapshot, completedTasks, totalTasks, isArchived, deltaSpecIds.length]
   );
-  const canArchiveNow = Boolean(
+  const resolverAllowsArchiveNow = Boolean(
     resolvedWorkflowActions?.highImpact.some(
       (action) => action.action === 'archive' && action.highImpact === true
     )
   );
+  const tasksProgressBlocked = isArchiveNowBlockedByTasksProgress({
+    tasksProgressError,
+    tasksProgressUnknown,
+    verifyArchiveTasksLoading,
+  });
+  const canArchiveNow = isArchiveNowAllowed(
+    resolverAllowsArchiveNow,
+    verifyArchiveTasksLoading,
+    tasksProgressBlocked,
+  );
   const archiveNowDisabledReason = isArchived
     ? t('verifyArchive.archiveDisabledArchived')
-    : t('verifyArchive.archiveDisabledIncomplete');
+    : tasksProgressError
+      ? tasksProgressError
+      : verifyArchiveTasksLoading
+        ? t('detail.loadingTaskProgress')
+        : tasksProgressUnknown
+          ? t('detail.tasksProgressUnknown')
+          : t('verifyArchive.archiveDisabledIncomplete');
   const showVerifyArchiveTab = debug || !isArchived || archivedLocally;
   const navigationArtifacts = useMemo(() => {
     if (workflowSnapshot) return workflowSnapshot.artifacts;
@@ -237,6 +324,10 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   })).filter((group) => group.artifacts.length > 0)), [navigationArtifacts]);
 
   useEffect(() => {
+    initialArtifactFetchKeyRef.current = null;
+  }, [changeName, scopeId]);
+
+  useEffect(() => {
     if (initialTab && tabs.some((tab) => tab.id === initialTab)) {
       setActiveTab(initialTab);
     } else if (!tabs.some((tab) => tab.id === activeTab)) {
@@ -251,13 +342,31 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     }
   }, [interactiveAction]);
 
+  const resolveFetchKey = (artifactType: string) =>
+    artifactFetchCoordinatorKey(
+      scopeId,
+      artifactType,
+      artifactType === 'specs' ? selectedSpecIdRef.current : undefined,
+    );
+
   const requestArtifact = (artifactType: string, outputPath?: string) => {
-    setLoading(true);
-    setError(null);
-    setErrorCode(undefined);
-    setArtifactStateMessage(null);
-    setContent(null);
-    postMessage(sendMessage.getArtifactContent(changeName, artifactType, scopeId, outputPath));
+    const fetchKey = resolveFetchKey(artifactType);
+    const resolvedOutputPath = outputPath ?? selectedOutputPathsRef.current[artifactType];
+    artifactFetchCoordinatorRef.current.schedule(fetchKey, () => {
+      if (shouldShowActiveTabLoadingForArtifactFetch(activeTabRef.current, artifactType)) {
+        setLoading(true);
+        setError(null);
+        setErrorCode(undefined);
+        setArtifactStateMessage(null);
+        setContent(null);
+      }
+      postMessage(sendMessage.getArtifactContent(
+        changeName,
+        artifactType,
+        scopeId,
+        outputPath ?? resolvedOutputPath,
+      ));
+    });
   };
 
   const requestSpecsList = () => {
@@ -275,9 +384,6 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
       setLoading(false);
       setError(null);
       setContent(null);
-      if (!isArchived) {
-        postMessage(sendMessage.getArtifactContent(changeName, 'tasks', scopeId));
-      }
       return;
     }
 
@@ -321,7 +427,11 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     }
 
     if (activeTab === 'specs') {
-      requestSpecsList();
+      const specsLoadKey = `${changeName}\u0000${scopeId ?? ''}\u0000specs`;
+      if (initialArtifactFetchKeyRef.current !== specsLoadKey) {
+        initialArtifactFetchKeyRef.current = specsLoadKey;
+        requestSpecsList();
+      }
       return;
     }
 
@@ -332,14 +442,13 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
       setLoading(false);
       setError(null);
       setErrorCode(undefined);
-      postMessage(sendMessage.getArtifactContent(
-        changeName,
-        activeTab,
-        scopeId,
-        selectedOutputPaths[activeTab]
-      ));
       return;
     }
+    const fetchIdentity = `${changeName}\u0000${scopeId ?? ''}\u0000${activeTab}\u0000${selectedOutputPaths[activeTab] ?? ''}`;
+    if (initialArtifactFetchKeyRef.current === fetchIdentity) {
+      return;
+    }
+    initialArtifactFetchKeyRef.current = fetchIdentity;
     requestArtifact(activeTab);
   }, [
     changeName,
@@ -354,114 +463,213 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
   ]);
 
   useEffect(() => {
-    const cleanup = onMessage((event: MessageEvent) => {
-      const msg = event.data;
-      if (msg.type === 'dashboardData'
-        && Array.isArray(msg.data?.archivedChanges)
-        && msg.data.archivedChanges.some((archived: { name?: string }) => archived.name === changeName)) {
+    if (activeTab !== 'verifyArchive' || isArchived) {
+      return;
+    }
+    const loadKey = `${changeName}\u0000${scopeId ?? ''}`;
+    if (verifyArchiveTasksLoadedRef.current === loadKey) {
+      return;
+    }
+    verifyArchiveTasksLoadedRef.current = loadKey;
+    setVerifyArchiveTasksLoading(true);
+    requestArtifact('tasks');
+  }, [activeTab, changeName, isArchived, scopeId]);
+
+  dispatchExtensionMessageRef.current = (msg: unknown) => {
+      const data = msg as Record<string, unknown>;
+      if (data.type === 'panelVisibility') {
+        const visible = data.visible !== false;
+        const tasksFetchKey = tasksFetchCoordinatorKey(scopeId);
+        const tasksDirtyWhileHidden = visible
+          && artifactFetchCoordinatorRef.current.isDirty(tasksFetchKey);
+        artifactFetchCoordinatorRef.current.setPanelVisible(visible);
+        if (visible && activeTabRef.current === 'verifyArchive') {
+          if (tasksDirtyWhileHidden || verifyArchiveTasksLoadingRef.current) {
+            verifyArchiveTasksLoadedRef.current = null;
+            setVerifyArchiveTasksLoading(true);
+            requestArtifact('tasks');
+          }
+        }
+      } else if (data.type === 'dashboardData'
+        && Array.isArray((data.data as { archivedChanges?: { name?: string }[] } | undefined)?.archivedChanges)
+        && (data.data as { archivedChanges: { name?: string }[] }).archivedChanges.some(
+          (archived) => archived.name === changeName,
+        )) {
         setArchivedLocally(true);
-      } else if (msg.type === 'artifactContent' && msg.changeName === changeName) {
-        const key = cacheKey(scopeId, msg.artifactType, msg.artifactPath);
-        contentCacheRef.current.set(key, msg.content ?? '');
-        setContent(msg.content ?? '');
+      } else if (data.type === 'artifactContent' && data.changeName === changeName) {
+        completeArtifactFetchAndStoreContent({
+          scopeId,
+          artifactType: String(data.artifactType),
+          artifactPath: typeof data.artifactPath === 'string' ? data.artifactPath : undefined,
+          content: String(data.content ?? ''),
+          coordinator: artifactFetchCoordinatorRef.current,
+          contentCache: contentCacheRef.current,
+        });
+        setContent(String(data.content ?? ''));
         setArtifactStateMessage(null);
-        if (Array.isArray(msg.outputs)) {
-          setArtifactOutputs((previous) => ({ ...previous, [msg.artifactType]: msg.outputs }));
+        if (Array.isArray(data.outputs)) {
+          const artifactType = String(data.artifactType);
+          setArtifactOutputs((previous) => ({
+            ...previous,
+            [artifactType]: data.outputs as ArtifactOutputDescriptor[],
+          }));
           setSelectedOutputPaths((previous) => ({
             ...previous,
-            [msg.artifactType]: reconcileSelectedOutputPath(
-              typeof msg.artifactPath === 'string'
-                ? msg.artifactPath
-                : previous[msg.artifactType],
-              msg.outputs,
+            [artifactType]: reconcileSelectedOutputPath(
+              typeof data.artifactPath === 'string'
+                ? data.artifactPath
+                : previous[artifactType],
+              data.outputs as ArtifactOutputDescriptor[],
             ),
           }));
-        } else if (typeof msg.artifactPath === 'string') {
-          setSelectedOutputPaths((previous) => ({ ...previous, [msg.artifactType]: msg.artifactPath }));
+        } else if (typeof data.artifactPath === 'string') {
+          setSelectedOutputPaths((previous) => ({
+            ...previous,
+            [String(data.artifactType)]: data.artifactPath as string,
+          }));
         }
         setLoading(false);
         setError(null);
-        if (msg.artifactType === 'tasks' && msg.content) {
-          const { completed, total } = countTaskProgress(msg.content);
+        const cacheStale = readArtifactCacheStale(data.cache);
+        if (data.artifactType === 'tasks' && typeof data.content === 'string') {
+          setTasksProgressError(null);
+          setTasksProgressUnknown(false);
+          const { completed, total } = countTaskProgress(data.content);
           setTotalTasks(total);
           setCompletedTasks(completed);
+          if (cacheStale) {
+            setVerifyArchiveTasksLoading(true);
+          }
         }
-      } else if (msg.type === 'workflowActionReceipt'
-        && msg.changeName === changeName
+        if (shouldCompleteVerifyArchiveTasksFetch({
+          artifactType: String(data.artifactType),
+          content: data.content,
+          cacheStale,
+        })) {
+          setVerifyArchiveTasksLoading(false);
+        }
+      } else if (data.type === 'workflowActionReceipt'
+        && data.changeName === changeName
         && workflowSnapshot
-        && msg.bindingKey === workflowSnapshot.bindingKey
-        && workflowReceipt?.requestId === msg.requestId) {
-        setWorkflowReceipt({
-          requestId: msg.requestId,
-          bindingKey: msg.bindingKey,
-          status: msg.status,
-          message: msg.message,
-        });
-        if (!['running'].includes(msg.status)) setPendingWorkflowAction(null);
-      } else if (msg.type === 'artifactContentError' && msg.changeName === changeName) {
-        setError(msg.message ?? 'Failed to load');
-        setErrorCode(msg.code);
-        setLoading(false);
-        setContent(null);
-        setArtifactStateMessage(null);
-      } else if (msg.type === 'deltaSpecList' && msg.changeName === changeName) {
-        setDeltaSpecIds(msg.specIds ?? []);
-        if (msg.specIds?.length) {
-          setSelectedSpecId(msg.specIds[0]);
+        && data.bindingKey === workflowSnapshot.bindingKey) {
+        workflowLaunchPending.handleReceipt(data as unknown as WorkflowActionReceipt);
+        if (data.status === 'running') {
+          if (data.action === 'verify' || data.action === 'archive') {
+            setPendingLaunchAction(data.action as WorkflowAction);
+          }
+        } else if (data.suppressPriorityAttention === true && data.status === 'completed') {
+          setPendingLaunchAction(null);
+          setPendingLaunchSurface(null);
+          if (workflowReceiptBeforeLaunchRef.current) {
+            setWorkflowReceipt(workflowReceiptBeforeLaunchRef.current);
+            workflowReceiptBeforeLaunchRef.current = null;
+          }
+        } else {
+          workflowReceiptBeforeLaunchRef.current = null;
+          setWorkflowReceipt({
+            requestId: String(data.requestId),
+            bindingKey: String(data.bindingKey),
+            status: String(data.status),
+            message: typeof data.message === 'string' ? data.message : undefined,
+          });
+        }
+      } else if (data.type === 'artifactContentError' && data.changeName === changeName) {
+        const artifactType = typeof data.artifactType === 'string'
+          ? data.artifactType
+          : activeTabRef.current;
+        const fetchKey = artifactFetchCoordinatorKey(
+          scopeId,
+          artifactType,
+          artifactType === 'specs' ? selectedSpecIdRef.current : undefined,
+        );
+        artifactFetchCoordinatorRef.current.complete(fetchKey);
+        if (artifactType === 'tasks') {
+          const message = typeof data.message === 'string' ? data.message : t('artifact.readError');
+          setTasksProgressError(message);
+          setTasksProgressUnknown(true);
+          setCompletedTasks(0);
+          setTotalTasks(0);
+          setVerifyArchiveTasksLoading(false);
+        } else if (shouldShowActiveTabLoadingForArtifactFetch(activeTabRef.current, artifactType)) {
+          if (data.code === 'WORKSPACE_ROOT_STALE') {
+            setArtifactStateMessage(
+              typeof data.message === 'string' ? data.message : t('workflow.workspaceRootStale'),
+            );
+            setLoading(false);
+            setError(null);
+            setErrorCode(String(data.code));
+            setContent(null);
+          } else {
+            setError(typeof data.message === 'string' ? data.message : 'Failed to load');
+            setErrorCode(typeof data.code === 'string' ? data.code : undefined);
+            setLoading(false);
+            setContent(null);
+            setArtifactStateMessage(null);
+          }
+        }
+      } else if (data.type === 'deltaSpecList' && data.changeName === changeName) {
+        const specIds = Array.isArray(data.specIds) ? data.specIds as string[] : [];
+        setDeltaSpecIds(specIds);
+        if (specIds.length) {
+          setSelectedSpecId(specIds[0]);
           setLoading(true);
         } else {
           setLoading(false);
           setContent(null);
           setError(null);
         }
-      } else if (msg.type === 'deltaSpecContent' && msg.changeName === changeName) {
-        const key = cacheKey(scopeId, 'specs', msg.specId);
-        contentCacheRef.current.set(key, msg.content ?? '');
-        setContent(msg.content ?? '');
+      } else if (data.type === 'deltaSpecContent' && data.changeName === changeName) {
+        const key = cacheKey(scopeId, 'specs', String(data.specId));
+        contentCacheRef.current.set(key, String(data.content ?? ''));
+        setContent(String(data.content ?? ''));
         setLoading(false);
         setError(null);
-      } else if (msg.type === 'deltaSpecContentError' && msg.changeName === changeName) {
-        setError(msg.message ?? 'Failed to load spec');
+      } else if (data.type === 'deltaSpecContentError' && data.changeName === changeName) {
+        setError(typeof data.message === 'string' ? data.message : 'Failed to load spec');
         setLoading(false);
         setContent(null);
       } else if (
-        (msg.type === 'setContext'
-          && msg.view === 'changeDetail'
-          && msg.changeName === changeName
-          && msg.executorLaunchPresentation)
-        || msg.type === 'executorLaunchPresentation'
+        (data.type === 'setContext'
+          && data.view === 'changeDetail'
+          && data.changeName === changeName
+          && data.executorLaunchPresentation)
+        || data.type === 'executorLaunchPresentation'
       ) {
-        const presentation = msg.type === 'executorLaunchPresentation'
-          ? msg
-          : msg.executorLaunchPresentation;
+        const presentation = data.type === 'executorLaunchPresentation'
+          ? data
+          : data.executorLaunchPresentation as Record<string, unknown>;
         if (presentation) {
           setExecutorPresentation(normalizeExecutorPresentation({
-            agentAdapters: presentation.agentAdapters,
-            workflowLaunchConfig: presentation.workflowLaunchConfig,
-            uiWorkflowLaunchConfig: presentation.uiWorkflowLaunchConfig,
+            agentAdapters: presentation.agentAdapters as ExecutorLaunchPresentation['agentAdapters'],
+            workflowLaunchConfig: presentation.workflowLaunchConfig as ExecutorLaunchPresentation['workflowLaunchConfig'],
+            uiWorkflowLaunchConfig: presentation.uiWorkflowLaunchConfig as ExecutorLaunchPresentation['uiWorkflowLaunchConfig'],
+            isCursorHost: presentation.isCursorHost === true,
           }));
         }
-      } else if (msg.type === 'taskExecutionFinished' && msg.changeName === changeName) {
+      } else if (data.type === 'taskExecutionFinished' && data.changeName === changeName) {
         setExecutingTaskIndex(null);
-        if (msg.executionState && typeof msg.executionState === 'object') {
-          setTaskExecutionState(msg.executionState);
+        if (data.executionState && typeof data.executionState === 'object') {
+          setTaskExecutionState(data.executionState as Record<number, { success: boolean; timestamp: number }>);
         }
-      } else if (msg.type === 'taskExecutionState' && msg.changeName === changeName) {
-        if (msg.executionState && typeof msg.executionState === 'object') {
-          setTaskExecutionState(msg.executionState);
+      } else if (data.type === 'taskExecutionState' && data.changeName === changeName) {
+        if (data.executionState && typeof data.executionState === 'object') {
+          setTaskExecutionState(data.executionState as Record<number, { success: boolean; timestamp: number }>);
         }
-      } else if (msg.type === 'runCommandResult') {
-        setRunCommandResult({ success: msg.success, message: msg.message });
-      } else if (msg.type === 'interactiveWorkflowState' && msg.changeName === changeName) {
-        setInteractiveState(msg.state ?? { changeName, sessions: {} });
-      } else if (msg.type === 'artifactInvalidated' && msg.changeName === changeName) {
-        const invalidated: string[] = msg.artifactTypes ?? [];
+      } else if (data.type === 'runCommandResult') {
+        setRunCommandResult({
+          success: Boolean(data.success),
+          message: typeof data.message === 'string' ? data.message : undefined,
+        });
+      } else if (data.type === 'interactiveWorkflowState' && data.changeName === changeName) {
+        setInteractiveState((data.state as InteractiveWorkflowState | undefined) ?? { changeName, sessions: {} });
+      } else if (data.type === 'artifactInvalidated' && data.changeName === changeName) {
+        const invalidated: string[] = Array.isArray(data.artifactTypes)
+          ? data.artifactTypes as string[]
+          : [];
         const scopePrefix = scopeId ? `${scopeId}::` : '';
         for (const type of invalidated) {
           if (type === 'specs') {
             for (const key of Array.from(contentCacheRef.current.keys())) {
-              // Cache keys are optionally scope-prefixed; drop the specs entries that
-              // belong to this panel's scope (and any legacy unscoped specs:* keys).
               const suffix = scopePrefix ? key.slice(scopePrefix.length) : key;
               const isLegacyUnscopedSpecs = scopePrefix && (key === 'specs' || key.startsWith('specs:'));
               if (
@@ -472,24 +680,44 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
                 contentCacheRef.current.delete(key);
               }
             }
-          } else {
+          } else if (type !== 'tasks') {
             contentCacheRef.current.delete(`${scopePrefix}${type}`);
             if (scopePrefix) {
               contentCacheRef.current.delete(type);
             }
           }
         }
-        if (invalidated.includes(activeTab)) {
-          if (activeTab === 'specs') {
+        if (invalidated.includes('tasks')) {
+          handleTasksArtifactInvalidated({
+            scopeId,
+            coordinator: artifactFetchCoordinatorRef.current,
+            contentCache: contentCacheRef.current,
+            resetVerifyArchiveLoadedFlag: () => {
+              verifyArchiveTasksLoadedRef.current = null;
+            },
+            markVerifyArchiveLoading: () => {
+              if (activeTabRef.current === 'verifyArchive') {
+                setVerifyArchiveTasksLoading(true);
+              }
+            },
+            scheduleTasksRefetch: () => requestArtifact('tasks'),
+          });
+        } else if (invalidated.includes(activeTabRef.current)) {
+          initialArtifactFetchKeyRef.current = null;
+          if (activeTabRef.current === 'specs') {
             requestSpecsList();
-          } else if (activeTab !== 'verifyArchive') {
-            requestArtifact(activeTab);
+          } else if (activeTabRef.current !== 'verifyArchive') {
+            requestArtifact(activeTabRef.current);
           }
         }
       }
+  };
+
+  useEffect(() => {
+    return onMessage((event: MessageEvent) => {
+      dispatchExtensionMessageRef.current(event.data);
     });
-    return cleanup;
-   }, [activeTab, changeName, onMessage, postMessage, scopeId, workflowReceipt, workflowSnapshot]);
+  }, [onMessage]);
 
   useEffect(() => {
     postMessage(sendMessage.getExecutorLaunchPresentation());
@@ -539,14 +767,6 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     }
   }, [activeTab, changeName, postMessage, scopeId]);
 
-  useEffect(() => {
-    if (activeTab !== 'verifyArchive') return;
-    postMessage(sendMessage.getInteractiveWorkflowState(changeName, scopeId));
-    if (pendingInteractiveAction) {
-      postMessage(sendMessage.runInteractiveWorkflow(changeName, pendingInteractiveAction, scopeId));
-      setPendingInteractiveAction(null);
-    }
-  }, [activeTab, changeName, pendingInteractiveAction, postMessage, scopeId]);
 
 
   const handleOpenInEditor = () => {
@@ -565,6 +785,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
 
   const handleRefresh = () => {
     contentCacheRef.current.clear();
+    initialArtifactFetchKeyRef.current = null;
     postMessage(sendMessage.refresh());
     if (activeTab === 'verifyArchive') {
       postMessage(sendMessage.getInteractiveWorkflowState(changeName, scopeId));
@@ -588,17 +809,64 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     postMessage(sendMessage.runCommand(commandId, verifyArgsJson.trim() || undefined, changeName));
   };
 
+  const copyCommandTarget = resolveWorkflowCommandTargetForUi(
+    hostWorkflowLaunchConfig,
+    { isCursorHost },
+  );
+
+  const workflowBindingKey = workflowSnapshot?.bindingKey;
+  const isWorkflowLaunchPending = workflowBindingKey
+    ? workflowLaunchPending.isPending(changeName, workflowBindingKey)
+    : false;
+  const actionBarPendingAction = isWorkflowLaunchPending
+    && pendingLaunchSurface === 'actionBar'
+    ? pendingLaunchAction
+    : null;
+  const verifyArchivePendingAction = isWorkflowLaunchPending
+    && pendingLaunchSurface === 'verifyArchive'
+    && (pendingLaunchAction === 'verify' || pendingLaunchAction === 'archive')
+    ? pendingLaunchAction
+    : null;
+
+  useEffect(() => {
+    if (!workflowBindingKey || !pendingLaunchAction) return;
+    if (!workflowLaunchPending.isPending(changeName, workflowBindingKey)) {
+      setPendingLaunchAction(null);
+      setPendingLaunchSurface(null);
+    }
+  }, [changeName, pendingLaunchAction, workflowBindingKey, workflowLaunchPending.pendingKeys]);
+
+  useEffect(() => {
+    if (!verifyArchiveTasksLoading) return;
+    const timeout = window.setTimeout(() => {
+      verifyArchiveTasksLoadedRef.current = null;
+      artifactFetchCoordinatorRef.current.forceRelease(tasksFetchCoordinatorKey(scopeId));
+      requestArtifact('tasks');
+    }, 15_000);
+    return () => window.clearTimeout(timeout);
+  }, [verifyArchiveTasksLoading, changeName, scopeId]);
+
   const handleLaunchWorkflow = (
-    action: 'explore' | 'continue' | 'ff' | 'apply' | 'verify' | 'archive' | 'sync'
+    action: 'explore' | 'continue' | 'ff' | 'apply' | 'verify' | 'archive' | 'sync',
+    surface: LaunchSurface = 'actionBar',
   ) => {
-    if (!workflowSnapshot?.bindingKey || pendingWorkflowAction === action) return;
-    const requestId = createWorkflowRequestId();
-    setPendingWorkflowAction(action);
-    setWorkflowReceipt({
-      requestId,
-      bindingKey: workflowSnapshot.bindingKey,
-      status: 'pending',
-    });
+    if (!workflowSnapshot?.bindingKey) return;
+    if (pendingLaunchAction === action && workflowLaunchPending.isPending(changeName, workflowSnapshot.bindingKey)) {
+      return;
+    }
+    const requestId = copyOnlyWorkflowLaunch
+      ? createWorkflowRequestId('workflow')
+      : workflowLaunchPending.registerLaunch(changeName, workflowSnapshot.bindingKey).requestId;
+    if (!copyOnlyWorkflowLaunch) {
+      workflowReceiptBeforeLaunchRef.current = workflowReceipt;
+      setPendingLaunchAction(action);
+      setPendingLaunchSurface(surface);
+      setWorkflowReceipt({
+        requestId,
+        bindingKey: workflowSnapshot.bindingKey,
+        status: 'pending',
+      });
+    }
     postMessage(sendMessage.launchWorkflowAction(
       action,
       changeName,
@@ -608,15 +876,21 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
     ));
   };
 
+  useEffect(() => {
+    if (activeTab !== 'verifyArchive' || !pendingInteractiveAction) return;
+    handleLaunchWorkflow(pendingInteractiveAction, 'verifyArchive');
+    setPendingInteractiveAction(null);
+  }, [activeTab, pendingInteractiveAction]);
+
   const handleResolvedAction = (
     action: 'explore' | 'continue' | 'ff' | 'apply' | 'verify' | 'archive' | 'sync'
   ) => {
     if (action === 'verify' || action === 'archive') {
       setActiveTab('verifyArchive');
-      setPendingInteractiveAction(action);
+      handleLaunchWorkflow(action, 'actionBar');
       return;
     }
-    handleLaunchWorkflow(action);
+    handleLaunchWorkflow(action, 'actionBar');
   };
 
   const handleConfirmTaskToggle = () => {
@@ -651,7 +925,13 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
             />
           </div>
           <div className="inline-flex items-center gap-2 mt-2 px-2.5 py-1 rounded text-xs" style={{ background: 'var(--vscode-editor-inactiveSelectionBackground)', color: 'var(--vscode-descriptionForeground)' }}>
-            {getStatusSummary(existingArtifactIds, completedTasks, totalTasks, isArchived)}
+            {verifyArchiveTasksLoading && activeTab === 'verifyArchive'
+              ? t('detail.loadingTaskProgress')
+              : tasksProgressError
+                ? tasksProgressError
+                : tasksProgressUnknown
+                  ? t('detail.tasksProgressUnknown')
+                  : getStatusSummary(existingArtifactIds, completedTasks, totalTasks, isArchived)}
           </div>
           {workflowSnapshot && (
             <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px]" style={{ color: 'var(--vscode-descriptionForeground)' }}>
@@ -671,16 +951,16 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         changeName={changeName}
         isArchived={isArchived}
         resolvedActions={resolvedWorkflowActions}
-        pendingAction={pendingWorkflowAction}
+        pendingAction={actionBarPendingAction}
         receiptStatus={workflowReceipt?.status}
         receiptMessage={workflowReceipt?.message}
-        executorUiLaunchConfig={executorUiLaunchConfig}
+        executorUiLaunchConfig={workflowLabelLaunchConfig}
         onAction={handleResolvedAction}
         onCopyFf={(name) =>
-          postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({ action: 'ff', changeName: name, target: 'clipboard' })))
+          postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({ action: 'ff', changeName: name, target: copyCommandTarget })))
         }
         onCopyApply={(name) =>
-          postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({ action: 'apply', changeName: name, target: 'clipboard' })))
+          postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({ action: 'apply', changeName: name, target: copyCommandTarget })))
         }
       />
 
@@ -748,11 +1028,11 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
               isArchived={isArchived}
               canArchiveNow={canArchiveNow}
               archiveNowDisabledReason={archiveNowDisabledReason}
-              sessions={interactiveState.sessions}
-              onRun={(action) => postMessage(sendMessage.runInteractiveWorkflow(changeName, action, scopeId))}
-              onReveal={(action) => postMessage(sendMessage.revealInteractiveWorkflow(changeName, action, scopeId))}
-              onStop={(action) => postMessage(sendMessage.stopInteractiveWorkflow(changeName, action, scopeId))}
-              onClear={(action) => postMessage(sendMessage.clearInteractiveWorkflow(changeName, action, scopeId))}
+              tasksProgressError={tasksProgressError}
+              pendingAction={verifyArchivePendingAction}
+              workflowLaunchConfig={workflowLabelLaunchConfig}
+              commandFormatRuntime={{ isCursorHost }}
+              onRun={(action) => handleLaunchWorkflow(action, 'verifyArchive')}
               onArchiveNow={handleArchiveNow}
             />
 

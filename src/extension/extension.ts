@@ -153,6 +153,7 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
       vscode.workspace.onDidChangeWorkspaceFolders(() => {
         void dashboardViewProvider.syncOpenSpecRootAvailability();
+        void dashboardViewProvider.syncProjectContextAfterWorkspaceChange();
       }),
     );
 
@@ -162,7 +163,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
     logger.info('OpenSpec extension activated successfully');
     console.log('OpenSpec extension is now active!');
-    await promptReloadAfterInstallOrUpdate(context);
+    setTimeout(() => {
+      void promptReloadAfterInstallOrUpdate(context);
+    }, 4000);
   } catch (error) {
     logger.error('Failed to activate OpenSpec extension', error as Error);
     vscode.window.showErrorMessage(
@@ -181,13 +184,14 @@ async function promptReloadAfterInstallOrUpdate(context: vscode.ExtensionContext
   await context.globalState.update(key, marker);
   logger.info(`OpenSpec installation marker changed: previous=${previous ?? 'none'}, current=${marker}`);
   const reload = t('extension.reloadWindow');
-  const selected = await vscode.window.showInformationMessage(
+  void vscode.window.showInformationMessage(
     t('extension.reloadRecommended'),
-    reload
-  );
-  if (selected === reload) {
-    await vscode.commands.executeCommand('workbench.action.reloadWindow');
-  }
+    reload,
+  ).then((selected) => {
+    if (selected === reload) {
+      void vscode.commands.executeCommand('workbench.action.reloadWindow');
+    }
+  });
 }
 
 export function deactivate() {

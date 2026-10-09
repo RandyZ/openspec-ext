@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { setLocale } from '../../../src/i18n';
 import {
+  getExampleWorkflowCommand,
+  getVerifyArchiveDescription,
+  getVerifyArchiveHint,
   getWorkflowActionButtonLabel,
   getWorkflowLaunchModeHint,
   type WorkflowLaunchConfigView,
@@ -33,6 +36,8 @@ describe('workflow launch labels', () => {
     expect(
       getWorkflowActionButtonLabel('Apply', {
         ...baseConfig,
+        workflowLaunchMode: 'adapter',
+        preferredAgentAdapter: 'cursor',
         cursorLaunchMode: 'agentCli',
         cursorLaunchModeExplicit: true,
         effectiveAdapterId: 'cursor',
@@ -58,7 +63,7 @@ describe('workflow launch labels', () => {
         preferredAgentAdapter: 'cursor',
         cursorLaunchMode: 'deeplink',
       }),
-    ).toBe('Runs in Cursor');
+    ).toBe('Opens Agent panel');
   });
 
   it('shows Chat wording for Cursor chat command routing', () => {
@@ -73,12 +78,45 @@ describe('workflow launch labels', () => {
     ).toBe('Open Chat · Verify');
   });
 
+  it('formats Verify & Archive copy description with IDE-specific command syntax', () => {
+    const desc = getVerifyArchiveDescription(baseConfig, { isCursorHost: false });
+    expect(desc).toContain('/opsx:verify my-change');
+    expect(desc).toContain('/opsx:archive my-change');
+    expect(desc).not.toContain('/opsx-verify');
+
+    const cursorCopy: WorkflowLaunchConfigView = {
+      ...baseConfig,
+      workflowLaunchMode: 'adapter',
+      preferredAgentAdapter: 'cursor',
+      cursorLaunchMode: 'clipboard',
+      cursorLaunchModeExplicit: true,
+      effectiveAdapterId: 'cursor',
+    };
+    const cursorDesc = getVerifyArchiveDescription(cursorCopy, { isCursorHost: true });
+    expect(cursorDesc).toContain('/opsx-verify my-change');
+    expect(cursorDesc).toContain('/opsx-archive my-change');
+  });
+
+  it('formats Verify & Archive hints with colon commands for VS Code Chat', () => {
+    const config: WorkflowLaunchConfigView = {
+      ...baseConfig,
+      workflowLaunchMode: 'adapter',
+      preferredAgentAdapter: 'vscode-chat',
+      effectiveAdapterId: 'vscode-chat',
+    };
+    expect(getExampleWorkflowCommand('verify', config)).toBe('/opsx:verify my-change');
+    expect(getVerifyArchiveHint('verify', config)).toContain('/opsx:verify my-change');
+    expect(getVerifyArchiveHint('verify', config)).toContain('Chat');
+    expect(getVerifyArchiveHint('verify', config)).not.toContain('/opsx-verify');
+  });
+
   it('shows generic launch wording for non-Cursor adapters', () => {
     expect(
       getWorkflowActionButtonLabel('Apply', {
         ...baseConfig,
         workflowLaunchMode: 'adapter',
         preferredAgentAdapter: 'vscode-copilot',
+        cursorLaunchMode: 'clipboard',
         effectiveAdapterId: 'vscode-copilot',
       }),
     ).toBe('Launch · Apply');
@@ -87,6 +125,7 @@ describe('workflow launch labels', () => {
         ...baseConfig,
         workflowLaunchMode: 'adapter',
         preferredAgentAdapter: 'vscode-copilot',
+        cursorLaunchMode: 'clipboard',
         effectiveAdapterId: 'vscode-copilot',
       }),
     ).toBe('Launch via adapter');

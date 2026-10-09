@@ -29,6 +29,24 @@ export interface OpenSpecCliResolverOptions {
 }
 
 const DEFAULT_TIMEOUT_MS = 15000;
+
+/** Session-wide cache so every resolver instance probes --version once per CLI path. */
+const sessionVersionProbeByCommandKey = new Map<
+  string,
+  { version: string; env: NodeJS.ProcessEnv }
+>();
+
+export function resetOpenSpecCliVersionProbeSessionCache(): void {
+  sessionVersionProbeByCommandKey.clear();
+}
+
+function versionProbeCacheKey(command: string): string {
+  if (process.platform === 'win32') {
+    return path.win32.isAbsolute(command) ? path.win32.resolve(command) : command;
+  }
+  return path.isAbsolute(command) ? path.resolve(command) : command;
+}
+
 const DEFAULT_KNOWN_PATHS = [
   '/opt/homebrew/bin/openspec',
   '/usr/local/bin/openspec',
@@ -57,6 +75,12 @@ export class OpenSpecCliResolver {
 
   clearCache(): void {
     this.cached = null;
+    resetOpenSpecCliVersionProbeSessionCache();
+  }
+
+  /** Drop cached version probes (e.g. after CLI binary replacement). */
+  static clearSessionVersionProbeCache(): void {
+    resetOpenSpecCliVersionProbeSessionCache();
   }
 
   async resolve(): Promise<ResolvedOpenSpecCli> {
@@ -195,6 +219,20 @@ export class OpenSpecCliResolver {
     const command = process.execPath; // Node.js executable
     const argsPrefix = [openspecBin];
     const env = { ...process.env };
+    const localProbeKey = `${versionProbeCacheKey(command)}\u0000${path.resolve(openspecBin)}`;
+    const cachedLocal = sessionVersionProbeByCommandKey.get(localProbeKey);
+    if (cachedLocal) {
+      diagnostics.push(`${label}: ok (${command} ${openspecBin}) -> ${cachedLocal.version} (cached)`);
+      return {
+        command,
+        argsPrefix,
+        env: cachedLocal.env,
+        version: cachedLocal.version,
+        source: 'localSource',
+        sourceLabel: `local source (${sourcePath})`,
+        diagnostics: [...diagnostics],
+      };
+    }
     try {
       const version = (await this.spawnAndCollect(
         command,
@@ -202,6 +240,7 @@ export class OpenSpecCliResolver {
         this.options.timeoutMs,
         env
       )).trim();
+      sessionVersionProbeByCommandKey.set(localProbeKey, { version, env });
       diagnostics.push(`${label}: ok (${command} ${openspecBin}) -> ${version}`);
       return {
         command,
@@ -232,9 +271,21 @@ export class OpenSpecCliResolver {
     diagnostics: string[],
     label: string
   ): Promise<ResolvedOpenSpecCli | null> {
+    const probeKey = versionProbeCacheKey(command);
+    const cachedProbe = sessionVersionProbeByCommandKey.get(probeKey);
+    if (cachedProbe) {
+      diagnostics.push(`${label}: ok (${command}) -> ${cachedProbe.version} (cached)`);
+      return {
+        command,
+        env: cachedProbe.env,
+        version: cachedProbe.version,
+        diagnostics: [...diagnostics],
+      };
+    }
     try {
       const env = this.buildCommandEnv(command);
       const version = (await this.spawnAndCollect(command, ['--version'], this.options.timeoutMs, env)).trim();
+      sessionVersionProbeByCommandKey.set(probeKey, { version, env });
       diagnostics.push(`${label}: ok (${command}) -> ${version}`);
       return { command, env, version, diagnostics: [...diagnostics] };
     } catch (err) {

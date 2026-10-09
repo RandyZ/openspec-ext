@@ -8,7 +8,9 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 const rootDir = path.resolve(__dirname, '..');
-const inputPath = path.resolve(rootDir, process.argv[2] ?? 'openspec-workflow-0.2.2.vsix');
+const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
+const defaultVsixName = `${pkg.name}-${pkg.version}.vsix`;
+const inputPath = path.resolve(rootDir, process.argv[2] ?? defaultVsixName);
 
 const REQUIRED_MARKERS = [
   'openspec-webview-executor-ui-v1',

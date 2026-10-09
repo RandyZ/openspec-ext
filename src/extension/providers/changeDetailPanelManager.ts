@@ -3,6 +3,8 @@ import * as path from 'path';
 import { logger } from '../utils/logger';
 import { DataManager } from '../services/dataManager';
 import { InteractiveAgentTerminalManager } from '../services/interactiveAgentTerminalManager';
+import { registerWorkflowReceiptWebview } from '../services/workflowWebviewRegistry';
+import { pathsEqualForWorkspace } from '../utils/workspacePathCompare';
 import {
   handleWebviewMessage,
   getWebviewContent,
@@ -48,6 +50,13 @@ export function createProjectBoundScope(
     label,
     rootPath: binding.rootPath,
     source: binding.storeId ? 'store' : 'declared',
+    workflowBinding: {
+      projectId: binding.projectId,
+      commandCwd: binding.commandCwd,
+      rootPath: binding.rootPath,
+      rootSource: binding.rootSource,
+      ...(binding.storeId ? { storeId: binding.storeId } : {}),
+    },
     ...(binding.storeId ? { storeId: binding.storeId } : {}),
     runtimeSource: 'installed',
     capabilities: {
@@ -340,9 +349,13 @@ export class ChangeDetailPanelManager {
     this.pendingSetContext.set(panel.webview, { changeName, options: boundOptions });
 
     panel.webview.html = getWebviewContent(panel.webview, this.extensionPath);
+    const receiptRegistration = registerWorkflowReceiptWebview(panel.webview);
 
     // Proactively send setContext so webview can show ChangeDetail without waiting for first message
     setTimeout(() => {
+      if (this.panels.get(key) === panel) {
+        panel.webview.postMessage({ type: 'panelVisibility', visible: panel.visible });
+      }
       this.buildSetContextPayload(changeName, boundOptions).then((payload) =>
         this.panels.get(key) === panel && panel.webview.postMessage(payload)
       );
@@ -385,6 +398,11 @@ export class ChangeDetailPanelManager {
     );
 
     panel.onDidChangeViewState((e) => {
+      try {
+        panel.webview.postMessage({ type: 'panelVisibility', visible: e.webviewPanel.visible });
+      } catch {
+        // panel disposed
+      }
       if (e.webviewPanel.visible && this.onAfterOpen) {
         logger.debug('Change detail panel became visible, calling onAfterOpen');
         this.onAfterOpen();
@@ -392,6 +410,7 @@ export class ChangeDetailPanelManager {
     });
 
     panel.onDidDispose(() => {
+      receiptRegistration.dispose();
       this.panels.delete(key);
       this.panelRootPaths.delete(key);
       this.panelScopes.delete(panel.webview);
@@ -416,7 +435,7 @@ export class ChangeDetailPanelManager {
       if (
         rootPath !== undefined
         && panelRootPath !== undefined
-        && path.normalize(panelRootPath) !== path.normalize(rootPath)
+        && !pathsEqualForWorkspace(panelRootPath, rootPath)
       ) continue;
       try {
         panel.webview.postMessage({ type: 'artifactInvalidated', changeName, artifactTypes });

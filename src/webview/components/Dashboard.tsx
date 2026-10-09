@@ -24,6 +24,7 @@ import { formatOpenSpecRootLabel } from '../utils/scopeLabels';
 import { t } from '../../i18n';
 import {
   buildWorkflowCommand,
+  resolveWorkflowCommandTargetForUi,
   type WorkflowAction,
 } from '../../shared/workflowCommand';
 import { buildChangeStatusCounts } from '../../shared/changeLifecycle';
@@ -37,6 +38,10 @@ import {
   type WorkflowLaunchConfigView,
 } from '../utils/workflowLaunchLabels';
 import type { CacheAction, CacheStatsView } from '../types/messages';
+import { useWorkflowLaunchPending } from '../hooks/useWorkflowLaunchPending';
+import { getCopyOnlyFallbackLaunchConfig } from '../utils/executorUiLaunchConfig';
+import { isHostWorkflowLaunchCopyOnly } from '../../shared/workflowLaunchConfig';
+import { resolveChangeBindingKey } from '../utils/changeBindingKey';
 import {
   DEFAULT_CHANGES_VIEW_STATE,
   getChangesViewForRoot,
@@ -109,7 +114,8 @@ export function getDashboardPriorityChanges(
     const receipt = snapshot
       ? latestReceipts.get(`${change.name}\u0000${snapshot.bindingKey}`)
       : undefined;
-    const hasReceiptAttention = receipt?.status === 'failed' || receipt?.status === 'fallback';
+    const hasReceiptAttention = (receipt?.status === 'failed' || receipt?.status === 'fallback')
+      && receipt?.suppressPriorityAttention !== true;
     const hasResolverAttention = resolved !== undefined && resolved.attentionReasons.length > 0;
     if (change.attention?.required === true || hasReceiptAttention || hasResolverAttention) {
       needsAttention.push(change);
@@ -345,6 +351,7 @@ export const Dashboard: React.FC = () => {
   const [cacheActionMessage, setCacheActionMessage] = useState<string | null>(null);
   const [pendingCacheAction, setPendingCacheAction] = useState<CacheAction | null>(null);
   const [workflowReceipts, setWorkflowReceipts] = useState<WorkflowActionReceipt[]>([]);
+  const workflowLaunchPending = useWorkflowLaunchPending();
   const pendingWorkflowRequestsRef = useRef(new Map<string, { changeName: string; bindingKey: string }>());
   const latestWorkflowRequestRef = useRef(new Map<string, string>());
   // Tracks the scope the current requirements cache was loaded under; reset on change.
@@ -353,6 +360,7 @@ export const Dashboard: React.FC = () => {
   // effect run) can read the latest scope without closing over stale state.
   const scopeIdRef = useRef<string | undefined>(undefined);
   const [workflowLaunchConfig, setWorkflowLaunchConfig] = useState<WorkflowLaunchConfigView | null>(null);
+  const [workflowLaunchIsCursorHost, setWorkflowLaunchIsCursorHost] = useState(false);
   // Sequence-stamped Host responses for the Workset create flow. The sequence
   // lets the picker apply each Host message at most once, and ignore responses
   // that arrive after the form was left. The payloads stay untrusted: the
@@ -474,25 +482,30 @@ export const Dashboard: React.FC = () => {
         }));
       } else if (message.type === 'workflowLaunchConfig') {
         setWorkflowLaunchConfig(message.config ?? null);
+        setWorkflowLaunchIsCursorHost(message.isCursorHost === true);
       } else if (message.type === 'workflowActionReceipt') {
-        const pending = pendingWorkflowRequestsRef.current.get(message.requestId);
-        const key = `${message.changeName}\u0000${message.bindingKey}`;
+        const receipt = message as WorkflowActionReceipt;
+        const pending = pendingWorkflowRequestsRef.current.get(receipt.requestId);
+        const key = `${receipt.changeName}\u0000${receipt.bindingKey}`;
+        if (receipt.status !== 'running') {
+          setWorkflowReceipts((previous) => [
+            ...previous.filter((item) => (
+              item.changeName !== receipt.changeName
+              || item.bindingKey !== receipt.bindingKey
+            )),
+            receipt,
+          ]);
+        }
         if (
           pending
-          && pending.changeName === message.changeName
-          && pending.bindingKey === message.bindingKey
-          && latestWorkflowRequestRef.current.get(key) === message.requestId
+          && pending.changeName === receipt.changeName
+          && pending.bindingKey === receipt.bindingKey
+          && latestWorkflowRequestRef.current.get(key) === receipt.requestId
         ) {
-          setWorkflowReceipts((previous) => [
-            ...previous.filter((receipt) => (
-              receipt.changeName !== message.changeName
-              || receipt.bindingKey !== message.bindingKey
-            )),
-            message as WorkflowActionReceipt,
-          ]);
-          if (message.status !== 'running') {
-            pendingWorkflowRequestsRef.current.delete(message.requestId);
+          if (receipt.status !== 'running') {
+            pendingWorkflowRequestsRef.current.delete(receipt.requestId);
           }
+          workflowLaunchPending.handleReceipt(receipt);
         }
       } else if (message.type === 'cacheStats') {
         setCacheStats(message.stats ?? null);
@@ -532,6 +545,16 @@ export const Dashboard: React.FC = () => {
 
     return cleanup;
   }, [postMessage, onMessage, dispatch, projectFirst]);
+
+  useEffect(() => {
+    if (!projectFirst || projectSidebar) return undefined;
+    const timer = window.setTimeout(() => {
+      if (!projectSidebar && loading) {
+        postMessage(sendMessage.getProjectSidebarData());
+      }
+    }, 8000);
+    return () => window.clearTimeout(timer);
+  }, [projectFirst, projectSidebar, loading, postMessage]);
 
   const handleSelectScope = useCallback(
     createScopeSelectHandler(dispatch, postMessage),
@@ -601,32 +624,28 @@ export const Dashboard: React.FC = () => {
     ));
   };
 
+  const copyCommandTarget = resolveWorkflowCommandTargetForUi(
+    workflowLaunchConfig ?? getCopyOnlyFallbackLaunchConfig(),
+    { isCursorHost: workflowLaunchIsCursorHost },
+  );
+
   const handleCopyFf = (changeName: string) => {
-    postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({ action: 'ff', changeName, target: 'clipboard' })));
+    postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({ action: 'ff', changeName, target: copyCommandTarget })));
   };
 
   const handleCopyApply = (changeName: string) => {
-    postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({ action: 'apply', changeName, target: 'clipboard' })));
+    postMessage(sendMessage.copyToClipboard(buildWorkflowCommand({ action: 'apply', changeName, target: copyCommandTarget })));
   };
 
   const handleLaunchWorkflow = (action: WorkflowAction, changeName: string, bindingKey?: string) => {
-    if (action === 'verify' || action === 'archive') {
-      postMessage(
-        projectSidebar
-          ? sendMessage.openChangeDetailInEditor(
-            changeName,
-            'verifyArchive',
-            action,
-            undefined,
-            projectSidebar.project,
-            projectSidebar.binding,
-          )
-          : sendMessage.openChangeDetailInEditor(changeName, 'verifyArchive', action, state.data?.scope?.id)
-      );
-      return;
-    }
-    const requestId = createWorkflowRequestId('dashboard');
-    if (bindingKey) {
+    const launchConfigForUi = workflowLaunchConfig ?? projectSidebar?.workflowLaunchConfig ?? null;
+    const copyOnlyLaunch = isHostWorkflowLaunchCopyOnly(
+      launchConfigForUi ?? getCopyOnlyFallbackLaunchConfig(),
+    );
+    const requestId = bindingKey && !copyOnlyLaunch
+      ? workflowLaunchPending.registerLaunch(changeName, bindingKey, 'dashboard').requestId
+      : createWorkflowRequestId('dashboard');
+    if (bindingKey && !copyOnlyLaunch) {
       const key = `${changeName}\u0000${bindingKey}`;
       pendingWorkflowRequestsRef.current.set(requestId, { changeName, bindingKey });
       latestWorkflowRequestRef.current.set(key, requestId);
@@ -706,7 +725,8 @@ export const Dashboard: React.FC = () => {
       return true;
     })
     .slice(0, 3);
-  const priorityWorkflowConfig = projectSidebar?.workflowLaunchConfig ?? workflowLaunchConfig;
+  const priorityWorkflowConfig = workflowLaunchConfig ?? projectSidebar?.workflowLaunchConfig;
+  const projectBinding = projectSidebar?.binding;
 
   return (
     <div className="min-h-screen" style={{ 
@@ -778,12 +798,23 @@ export const Dashboard: React.FC = () => {
                   isArchived: change.lifecycleStatus === 'archived',
                 }).recommended
                 : null;
+              const bindingKey = resolveChangeBindingKey(change, projectBinding);
+              const pendingKey = `${change.name}\u0000${bindingKey ?? ''}`;
+              const isLaunchPending = workflowLaunchPending.pendingKeys.has(pendingKey);
               const ctaLabel = group.key === 'needs-attention'
                 ? t('verifyArchive.reviewArchive')
                 : group.key === 'ready-to-verify'
-                  ? t('detail.verifyArchive')
+                  ? getWorkflowActionButtonLabel(
+                    'Verify',
+                    priorityWorkflowConfig,
+                    { launching: isLaunchPending },
+                  )
                   : recommended
-                    ? getWorkflowActionButtonLabel(recommended.label, priorityWorkflowConfig)
+                    ? getWorkflowActionButtonLabel(
+                      recommended.label,
+                      priorityWorkflowConfig,
+                      { launching: isLaunchPending },
+                    )
                     : null;
               if (!ctaLabel) return null;
               const ctaAccessibleName = t('dashboard.priorityActionAriaLabel', {
@@ -872,7 +903,10 @@ export const Dashboard: React.FC = () => {
                       onOpenArchivedChange={handleOpenArchivedChange}
                       archivedItems={[...(projectSidebar.archivedChanges ?? [])]}
                       onLaunchWorkflow={handleLaunchWorkflow}
-                      workflowLaunchConfig={projectSidebar.workflowLaunchConfig ?? workflowLaunchConfig}
+                      workflowLaunchConfig={workflowLaunchConfig ?? projectSidebar.workflowLaunchConfig}
+                      workflowLaunchPendingKeys={workflowLaunchPending.pendingKeys}
+                      workflowActionReceipts={workflowReceipts}
+                      projectBinding={projectSidebar.binding}
                       layout="narrow"
                     />
                   </div>
@@ -1023,9 +1057,12 @@ export const Dashboard: React.FC = () => {
                   onCopyFf={handleCopyFf}
                   onCopyApply={handleCopyApply}
                   onLaunchWorkflow={handleLaunchWorkflow}
+                  workflowLaunchPendingKeys={workflowLaunchPending.pendingKeys}
+                  workflowActionReceipts={workflowReceipts}
                   archivedItems={pendingScopeId ? [] : (data.archivedChanges ?? [])}
                   onOpenArchivedChange={handleOpenArchivedChange}
                   workflowLaunchConfig={workflowLaunchConfig}
+                  projectBinding={data?.scope ? undefined : projectBinding}
                   rootLabel={selectedRootLabel}
                   viewState={changesViewState}
                   onViewStateChange={persistChangesViewState}
@@ -1041,19 +1078,35 @@ export const Dashboard: React.FC = () => {
               </>
             )}
           </>
-        ) : projectDiagnostic ? null : loading ? (
+        ) : loading ? (
           <div className="text-xs py-4" style={{ 
             color: 'var(--vscode-descriptionForeground)' 
           }}>
             {t('dashboard.loading')}
           </div>
-        ) : (
-          <div className="text-xs py-4" style={{ 
+        ) : !projectSidebar ? (
+          <div className="text-xs py-4 flex flex-col gap-2" style={{ 
             color: 'var(--vscode-errorForeground)' 
           }}>
-            {t('dashboard.loadFailed')}
+            <span>{t('dashboard.loadFailed')}</span>
+            {projectFirst && (
+              <button
+                type="button"
+                className="self-start rounded px-2 py-1 text-xs"
+                style={{
+                  background: 'var(--vscode-button-secondaryBackground)',
+                  color: 'var(--vscode-button-secondaryForeground)',
+                }}
+                onClick={() => {
+                  dispatch({ type: 'SET_LOADING', payload: true, reason: 'initial' });
+                  postMessage(sendMessage.getProjectSidebarData());
+                }}
+              >
+                {t('dashboard.retryLoad')}
+              </button>
+            )}
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

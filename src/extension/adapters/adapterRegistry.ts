@@ -7,6 +7,7 @@ import { opencodeAdapter } from './opencode-adapter';
 import { vscodeChatAdapter } from './vscode-chat-adapter';
 import { vscodeCopilotAdapter } from './vscode-copilot-adapter';
 import type { IAgentExecutorAdapter } from '../services/agentExecutor.types';
+import { isCursorHost } from '../utils/isCursorHost';
 
 const registeredAdapters: IAgentExecutorAdapter[] = [
   vscodeCopilotAdapter,
@@ -16,10 +17,6 @@ const registeredAdapters: IAgentExecutorAdapter[] = [
   cursorAdapter,
   clipboardAdapter,
 ];
-
-function isCursorHost(): boolean {
-  return (vscode.env.appName ?? '').toLowerCase().includes('cursor');
-}
 
 /** Runtime launch adapters (must pass isAvailable). */
 export async function getAvailableAdapters(): Promise<IAgentExecutorAdapter[]> {

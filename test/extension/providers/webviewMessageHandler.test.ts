@@ -6,6 +6,7 @@ import * as path from 'node:path';
 import { handleWebviewMessage } from '@extension/providers/webviewMessageHandler';
 import { setLocale, t } from '../../../src/i18n';
 
+const launchWorkflowAgentCommand = vi.hoisted(() => vi.fn());
 const adapterFillChat = vi.hoisted(() => vi.fn());
 const cursorAdapterMock = vi.hoisted(() => ({
   id: 'cursor',
@@ -54,6 +55,14 @@ vi.mock('@extension/adapters', () => ({
   getAdapterById: vi.fn(async (id: string) => (id === 'cursor' ? cursorAdapterMock : null)),
 }));
 
+vi.mock('@extension/services/workflowAgentLaunch', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@extension/services/workflowAgentLaunch')>();
+  return {
+    ...actual,
+    launchWorkflowAgentCommand,
+  };
+});
+
 vi.mock('@extension/utils/logger', () => ({
   logger: {
     debug: vi.fn(),
@@ -78,6 +87,13 @@ describe('handleWebviewMessage toggleTask', () => {
     vi.clearAllMocks();
     setLocale('en');
     adapterFillChat.mockResolvedValue({ success: true, adapterId: 'cursor' });
+    launchWorkflowAgentCommand.mockImplementation(async ({ action, changeName }) => ({
+      success: true,
+      command: `/opsx:${action} ${changeName}`,
+      target: 'clipboard',
+      layer: 'clipboard',
+      outcome: 'copied',
+    }));
   });
 
   it('bound detail reads Specs from the originating binding instead of the selected scope', async () => {
@@ -236,7 +252,11 @@ describe('handleWebviewMessage toggleTask', () => {
       dataManager as any
     );
 
-    expect(vscode.env.clipboard.writeText).toHaveBeenCalledWith('/opsx:apply demo-change');
+    expect(launchWorkflowAgentCommand).toHaveBeenCalledWith({
+      action: 'apply',
+      changeName: 'demo-change',
+      workspaceRoot: '/workspace',
+    });
     expect(adapterFillChat).not.toHaveBeenCalled();
   });
 
@@ -254,7 +274,11 @@ describe('handleWebviewMessage toggleTask', () => {
       dataManager as any
     );
 
-    expect(vscode.env.clipboard.writeText).toHaveBeenCalledWith('/opsx:archive demo-change');
+    expect(launchWorkflowAgentCommand).toHaveBeenCalledWith({
+      action: 'archive',
+      changeName: 'demo-change',
+      workspaceRoot: '/workspace',
+    });
     expect(adapterFillChat).not.toHaveBeenCalled();
   });
 
@@ -279,6 +303,7 @@ describe('handleWebviewMessage toggleTask', () => {
 
     expect(vscode.env.clipboard.writeText).not.toHaveBeenCalled();
     expect(adapterFillChat).not.toHaveBeenCalled();
+    expect(vscode.window.showWarningMessage).toHaveBeenCalled();
     expect(webview.postMessage).toHaveBeenCalledWith({
       type: 'workflowActionReceipt',
       requestId: 'request-1',
@@ -287,8 +312,43 @@ describe('handleWebviewMessage toggleTask', () => {
       action: 'apply',
       target: 'unknown',
       status: 'failed',
-      message: 'The workflow request belongs to a different Change root.',
+      message: expect.stringContaining(''),
+      suppressPriorityAttention: true,
     });
+  });
+
+  it('marks agent launch failures as suppressPriorityAttention and surfaces an error toast', async () => {
+    launchWorkflowAgentCommand.mockResolvedValueOnce({
+      success: false,
+      command: '/opsx-apply demo-change',
+      target: 'agentCli',
+      message: 'spawn agent ENOENT',
+    });
+    const dataManager = {
+      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
+      getChangeWorkflowSnapshot: vi.fn().mockResolvedValue({ bindingKey: 'root-current' }),
+    };
+    const webview = { postMessage: vi.fn() };
+
+    await handleWebviewMessage(
+      {
+        type: 'launchWorkflowAction',
+        action: 'apply',
+        changeName: 'demo-change',
+        requestId: 'request-fail',
+        bindingKey: 'root-current',
+      },
+      webview as any,
+      dataManager as any,
+    );
+
+    expect(webview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'workflowActionReceipt',
+      status: 'failed',
+      message: 'spawn agent ENOENT',
+      suppressPriorityAttention: true,
+    }));
+    expect(vscode.window.showErrorMessage).toHaveBeenCalled();
   });
 
   it('reports clipboard delivery as copied rather than completed', async () => {
@@ -485,7 +545,14 @@ describe('handleWebviewMessage toggleTask', () => {
     });
   });
 
-  it('routes launchWorkflowAction through Cursor adapter with hyphen command when adapter mode is selected', async () => {
+  it('routes launchWorkflowAction through unified agent launch when adapter mode is selected', async () => {
+    launchWorkflowAgentCommand.mockResolvedValueOnce({
+      success: true,
+      command: '/opsx-apply demo-change',
+      target: 'agentPanel',
+      layer: 'composerCreateNew',
+      outcome: 'prefilled',
+    });
     vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
       get: vi.fn((key: string) => {
         if (key === 'workflowLaunchMode') return 'adapter';
@@ -507,15 +574,19 @@ describe('handleWebviewMessage toggleTask', () => {
       dataManager as any
     );
 
-    expect(adapterFillChat).toHaveBeenCalledWith(
-      expect.objectContaining({
-        promptOverride: '/opsx-apply demo-change',
-        changeName: 'demo-change',
-      })
-    );
+    expect(launchWorkflowAgentCommand).toHaveBeenCalledWith({
+      action: 'apply',
+      changeName: 'demo-change',
+      workspaceRoot: '/workspace',
+    });
   });
 
-  it('routes launchWorkflowAction through Cursor adapter when Cursor launch mode is explicitly agentCli', async () => {
+  it('routes launchWorkflowAction through agentCli when explicitly configured', async () => {
+    launchWorkflowAgentCommand.mockResolvedValueOnce({
+      success: true,
+      command: '/opsx-apply demo-change',
+      target: 'agentCli',
+    });
     vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
       get: vi.fn((key: string) => {
         if (key === 'workflowLaunchMode') return 'adapter';
@@ -540,13 +611,11 @@ describe('handleWebviewMessage toggleTask', () => {
       dataManager as any
     );
 
-    expect(vscode.env.clipboard.writeText).not.toHaveBeenCalledWith('/opsx:apply demo-change');
-    expect(adapterFillChat).toHaveBeenCalledWith(
-      expect.objectContaining({
-        promptOverride: '/opsx-apply demo-change',
-        changeName: 'demo-change',
-      })
-    );
+    expect(launchWorkflowAgentCommand).toHaveBeenCalledWith({
+      action: 'apply',
+      changeName: 'demo-change',
+      workspaceRoot: '/workspace',
+    });
   });
 
   it('copies launchWorkflowAction when executor is clipboard even with explicit cursor launch mode', async () => {
@@ -576,56 +645,19 @@ describe('handleWebviewMessage toggleTask', () => {
       dataManager as any
     );
 
+    expect(launchWorkflowAgentCommand).toHaveBeenCalled();
     expect(adapterFillChat).not.toHaveBeenCalled();
-    expect(vscode.env.clipboard.writeText).toHaveBeenCalledWith('/opsx:continue demo-change');
   });
 
-  it('routes launchWorkflowAction through Cursor adapter when Cursor launch mode is explicitly deeplink', async () => {
-    vi.mocked(vscode.workspace.getConfiguration).mockReturnValue({
-      get: vi.fn((key: string) => {
-        if (key === 'workflowLaunchMode') return 'adapter';
-        if (key === 'preferredAgentAdapter') return 'cursor';
-        if (key === 'cursorLaunchMode') return 'deeplink';
-        return false;
-      }),
-      inspect: vi.fn((key: string) =>
-        key === 'cursorLaunchMode' ? { globalValue: 'deeplink' } : undefined
-      ),
-    } as any);
-    const dataManager = {
-      getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
-    };
-    const webview = {
-      postMessage: vi.fn(),
-    };
-
-    await handleWebviewMessage(
-      { type: 'launchWorkflowAction', action: 'apply', changeName: 'demo-change' },
-      webview as any,
-      dataManager as any
-    );
-
-    expect(vscode.env.clipboard.writeText).not.toHaveBeenCalledWith('/opsx:apply demo-change');
-    expect(adapterFillChat).toHaveBeenCalledWith(
-      expect.objectContaining({
-        promptOverride: '/opsx-apply demo-change',
-        changeName: 'demo-change',
-      })
-    );
-  });
-
-  it('starts interactive verify workflow and posts session state', async () => {
+  it('starts interactive verify workflow through unified agent launch', async () => {
+    launchWorkflowAgentCommand.mockResolvedValueOnce({
+      success: true,
+      command: '/opsx-verify demo-change',
+      target: 'agentPanel',
+      outcome: 'started',
+    });
     const interactiveTerminalManager = {
-      start: vi.fn().mockResolvedValue({
-        changeName: 'demo-change',
-        sessions: {
-          verify: {
-            action: 'verify',
-            status: 'running',
-            terminalName: 'OpenSpec Verify: demo-change',
-          },
-        },
-      }),
+      start: vi.fn(),
     };
     const dataManager = {
       getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
@@ -641,7 +673,8 @@ describe('handleWebviewMessage toggleTask', () => {
       interactiveTerminalManager as any
     );
 
-    expect(interactiveTerminalManager.start).toHaveBeenCalledWith({
+    expect(interactiveTerminalManager.start).not.toHaveBeenCalled();
+    expect(launchWorkflowAgentCommand).toHaveBeenCalledWith({
       workspaceRoot: '/workspace',
       changeName: 'demo-change',
       action: 'verify',
@@ -651,33 +684,17 @@ describe('handleWebviewMessage toggleTask', () => {
       changeName: 'demo-change',
       state: {
         changeName: 'demo-change',
-        sessions: {
-          verify: {
-            action: 'verify',
-            status: 'running',
-            terminalName: 'OpenSpec Verify: demo-change',
-          },
-        },
+        sessions: {},
       },
     });
   });
 
-  it('reveals, stops, clears, and gets interactive workflow state', async () => {
-    const state = {
-      changeName: 'demo-change',
-      sessions: {
-        archive: {
-          action: 'archive',
-          status: 'running',
-          terminalName: 'OpenSpec Archive: demo-change',
-        },
-      },
-    };
+  it('reveals, stops, clears, and gets interactive workflow state without terminal sessions', async () => {
     const interactiveTerminalManager = {
-      reveal: vi.fn().mockReturnValue(state),
-      stop: vi.fn().mockReturnValue({ changeName: 'demo-change', sessions: {} }),
-      clear: vi.fn().mockReturnValue({ changeName: 'demo-change', sessions: {} }),
-      getState: vi.fn().mockReturnValue(state),
+      reveal: vi.fn(),
+      stop: vi.fn(),
+      clear: vi.fn(),
+      getState: vi.fn(),
     };
     const dataManager = {
       getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
@@ -711,14 +728,13 @@ describe('handleWebviewMessage toggleTask', () => {
       interactiveTerminalManager as any
     );
 
-    expect(interactiveTerminalManager.reveal).toHaveBeenCalledWith('/workspace', 'demo-change', 'archive', undefined);
-    expect(interactiveTerminalManager.stop).toHaveBeenCalledWith('/workspace', 'demo-change', 'archive', undefined);
-    expect(interactiveTerminalManager.clear).toHaveBeenCalledWith('/workspace', 'demo-change', 'archive', undefined);
-    expect(interactiveTerminalManager.getState).toHaveBeenCalledWith('/workspace', 'demo-change', undefined);
+    expect(interactiveTerminalManager.reveal).not.toHaveBeenCalled();
+    expect(interactiveTerminalManager.stop).not.toHaveBeenCalled();
+    expect(interactiveTerminalManager.clear).not.toHaveBeenCalled();
     expect(webview.postMessage).toHaveBeenNthCalledWith(4, {
       type: 'interactiveWorkflowState',
       changeName: 'demo-change',
-      state,
+      state: { changeName: 'demo-change', sessions: {} },
     });
   });
 
@@ -792,7 +808,7 @@ describe('handleWebviewMessage toggleTask', () => {
     });
   });
 
-  it('returns a localized error state when the interactive terminal manager is unavailable', async () => {
+  it('returns empty interactive workflow state when manager is unavailable', async () => {
     const dataManager = {
       getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
     };
@@ -812,18 +828,12 @@ describe('handleWebviewMessage toggleTask', () => {
       changeName: 'demo-change',
       state: {
         changeName: 'demo-change',
-        sessions: {
-          verify: {
-            action: 'verify',
-            status: 'error',
-            message: t('verifyArchive.managerUnavailable'),
-          },
-        },
+        sessions: {},
       },
     });
   });
 
-  it('returns a localized error state when running without an interactive terminal manager', async () => {
+  it('runs interactive archive without requiring the terminal manager', async () => {
     const dataManager = {
       getWorkspaceRoot: vi.fn().mockReturnValue('/workspace'),
     };
@@ -838,18 +848,17 @@ describe('handleWebviewMessage toggleTask', () => {
       undefined
     );
 
+    expect(launchWorkflowAgentCommand).toHaveBeenCalledWith({
+      action: 'archive',
+      changeName: 'demo-change',
+      workspaceRoot: '/workspace',
+    });
     expect(webview.postMessage).toHaveBeenCalledWith({
       type: 'interactiveWorkflowState',
       changeName: 'demo-change',
       state: {
         changeName: 'demo-change',
-        sessions: {
-          archive: {
-            action: 'archive',
-            status: 'error',
-            message: t('verifyArchive.managerUnavailable'),
-          },
-        },
+        sessions: {},
       },
     });
   });

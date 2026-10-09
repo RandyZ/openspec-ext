@@ -5,7 +5,7 @@ import { logger } from '../utils/logger';
 import { DataManager } from '../services/dataManager';
 import { getChangesBasePath } from '../utils/workspaceRoot';
 import { isPathUnderRoot } from '../utils/pathSafety';
-import { getAdapterById, getCurrentAdapter } from '../adapters';
+import { getCurrentAdapter } from '../adapters';
 import type {
   ArtifactOutputDescriptor,
   CacheStatsView,
@@ -13,18 +13,17 @@ import type {
 } from '../../webview/types/messages';
 import { t } from '../../i18n';
 import { buildWorkflowLaunchPayload } from '../../shared/workflowCommand';
+import type { WorkflowAction } from '../../shared/workflowCommand';
 import { getWorkflowLaunchConfig } from '../services/workflowLaunchConfig';
+import { launchWorkflowAgentCommand } from '../services/workflowAgentLaunch';
 import { postExecutorLaunchPresentationFromHost } from '../services/executorLaunchPresentation';
 import {
   InteractiveAgentTerminalManager,
 } from '../services/interactiveAgentTerminalManager';
 import { confirmDirectArchive } from '../commands/archiveConfirm';
 import { formatBytes } from '../utils/formatBytes';
-import {
-  isCopyOnlyWorkflowMode,
-  shouldForceCursorWorkflowRoute,
-  toWorkflowLaunchConfigView,
-} from '../../shared/workflowLaunchConfig';
+import { toWorkflowLaunchConfigView } from '../../shared/workflowLaunchConfig';
+import { isCursorHost } from '../utils/isCursorHost';
 import type {
   InteractiveWorkflowAction,
   InteractiveWorkflowState,
@@ -39,14 +38,73 @@ import {
   workspaceHasOpenSpecRoot,
 } from '../services/openspecRootGate';
 import type { OpenSpecScope } from '../services/openspecScope';
+import { isPathInWorkspaceFolders } from '../utils/workspaceFolders';
+import { broadcastWorkflowActionReceipt } from '../services/workflowWebviewRegistry';
+import { disposeLaunchStatusBarAfterMinimum, processLaunchWorkflowAction } from './launchWorkflowAction';
 import {
   createWorkflowRequestId,
+  getWorkflowBindingKey,
   type ChangeWorkflowSnapshot,
   type WorkflowActionReceipt,
+  type WorkflowBindingIdentity,
 } from '../../shared/changeWorkflow';
 
 function postWorkflowReceipt(webview: vscode.Webview, receipt: WorkflowActionReceipt): void {
-  webview.postMessage({ type: 'workflowActionReceipt', ...receipt });
+  try {
+    webview.postMessage({ type: 'workflowActionReceipt', ...receipt });
+  } catch {
+    // Originating webview may be disposed.
+  }
+  broadcastWorkflowActionReceipt(receipt, webview);
+}
+
+function parseWorkflowBindingFromKey(bindingKey: string): WorkflowBindingIdentity | undefined {
+  try {
+    const parsed: unknown = JSON.parse(bindingKey);
+    if (!Array.isArray(parsed) || parsed.length < 4) return undefined;
+    const [projectId, commandCwd, rootPath, rootSource, storeId] = parsed;
+    if (
+      typeof projectId !== 'string'
+      || typeof commandCwd !== 'string'
+      || typeof rootPath !== 'string'
+      || typeof rootSource !== 'string'
+    ) {
+      return undefined;
+    }
+    return {
+      projectId,
+      commandCwd,
+      rootPath,
+      rootSource,
+      ...(typeof storeId === 'string' && storeId.length > 0 ? { storeId } : {}),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function resolveWorkflowBindingForLaunch(
+  scope: OpenSpecScope | undefined,
+  bindingKey?: string,
+): WorkflowBindingIdentity | undefined {
+  if (scope?.workflowBinding) {
+    return scope.workflowBinding;
+  }
+  if (typeof bindingKey === 'string' && bindingKey.trim()) {
+    return parseWorkflowBindingFromKey(bindingKey);
+  }
+  return undefined;
+}
+
+function postLaunchValidationFailure(
+  webview: vscode.Webview,
+  receipt: WorkflowActionReceipt,
+  logMessage: string,
+  userMessage: string,
+): void {
+  logger.warn(logMessage);
+  void vscode.window.showWarningMessage(userMessage);
+  postWorkflowReceipt(webview, { ...receipt, suppressPriorityAttention: true });
 }
 
 /**
@@ -95,12 +153,17 @@ async function resolveActiveArtifactPath(
   const snapshotReader = dataManager as DataManager & {
     getChangeWorkflowSnapshot?: (
       name: string,
-      scope?: OpenSpecScope
+      scope?: OpenSpecScope,
+      binding?: WorkflowBindingIdentity
     ) => Promise<ChangeWorkflowSnapshot | undefined>;
   };
   if (typeof snapshotReader.getChangeWorkflowSnapshot !== 'function') return null;
 
-  const snapshot = await snapshotReader.getChangeWorkflowSnapshot(changeName, scope);
+  const snapshot = await snapshotReader.getChangeWorkflowSnapshot(
+    changeName,
+    scope,
+    scope?.workflowBinding,
+  );
   const artifact = snapshot?.artifacts.find((candidate) => candidate.id === artifactType);
   if (!artifact || artifact.existingOutputPaths.length === 0) return null;
 
@@ -617,6 +680,16 @@ export async function handleWebviewMessage(
       const artifactType = message.artifactId ?? message.artifactType;
       if (!changeName || !artifactType) break;
       const { rootPath, scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
+      if (!isPathInWorkspaceFolders(rootPath)) {
+        webview.postMessage({
+          type: 'artifactContentError',
+          changeName,
+          artifactType,
+          message: t('workflow.workspaceRootStale'),
+          code: 'WORKSPACE_ROOT_STALE',
+        });
+        break;
+      }
       let activeArtifactPath: string | undefined;
       let activeArtifactOutputs: ArtifactOutputDescriptor[] | undefined;
       if (!changeName.startsWith('archive:')) {
@@ -684,7 +757,7 @@ export async function handleWebviewMessage(
             cache: { source: 'fresh', stale: false },
           });
         } catch (err) {
-          logger.info('getArtifactContent active output read failed', err as Error);
+          logger.warn('getArtifactContent active output read failed', err as Error);
           webview.postMessage({
             type: 'artifactContentError',
             changeName,
@@ -816,15 +889,47 @@ export async function handleWebviewMessage(
         vscode.window.showInformationMessage(t('archive.readOnly'));
         break;
       }
-      const { scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
+      const { rootPath: taskScopeRoot, scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
+      const taskLaunchStartedAt = Date.now();
+      const logTaskTiming = (phase: string, detail?: string) => {
+        logger.info(
+          `[workflow-timing] task-${phase} +${Date.now() - taskLaunchStartedAt}ms`
+          + (detail ? ` ${detail}` : ''),
+        );
+      };
+      logTaskTiming('received', `change=${changeName} task=${taskIndex}`);
+      if (!isPathInWorkspaceFolders(taskScopeRoot)) {
+        logTaskTiming('blocked', 'workspaceRootStale');
+        void vscode.window.showWarningMessage(t('workflow.workspaceRootStale'));
+        try {
+          webview.postMessage({
+            type: 'taskExecutionFinished',
+            changeName,
+            taskIndex,
+            success: false,
+            executionState: await dataManager.getTaskExecutionState(changeName, scope),
+          });
+        } catch {
+          // webview disposed
+        }
+        break;
+      }
+      logTaskTiming('validated');
+      const taskLaunchStatus = vscode.window.setStatusBarMessage?.(t('workflow.launching'));
       let success = false;
       try {
+        logTaskTiming('executor-start');
         const result = await dataManager.executeTaskRequest(changeName, taskIndex, taskText, scope);
         success = result.success;
-        await dataManager.setTaskExecutionState(changeName, taskIndex, success, scope);
+        logTaskTiming('executor-done', `success=${success}`);
+        if (success) {
+          await dataManager.setTaskExecutionState(changeName, taskIndex, true, scope);
+        }
       } catch (err) {
         logger.error('executeTask failed', err as Error);
         vscode.window.showErrorMessage((err as Error).message || t('task.executionFailed'));
+      } finally {
+        void disposeLaunchStatusBarAfterMinimum(taskLaunchStatus, taskLaunchStartedAt);
       }
       try {
         const executionState = await dataManager.getTaskExecutionState(changeName, scope);
@@ -1002,165 +1107,16 @@ export async function handleWebviewMessage(
       const action = message.action;
       const changeName = message.changeName;
       if (typeof changeName !== 'string' || !changeName.trim()) break;
-
-      // Resolve the effective root (scope-aware) so store-scoped workflows run against
-      // the store root, not the workspace root.
-      const { rootPath: scopeRootPath, scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
-      const correlated = message.requestId !== undefined || message.bindingKey !== undefined;
-      const requestId = message.requestId ?? createWorkflowRequestId('legacy');
-      const snapshotReader = dataManager as DataManager & {
-        getChangeWorkflowSnapshot?: (
-          name: string,
-          scope?: OpenSpecScope
-        ) => Promise<ChangeWorkflowSnapshot | undefined>;
-      };
-      let expectedBindingKey: string | undefined;
-      if (typeof snapshotReader.getChangeWorkflowSnapshot === 'function') {
-        try {
-          expectedBindingKey = (await snapshotReader.getChangeWorkflowSnapshot(changeName, scope))?.bindingKey;
-        } catch (error) {
-          logger.warn('Failed to validate workflow action binding', error as Error);
-          if (correlated) {
-            postWorkflowReceipt(webview, {
-              requestId,
-              changeName,
-              bindingKey: message.bindingKey ?? 'unknown',
-              action,
-              target: 'unknown',
-              status: 'failed',
-              message: 'Unable to validate the current Change binding.',
-            });
-            break;
-          }
-        }
-      }
-      const receiptBindingKey = message.bindingKey ?? expectedBindingKey ?? 'legacy';
-      if (correlated && (!message.requestId || !message.bindingKey)) {
-        postWorkflowReceipt(webview, {
-          requestId,
-          changeName,
-          bindingKey: receiptBindingKey,
-          action,
-          target: 'unknown',
-          status: 'failed',
-          message: 'A request id and bound Change root are required.',
-        });
-        break;
-      }
-      if (message.bindingKey && expectedBindingKey && message.bindingKey !== expectedBindingKey) {
-        postWorkflowReceipt(webview, {
-          requestId,
-          changeName,
-          bindingKey: message.bindingKey,
-          action,
-          target: 'unknown',
-          status: 'failed',
-          message: 'The workflow request belongs to a different Change root.',
-        });
-        break;
-      }
-
-      const postReceipt = (
-        target: WorkflowActionReceipt['target'],
-        status: WorkflowActionReceipt['status'],
-        message?: string,
-      ) => postWorkflowReceipt(webview, {
-        requestId,
+      await processLaunchWorkflowAction({
+        webview,
+        dataManager,
+        boundScope,
+        action: action as WorkflowAction,
         changeName,
-        bindingKey: receiptBindingKey,
-        action,
-        target,
-        status,
-        ...(message ? { message } : {}),
+        requestId: message.requestId,
+        bindingKey: message.bindingKey,
+        scopeId: message.scopeId,
       });
-
-      const launchConfig = getWorkflowLaunchConfig();
-      const launchConfigView = toWorkflowLaunchConfigView(launchConfig);
-      const effectiveAdapterId = launchConfigView.effectiveAdapterId;
-      logger.info(
-        `[workflow] launchWorkflowAction: action=${action}, changeName=${changeName}, ` +
-          `scopeId=${message.scopeId ?? '<none>'}, scopeRoot=${scopeRootPath}, ` +
-          `workflowLaunchMode=${launchConfig.workflowLaunchMode}, ` +
-          `preferredAgentAdapter=${launchConfig.preferredAgentAdapter}, ` +
-          `cursorLaunchMode=${launchConfig.cursorLaunchMode}, ` +
-          `cursorLaunchModeExplicit=${launchConfig.cursorLaunchModeExplicit}, ` +
-          `effectiveAdapterId=${effectiveAdapterId ?? 'none'}`
-      );
-
-      if (isCopyOnlyWorkflowMode(launchConfigView)) {
-        const payload = buildWorkflowLaunchPayload({
-          action,
-          changeName,
-          workflowLaunchMode: 'clipboard',
-        });
-        logger.debug(`[workflow] copy-only route: command=${payload.command}`);
-        try {
-          await vscode.env.clipboard.writeText(payload.command);
-          vscode.window.showInformationMessage(t('workflow.copiedCommand', { command: payload.command }));
-          postReceipt('clipboard', 'copied', 'Command copied. Paste or send it to continue.');
-        } catch (error) {
-          postReceipt('clipboard', 'failed', (error as Error).message);
-        }
-        break;
-      }
-
-      const adapter = shouldForceCursorWorkflowRoute(launchConfig)
-        && launchConfig.preferredAgentAdapter !== 'clipboard'
-        ? await getAdapterById('cursor')
-        : await getCurrentAdapter();
-      if (!adapter) {
-        const payload = buildWorkflowLaunchPayload({
-          action,
-          changeName,
-          workflowLaunchMode: 'clipboard',
-        });
-        logger.warn(`[workflow] no available adapter for effectiveAdapterId=${effectiveAdapterId}; copied fallback command=${payload.command}`);
-        try {
-          await vscode.env.clipboard.writeText(payload.command);
-          vscode.window.showInformationMessage(t('workflow.adapterFallback'));
-          postReceipt('clipboard', 'fallback', t('workflow.adapterFallback'));
-        } catch (error) {
-          postReceipt('clipboard', 'failed', (error as Error).message);
-        }
-        break;
-      }
-
-      const payload = buildWorkflowLaunchPayload({
-        action,
-        changeName,
-        workflowLaunchMode: 'adapter',
-        adapterId: adapter.id,
-      });
-      logger.info(`[workflow] launching via adapter: id=${adapter.id}, displayName=${adapter.displayName}, command=${payload.command}`);
-      try {
-        const result = await adapter.fillChat({
-          changeName,
-          taskIndex: -1,
-          taskText: '',
-          contextFiles: [],
-          workspaceRoot: scopeRootPath,
-          promptOverride: payload.command,
-        });
-        logger.info(
-          `[workflow] adapter result: id=${result.adapterId}, success=${result.success}, message=${result.message ?? ''}`
-        );
-        if (result.success) {
-          postReceipt(payload.target, 'delivered', result.message ?? 'Workflow command delivered to the selected target.');
-        } else {
-          await vscode.env.clipboard.writeText(payload.command);
-          vscode.window.showInformationMessage(t('workflow.adapterFallback'));
-          postReceipt('clipboard', 'fallback', t('workflow.adapterFallback'));
-        }
-      } catch (error) {
-        logger.error('launchWorkflowAction adapter failed', error as Error);
-        try {
-          await vscode.env.clipboard.writeText(payload.command);
-          vscode.window.showInformationMessage(t('workflow.adapterFallback'));
-          postReceipt('clipboard', 'fallback', t('workflow.adapterFallback'));
-        } catch (fallbackError) {
-          postReceipt(payload.target, 'failed', (fallbackError as Error).message || (error as Error).message);
-        }
-      }
       break;
     }
 
@@ -1243,15 +1199,7 @@ export async function handleWebviewMessage(
     case 'getInteractiveWorkflowState': {
       const { changeName } = message;
       if (typeof changeName !== 'string' || !changeName.trim()) break;
-      const { rootPath: scopeRootPath, scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
-      const state = interactiveTerminalManager
-        ? interactiveTerminalManager.getState(scopeRootPath, changeName, scope)
-        : buildInteractiveWorkflowErrorState(
-          changeName,
-          'verify',
-          t('verifyArchive.managerUnavailable')
-        );
-      postInteractiveWorkflowState(webview, changeName, state);
+      postInteractiveWorkflowState(webview, changeName, { changeName, sessions: {} });
       break;
     }
 
@@ -1440,6 +1388,14 @@ export async function handleWebviewMessage(
       break;
     }
 
+    case 'webviewReady':
+      await postExecutorLaunchPresentationFromHost(webview, dataManager);
+      break;
+
+    case 'getProjectSidebarData':
+      logger.debug('Ignoring getProjectSidebarData in non-dashboard webview');
+      break;
+
     default:
       logger.warn(`Unknown message type: ${message.type}`);
   }
@@ -1510,6 +1466,7 @@ export function getWorkflowLaunchConfigMessage() {
   return {
     type: 'workflowLaunchConfig' as const,
     config: toWorkflowLaunchConfigView(config),
+    isCursorHost: isCursorHost(),
   };
 }
 
@@ -1561,13 +1518,6 @@ async function handleInteractiveWorkflowAction(params: {
       `Invalid interactive workflow action: ${String(params.action)}`
     );
   }
-  if (!params.interactiveTerminalManager) {
-    return buildInteractiveWorkflowErrorState(
-      params.changeName,
-      params.action,
-      t('verifyArchive.managerUnavailable')
-    );
-  }
   if (params.changeName.startsWith('archive:') && params.action === 'archive') {
     return buildInteractiveWorkflowErrorState(
       params.changeName,
@@ -1576,36 +1526,24 @@ async function handleInteractiveWorkflowAction(params: {
     );
   }
 
-  switch (params.kind) {
-    case 'run':
-      return params.interactiveTerminalManager.start({
-        workspaceRoot: params.workspaceRoot,
-        changeName: params.changeName,
+  if (params.kind === 'run') {
+    try {
+      await launchWorkflowAgentCommand({
         action: params.action,
-        scope: params.scope,
+        changeName: params.changeName,
+        workspaceRoot: params.workspaceRoot,
       });
-    case 'reveal':
-      return params.interactiveTerminalManager.reveal(
-        params.workspaceRoot,
+    } catch (error) {
+      return buildInteractiveWorkflowErrorState(
         params.changeName,
         params.action,
-        params.scope
+        (error as Error).message || t('agentLaunch.failed'),
       );
-    case 'stop':
-      return params.interactiveTerminalManager.stop(
-        params.workspaceRoot,
-        params.changeName,
-        params.action,
-        params.scope
-      );
-    case 'clear':
-      return params.interactiveTerminalManager.clear(
-        params.workspaceRoot,
-        params.changeName,
-        params.action,
-        params.scope
-      );
+    }
+    return { changeName: params.changeName, sessions: {} };
   }
+
+  return { changeName: params.changeName, sessions: {} };
 }
 
 /**

@@ -7,6 +7,7 @@ import type {
   WorkflowLaunchMode,
 } from '../../shared/workflowLaunchConfig';
 import { resolveWorkflowLaunchConfig } from '../../shared/workflowLaunchConfig';
+import { isCursorHost } from '../utils/isCursorHost';
 export type {
   CursorLaunchMode,
   PreferredAgentAdapter,
@@ -16,11 +17,22 @@ export type {
 
 const WORKFLOW_LAUNCH_MODES = new Set<WorkflowLaunchMode>(['clipboard', 'adapter']);
 const CURSOR_LAUNCH_MODES = new Set<CursorLaunchMode>([
+  'agentPanel',
   'deeplink',
   'chatCommand',
   'clipboard',
   'agentCli',
 ]);
+
+function normalizeCursorLaunchMode(value: string | undefined): CursorLaunchMode {
+  if (!value) return 'clipboard';
+  if (value === 'deeplink' || value === 'chatCommand') {
+    return 'agentPanel';
+  }
+  return CURSOR_LAUNCH_MODES.has(value as CursorLaunchMode)
+    ? (value as CursorLaunchMode)
+    : 'clipboard';
+}
 const PREFERRED_AGENT_ADAPTERS = new Set<PreferredAgentAdapter>([
   'clipboard',
   'cursor',
@@ -61,10 +73,6 @@ export function getCursorAgentModel(): string {
   return legacyModel || 'auto';
 }
 
-function isCursorHost(): boolean {
-  return (vscode.env.appName ?? '').toLowerCase().includes('cursor');
-}
-
 function readRawWorkflowLaunchConfig(): WorkflowLaunchConfigWithExplicit {
   const workflowLaunchMode = readString('workflowLaunchMode');
   const preferredAgentAdapter = readString('preferredAgentAdapter');
@@ -77,9 +85,7 @@ function readRawWorkflowLaunchConfig(): WorkflowLaunchConfigWithExplicit {
     preferredAgentAdapter: PREFERRED_AGENT_ADAPTERS.has(preferredAgentAdapter as PreferredAgentAdapter)
       ? (preferredAgentAdapter as PreferredAgentAdapter)
       : 'clipboard',
-    cursorLaunchMode: CURSOR_LAUNCH_MODES.has(cursorLaunchMode as CursorLaunchMode)
-      ? (cursorLaunchMode as CursorLaunchMode)
-      : 'clipboard',
+    cursorLaunchMode: normalizeCursorLaunchMode(cursorLaunchMode),
     cursorAgentModel: getCursorAgentModel(),
     cursorLaunchModeExplicit: hasExplicitConfigValue('cursorLaunchMode'),
     workflowLaunchModeExplicit: hasExplicitConfigValue('workflowLaunchMode'),

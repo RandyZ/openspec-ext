@@ -2,7 +2,7 @@
   "name": "openspec-workflow",
   "displayName": "OpenSpec Workflow",
   "description": "Project-first OpenSpec dashboard for changes, specs, stores, worksets, and safe workflow actions",
-  "version": "0.2.3",
+  "version": "0.2.4-agent-panel.18",
   "publisher": "randysss",
   "license": "MIT",
   "engines": {
@@ -101,23 +101,40 @@
           "default": "clipboard",
           "description": "Preferred Agent executor adapter used when workflowLaunchMode is adapter."
         },
+        "openspec.agentAutoSubmit": {
+          "type": "string",
+          "enum": [
+            "never",
+            "readOnly",
+            "always"
+          ],
+          "default": "readOnly",
+          "description": "When launching in the Cursor Agent panel via composer.createNew, auto-send the workflow command. readOnly auto-sends explore and verify only; other layers always prefill.",
+          "enumDescriptions": [
+            "Never auto-send; always prefill and wait for Enter.",
+            "Auto-send read-only workflow commands (explore, verify).",
+            "Auto-send every workflow command (including apply and archive)."
+          ]
+        },
         "openspec.cursorLaunchMode": {
           "type": "string",
           "enum": [
             "clipboard",
+            "agentPanel",
             "deeplink",
             "chatCommand",
             "agentCli"
           ],
           "default": "clipboard",
-          "description": "Cursor adapter launch behavior for non-interactive workflow actions. Verify and Archive use the dedicated Verify & Archive tab; `agentCli` here means headless Agent CLI.",
+          "description": "Cursor launch behavior. agentPanel opens the IDE Agent panel with runtime fallback (composer → chat → deeplink → clipboard). agentCli runs headless Agent CLI and may modify files.",
           "enumDescriptions": [
-            "Only copy the generated command to the clipboard. Does not open Cursor or start Agent CLI.",
-            "Open Cursor through the prompt deeplink with the generated command prefilled. The command is also copied as fallback.",
-            "Open Cursor Chat through the VS Code/Cursor chat command query. The command is also copied as fallback.",
-            "Run the generated command through Cursor Agent CLI in headless mode. May modify workspace files. Requires explicit selection."
+            "Only copy the generated command to the clipboard.",
+            "Open the Cursor Agent panel with `/opsx-*` prefilled (recommended).",
+            "Legacy alias for agentPanel.",
+            "Legacy alias for agentPanel.",
+            "Headless Cursor Agent CLI in the Output panel. May modify workspace files."
           ],
-          "markdownDescription": "Cursor adapter launch behavior for workflow actions.\\n\\n- `clipboard`: only copy the generated `/opsx:*` command.\\n- `deeplink`: open Cursor prompt deeplink with `/opsx-*` prefilled, while keeping clipboard fallback.\\n- `chatCommand`: try Cursor Chat query prefill, while keeping clipboard fallback.\\n- `agentCli`: **May modify workspace files.** Run Cursor Agent CLI directly in headless mode; never used unless you explicitly select it."
+          "markdownDescription": "Cursor workflow launch behavior.\\n\\n- `agentPanel` (default on Cursor): IDE Agent panel with layered fallback.\\n- `clipboard`: copy only.\\n- `agentCli`: **May modify workspace files.** Headless CLI opt-in.\\n- `deeplink` / `chatCommand`: migrated to `agentPanel`."
         },
         "openspec.taskDependencyPolicy": {
           "type": "string",
@@ -245,7 +262,7 @@
     "build:webview": "vite build",
     "dev:webview": "vite",
     "postinstall": "node scripts/link-vitest-pnpm.js",
-    "test": "vitest run",
+    "test": "NODE_OPTIONS=--max-old-space-size=8192 vitest run",
     "test:watch": "vitest",
     "package": "node scripts/package-with-marketplace-readme.js",
     "verify:vsix-webview": "node scripts/verify-vsix-webview.js",

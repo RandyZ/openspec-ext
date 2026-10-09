@@ -36,9 +36,9 @@ describe('ChangeDetail workflow routing', () => {
     expect(source).not.toContain('const ALL_TABS');
   });
 
-  it('routes Verify and Archive through the dedicated interactive tab', () => {
+  it('routes Verify and Archive through unified workflow launch', () => {
     expect(source).toContain("action === 'verify' || action === 'archive'");
-    expect(source).toContain('setPendingInteractiveAction(action)');
+    expect(source).toContain('handleLaunchWorkflow(action');
     expect(source).toContain('onAction={handleResolvedAction}');
   });
 
@@ -49,10 +49,26 @@ describe('ChangeDetail workflow routing', () => {
   });
 
   it('keeps correlated receipt state local and ignores stale requests', () => {
-    expect(source).toContain("msg.type === 'workflowActionReceipt'");
-    expect(source).toContain('msg.bindingKey === workflowSnapshot.bindingKey');
-    expect(source).toContain('workflowReceipt?.requestId === msg.requestId');
+    expect(source).toContain("data.type === 'workflowActionReceipt'");
+    expect(source).toContain('data.bindingKey === workflowSnapshot.bindingKey');
+    expect(source).toContain('workflowLaunchPending.handleReceipt');
     expect(source).toContain('receiptStatus={workflowReceipt?.status}');
+  });
+
+  it('restores the pre-launch workflow receipt when host dedupes a double-click launch', () => {
+    expect(source).toContain('workflowReceiptBeforeLaunchRef');
+    expect(source).toContain('workflowReceiptBeforeLaunchRef.current = workflowReceipt');
+    const suppressBlock = source.slice(
+      source.indexOf('data.suppressPriorityAttention === true && data.status === \'completed\''),
+      source.indexOf('} else {', source.indexOf('data.suppressPriorityAttention === true')),
+    );
+    expect(suppressBlock).toContain('setWorkflowReceipt(workflowReceiptBeforeLaunchRef.current)');
+  });
+
+  it('dedupes the initial artifact fetch when navigation snapshot re-renders the same tab', () => {
+    expect(source).toContain('initialArtifactFetchKeyRef');
+    expect(source).toContain('initialArtifactFetchKeyRef.current === fetchIdentity');
+    expect(source).toContain('initialArtifactFetchKeyRef.current = fetchIdentity');
   });
 
   it('routes artifact create with AI through workflow launch instead of direct command manager calls', () => {
@@ -66,20 +82,54 @@ describe('ChangeDetail workflow routing', () => {
   });
 
   it('loads bound task progress before resolving Archive Now on the Verify & Archive tab', () => {
-    expect(source).toContain("sendMessage.getArtifactContent(changeName, 'tasks', scopeId)");
+    expect(source).toContain("requestArtifact('tasks')");
+    expect(source).toContain('artifactFetchCoordinatorKey');
+    expect(source).toContain('completeArtifactFetchAndStoreContent');
+    expect(source).toContain('dispatchExtensionMessageRef');
+    expect(source).toContain('handleTasksArtifactInvalidated');
+    expect(source).toContain('isArchiveNowAllowed');
+    expect(source).toContain('executorLaunchConfigKey');
+    expect(source).toContain('setWorkflowReceipt(null)');
+  });
+
+  it('sets ActionBar pending UI before registerLaunch for agent launches (not copy-only)', () => {
+    const start = source.indexOf('const handleLaunchWorkflow = (');
+    const end = source.indexOf('}, [activeTab, pendingInteractiveAction]);', start);
+    const block = source.slice(start, end);
+    expect(block).toContain('copyOnlyWorkflowLaunch');
+    expect(block.indexOf('registerLaunch(changeName, workflowSnapshot.bindingKey)')).toBeLessThan(
+      block.indexOf('if (!copyOnlyWorkflowLaunch)'),
+    );
+    const agentBlock = block.slice(block.indexOf('if (!copyOnlyWorkflowLaunch)'));
+    expect(agentBlock).toContain('setPendingLaunchAction(action)');
+  });
+
+  it('skips Launching pending state for copy-only workflow launches', () => {
+    expect(source).toContain('isHostWorkflowLaunchCopyOnly');
+    expect(source).toContain('hostWorkflowLaunchConfig');
+    expect(source).toContain('if (!copyOnlyWorkflowLaunch)');
+  });
+
+  it('keeps Archive Now gated until tasks refetch completes (not cleared by fallback timer)', () => {
+    const timeoutBlock = source.slice(
+      source.indexOf('if (!verifyArchiveTasksLoading) return'),
+      source.indexOf('}, [verifyArchiveTasksLoading, changeName, scopeId]'),
+    );
+    expect(timeoutBlock).toContain("requestArtifact('tasks')");
+    expect(timeoutBlock).not.toContain('setVerifyArchiveTasksLoading(false)');
   });
 
   it('keeps interactive review separate from resolver-gated direct archive', () => {
     expect(source).toContain('canArchiveNow');
     expect(source).toContain('onArchiveNow');
     expect(source).toContain('sendMessage.archiveChange(changeName, scopeId)');
-    expect(source).toContain('runInteractiveWorkflow(changeName, action, scopeId)');
+    expect(source).toContain('handleLaunchWorkflow(action');
 
     const interactiveHandler = source.slice(
       source.indexOf('const handleResolvedAction'),
       source.indexOf('const handleConfirmTaskToggle')
     );
-    expect(interactiveHandler).toContain('setPendingInteractiveAction(action)');
+    expect(interactiveHandler).toContain("handleLaunchWorkflow(action, 'actionBar')");
     expect(interactiveHandler).not.toContain('archiveChange');
 
     const panel = source.slice(
@@ -93,7 +143,7 @@ describe('ChangeDetail workflow routing', () => {
 
   it('switches the detail view to archived read-only state after direct archive succeeds', () => {
     expect(source).toContain("const [archivedLocally, setArchivedLocally] = useState(false)");
-    expect(source).toContain("msg.type === 'dashboardData'");
+    expect(source).toContain("data.type === 'dashboardData'");
     expect(source).toContain('setArchivedLocally(true)');
     expect(source).toContain('const isArchived = archivedLocally || changeName.startsWith(\'archive:\')');
     expect(source).not.toContain("msg.type === 'archiveCompleted'");
@@ -138,7 +188,7 @@ describe('ChangeDetail workflow routing', () => {
   });
 
   it('accepts executorLaunchPresentation from setContext and standalone messages', () => {
-    expect(source).toContain("msg.type === 'setContext'");
-    expect(source).toContain('msg.executorLaunchPresentation');
+    expect(source).toContain("data.type === 'setContext'");
+    expect(source).toContain('data.executorLaunchPresentation');
   });
 });

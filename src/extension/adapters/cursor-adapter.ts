@@ -8,11 +8,12 @@ import type {
 import { logger } from '../utils/logger';
 import { t } from '../../i18n';
 import { buildWorkflowCommand } from '../../shared/workflowCommand';
-import { buildCursorPromptDeeplink } from '../services/cursorDeeplink';
 import { getCursorAgentModel, getWorkflowLaunchConfig } from '../services/workflowLaunchConfig';
+import { launchAgentPanelPrompt } from '../services/agentPanelLauncher';
+import { notifyWorkflowCommandCopied } from '../services/workflowClipboardNotify';
 
 const ADAPTER_ID = 'cursor';
-const DISPLAY_NAME = 'Cursor (agent CLI)';
+const DISPLAY_NAME = 'Cursor (Agent)';
 const OUTPUT_CHANNEL_NAME = 'OpenSpec (Agent)';
 const NO_OUTPUT_NOTICE_MS = 10000;
 const STILL_RUNNING_NOTICE_MS = 30000;
@@ -160,31 +161,27 @@ export const cursorAdapter: IAgentExecutorAdapter = {
     }
 
     if (cursorLaunchMode === 'clipboard') {
-      vscode.window.showInformationMessage(t('workflow.copiedCommand', { command: text }));
+      notifyWorkflowCommandCopied(text);
       return { success: true, adapterId: ADAPTER_ID, message: 'Copied to clipboard' };
     }
 
-    if (cursorLaunchMode === 'chatCommand') {
-      try {
-        await vscode.commands.executeCommand('workbench.action.chat.open', {
-          query: text,
-          isPartialQuery: true,
-        });
-        vscode.window.showInformationMessage(t('cursor.chatOpenedCopied', { command: text }));
-        return { success: true, adapterId: ADAPTER_ID, message: 'Chat opened with prompt' };
-      } catch {
-        vscode.window.showInformationMessage(t('cursor.chatOpenFailedCopied', { command: text }));
-        return { success: true, adapterId: ADAPTER_ID, message: 'Copied to clipboard' };
-      }
+    const panelResult = await launchAgentPanelPrompt({
+      text,
+      autoSubmit: false,
+    });
+    if (panelResult.outcome === 'copied') {
+      vscode.window.showInformationMessage(t('agentLaunch.copied', { command: text }));
+    } else if (panelResult.outcome === 'started') {
+      vscode.window.showInformationMessage(t('agentLaunch.started', { command: text }));
+    } else if (panelResult.layer === 'deeplink') {
+      vscode.window.showInformationMessage(t('agentLaunch.deeplinkPrefilled', { command: text }));
+    } else {
+      vscode.window.showInformationMessage(t('agentLaunch.openedPanel', { command: text }));
     }
-
-    try {
-      await vscode.env.openExternal(vscode.Uri.parse(buildCursorPromptDeeplink(text)));
-      vscode.window.showInformationMessage(t('cursor.promptOpenedCopied', { command: text }));
-      return { success: true, adapterId: ADAPTER_ID, message: 'Cursor prompt opened' };
-    } catch {
-      vscode.window.showInformationMessage(t('cursor.openFailedCopied', { command: text }));
-      return { success: true, adapterId: ADAPTER_ID, message: 'Copied to clipboard' };
-    }
+    return {
+      success: panelResult.success,
+      adapterId: ADAPTER_ID,
+      message: panelResult.layer,
+    };
   },
 };

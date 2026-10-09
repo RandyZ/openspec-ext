@@ -1,19 +1,23 @@
 import React from 'react';
-import type {
-  InteractiveWorkflowAction,
-  InteractiveWorkflowSessionState,
-} from '../../shared/interactiveWorkflow';
+import type { InteractiveWorkflowAction } from '../../shared/interactiveWorkflow';
 import { t } from '../../i18n';
+import {
+  getVerifyArchiveDescription,
+  getVerifyArchiveHint,
+  getVerifyArchiveRunLabel,
+  type WorkflowCommandFormatRuntime,
+  type WorkflowLaunchConfigView,
+} from '../utils/workflowLaunchLabels';
 
 export interface VerifyArchivePanelProps {
   isArchived: boolean;
   canArchiveNow?: boolean;
   archiveNowDisabledReason?: string;
-  sessions: Partial<Record<InteractiveWorkflowAction, InteractiveWorkflowSessionState>>;
+  tasksProgressError?: string | null;
+  pendingAction?: InteractiveWorkflowAction | null;
+  workflowLaunchConfig?: WorkflowLaunchConfigView | null;
+  commandFormatRuntime?: WorkflowCommandFormatRuntime;
   onRun: (action: InteractiveWorkflowAction) => void;
-  onReveal: (action: InteractiveWorkflowAction) => void;
-  onStop: (action: InteractiveWorkflowAction) => void;
-  onClear: (action: InteractiveWorkflowAction) => void;
   onArchiveNow?: () => void;
 }
 
@@ -51,59 +55,57 @@ const mutedTextStyle: React.CSSProperties = {
   lineHeight: 1.5,
 };
 
-/**
- * Format a session start timestamp (ms since epoch) as a locale-aware time.
- * Falls back to a raw string if the platform cannot format it.
- */
-function formatStartTime(startedAt: number): string {
-  try {
-    return new Date(startedAt).toLocaleTimeString();
-  } catch {
-    return new Date(startedAt).toISOString();
-  }
-}
-
 export const VerifyArchivePanel: React.FC<VerifyArchivePanelProps> = ({
   isArchived,
   canArchiveNow = false,
   archiveNowDisabledReason,
-  sessions,
+  tasksProgressError,
+  pendingAction,
+  workflowLaunchConfig,
+  commandFormatRuntime,
   onRun,
-  onReveal,
-  onStop,
-  onClear,
   onArchiveNow,
 }) => {
-  const directArchiveDisabledReason = archiveNowDisabledReason
+  const directArchiveDisabledReason = tasksProgressError
+    ?? archiveNowDisabledReason
     ?? (isArchived ? t('verifyArchive.archiveDisabledArchived') : t('verifyArchive.archiveDisabledIncomplete'));
 
   return (
     <div className="flex flex-col gap-4">
+      {tasksProgressError && (
+        <div
+          role="alert"
+          style={{
+            ...cardStyle,
+            borderColor: 'var(--vscode-inputValidation-errorBorder)',
+            color: 'var(--vscode-errorForeground)',
+          }}
+        >
+          {tasksProgressError}
+        </div>
+      )}
       <div style={cardStyle}>
         <div className="text-sm font-semibold mb-2">{t('verifyArchive.title')}</div>
-        <p style={mutedTextStyle}>{t('verifyArchive.description')}</p>
+        <p style={mutedTextStyle}>{getVerifyArchiveDescription(workflowLaunchConfig, commandFormatRuntime)}</p>
       </div>
 
       <WorkflowActionCard
         action="verify"
-        session={sessions.verify}
         disabled={false}
-        disabledMessage={undefined}
+        launching={pendingAction === 'verify'}
+        workflowLaunchConfig={workflowLaunchConfig}
+        commandFormatRuntime={commandFormatRuntime}
         onRun={onRun}
-        onReveal={onReveal}
-        onStop={onStop}
-        onClear={onClear}
       />
 
       <WorkflowActionCard
         action="archive"
-        session={sessions.archive}
         disabled={isArchived}
+        launching={pendingAction === 'archive'}
+        workflowLaunchConfig={workflowLaunchConfig}
+        commandFormatRuntime={commandFormatRuntime}
         disabledMessage={isArchived ? t('verifyArchive.archiveDisabledArchived') : undefined}
         onRun={onRun}
-        onReveal={onReveal}
-        onStop={onStop}
-        onClear={onClear}
       />
 
       <section style={cardStyle} aria-label={t('verifyArchive.archiveNow')}>
@@ -146,43 +148,32 @@ export const VerifyArchivePanel: React.FC<VerifyArchivePanelProps> = ({
 
 export const WorkflowActionCard: React.FC<{
   action: InteractiveWorkflowAction;
-  session?: InteractiveWorkflowSessionState;
   disabled: boolean;
   disabledMessage?: string;
+  launching?: boolean;
+  workflowLaunchConfig?: WorkflowLaunchConfigView | null;
+  commandFormatRuntime?: WorkflowCommandFormatRuntime;
   onRun: (action: InteractiveWorkflowAction) => void;
-  onReveal: (action: InteractiveWorkflowAction) => void;
-  onStop: (action: InteractiveWorkflowAction) => void;
-  onClear: (action: InteractiveWorkflowAction) => void;
 }> = ({
   action,
-  session,
   disabled,
   disabledMessage,
+  launching = false,
+  workflowLaunchConfig,
+  commandFormatRuntime,
   onRun,
-  onReveal,
-  onStop,
-  onClear,
 }) => {
   const isVerify = action === 'verify';
   const title = isVerify ? t('verifyArchive.verifyTitle') : t('verifyArchive.reviewArchiveTitle');
-  const runLabel = isVerify ? t('verifyArchive.runVerify') : t('verifyArchive.reviewArchive');
-
-  const startedAtLabel =
-    session?.status === 'running' && typeof session.startedAt === 'number'
-      ? t('verifyArchive.startedAt', { time: formatStartTime(session.startedAt) })
-      : undefined;
+  const runLabel = getVerifyArchiveRunLabel(action, workflowLaunchConfig, { launching });
+  const hint = getVerifyArchiveHint(action, workflowLaunchConfig, commandFormatRuntime);
 
   return (
     <section style={cardStyle}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm font-semibold">{title}</div>
-          <div style={mutedTextStyle}>
-            {session?.status === 'running'
-              ? session.terminalName ?? t('verifyArchive.running')
-              : disabledMessage ?? t('verifyArchive.ready')}
-          </div>
-          {startedAtLabel && <div style={mutedTextStyle}>{startedAtLabel}</div>}
+          <div style={mutedTextStyle}>{disabledMessage ?? hint}</div>
         </div>
         <button
           type="button"
@@ -195,64 +186,9 @@ export const WorkflowActionCard: React.FC<{
             cursor: disabled ? 'not-allowed' : 'pointer',
           }}
         >
-          {runLabel}
+          {launching ? t('workflow.launching') : runLabel}
         </button>
       </div>
-
-      {session && (
-        <div className="mt-3 flex flex-col gap-3">
-          {session.status === 'error' && session.message && (
-            <div
-              className="rounded px-3 py-2 text-xs"
-              style={{
-                background: 'var(--vscode-inputValidation-errorBackground)',
-                color: 'var(--vscode-errorForeground)',
-              }}
-            >
-              {session.message}
-            </div>
-          )}
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              aria-label={`${t('verifyArchive.revealTerminal')} ${title}`}
-              onClick={() => onReveal(action)}
-              style={secondaryButtonStyle}
-            >
-              {t('verifyArchive.revealTerminal')}
-            </button>
-            <button
-              type="button"
-              aria-label={`${t('verifyArchive.stop')} ${title}`}
-              onClick={() => onStop(action)}
-              style={secondaryButtonStyle}
-            >
-              {t('verifyArchive.stop')}
-            </button>
-            <button
-              type="button"
-              aria-label={`${t('verifyArchive.clearSession')} ${title}`}
-              onClick={() => onClear(action)}
-              style={secondaryButtonStyle}
-            >
-              {t('verifyArchive.clearSession')}
-            </button>
-          </div>
-
-          {session.lastCommand && (
-            <code
-              className="block rounded px-3 py-2 text-xs overflow-x-auto"
-              style={{
-                background: 'var(--vscode-textCodeBlock-background)',
-                color: 'var(--vscode-textPreformat-foreground)',
-              }}
-            >
-              {session.lastCommand}
-            </code>
-          )}
-        </div>
-      )}
     </section>
   );
 };

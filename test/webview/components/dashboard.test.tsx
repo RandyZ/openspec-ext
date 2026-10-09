@@ -316,7 +316,7 @@ describe('Dashboard recommended action rail', () => {
     expect(html).toMatch(/data-priority-row="recommended-change"[^>]*data-priority-status="[^"]+"/);
     expect(html).toMatch(/data-change-name="attention-change"[^>]*class="[^"]*truncate/);
     expect(html).toContain('Review');
-    expect(html).toMatch(/Verify(?: &amp;| &) Archive/);
+    expect(html).toContain('Copy Verify');
     expect(html).toContain('Copy Continue planning');
     expect(html).not.toContain('Archive Now');
     expect(html).not.toMatch(/data-priority-cta="[^"]+"[^>]*tabindex="-1"/);

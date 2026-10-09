@@ -56,7 +56,7 @@ describe('buildWorkflowCommand', () => {
     expect(getWorkflowCommandTargetForAdapter(null)).toBe('unknown');
   });
 
-  it('builds clipboard launch payload regardless of preferred adapter in clipboard mode', () => {
+  it('uses hyphen Cursor commands when clipboard mode passes cursor adapter hint', () => {
     expect(
       buildWorkflowLaunchPayload({
         action: 'apply',
@@ -68,8 +68,8 @@ describe('buildWorkflowCommand', () => {
       action: 'apply',
       changeName: 'demo-change',
       workflowLaunchMode: 'clipboard',
-      target: 'clipboard',
-      command: '/opsx:apply demo-change',
+      target: 'cursor',
+      command: '/opsx-apply demo-change',
     });
   });
 
