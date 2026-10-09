@@ -196,6 +196,21 @@ describe('launchWorkflowAgentCommand', () => {
     expect(launchAgentPanelPrompt).not.toHaveBeenCalled();
   });
 
+  it('maps prefill-only panel launches to prefilled receipts', async () => {
+    // covered in launchWorkflowAction.test; keep launch path mock here
+    launchAgentPanelPrompt.mockResolvedValue({
+      success: true,
+      layer: 'composerCreateNew',
+      outcome: 'prefilled',
+    });
+    const result = await launchWorkflowAgentCommand({
+      action: 'apply',
+      changeName: 'demo-change',
+      workspaceRoot: '/workspace',
+    });
+    expect(result.outcome).toBe('prefilled');
+  });
+
   it('shows prefill hint when launch ends in prefill-only', async () => {
     launchAgentPanelPrompt.mockResolvedValue({
       success: true,

@@ -6,6 +6,7 @@ import {
   resolveWorkflowCommandTargetForUi,
   type WorkflowAction,
 } from '../../shared/workflowCommand';
+import { shouldAutoSubmitWorkflowAction } from '../../shared/agentAutoSubmit';
 
 export const NEUTRAL_CHANGE_PLACEHOLDER = '<change-name>';
 
@@ -146,6 +147,14 @@ export function getVerifyArchiveDescription(
   });
 }
 
+function willAutoSubmitWorkflowAction(
+  action: WorkflowAction,
+  config?: WorkflowLaunchConfigView | null,
+): boolean {
+  const mode = config?.agentAutoSubmit ?? 'readOnly';
+  return shouldAutoSubmitWorkflowAction(action, mode);
+}
+
 export function getVerifyArchiveHint(
   action: 'verify' | 'archive',
   config?: WorkflowLaunchConfigView | null,
@@ -153,6 +162,7 @@ export function getVerifyArchiveHint(
   changeName?: string,
 ): string {
   const command = getExampleWorkflowCommand(action, config, runtime, changeName);
+  const autoSubmit = willAutoSubmitWorkflowAction(action, config);
   if (!config || !shouldUseAgentWorkflowLabels(config)) {
     return action === 'verify'
       ? t('verifyArchive.verifyCopyHint', { command })
@@ -170,17 +180,29 @@ export function getVerifyArchiveHint(
         : t('verifyArchive.archiveCopyHint', { command });
     }
     if (config.cursorLaunchMode === 'chatCommand') {
-      return action === 'verify'
-        ? t('verifyArchive.verifyChatHint', { command })
-        : t('verifyArchive.archiveChatHint', { command });
+      return autoSubmit
+        ? (action === 'verify'
+          ? t('verifyArchive.verifyAgentSentHint', { command })
+          : t('verifyArchive.archiveAgentSentHint', { command }))
+        : (action === 'verify'
+          ? t('verifyArchive.verifyChatHint', { command })
+          : t('verifyArchive.archiveChatHint', { command }));
     }
-    return action === 'verify'
-      ? t('verifyArchive.verifyAgentHint', { command })
-      : t('verifyArchive.archiveAgentHint', { command });
+    return autoSubmit
+      ? (action === 'verify'
+        ? t('verifyArchive.verifyAgentSentHint', { command })
+        : t('verifyArchive.archiveAgentSentHint', { command }))
+      : (action === 'verify'
+        ? t('verifyArchive.verifyAgentPrefillHint', { command })
+        : t('verifyArchive.archiveAgentPrefillHint', { command }));
   }
-  return action === 'verify'
-    ? t('verifyArchive.verifyChatHint', { command })
-    : t('verifyArchive.archiveChatHint', { command });
+  return autoSubmit
+    ? (action === 'verify'
+      ? t('verifyArchive.verifyChatSentHint', { command })
+      : t('verifyArchive.archiveChatSentHint', { command }))
+    : (action === 'verify'
+      ? t('verifyArchive.verifyChatHint', { command })
+      : t('verifyArchive.archiveChatHint', { command }));
 }
 
 export function getWorkflowLaunchModeHint(

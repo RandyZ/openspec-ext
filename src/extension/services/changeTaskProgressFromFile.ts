@@ -41,6 +41,13 @@ export async function overlayChangeTaskProgressFromFiles(
         return change;
       }
       const progress = taskProgressFromTasksMarkdown(content);
+      if (
+        progress.totalTasks === 0
+        && change.totalTasks > 0
+        && (content.includes('[') || content.includes('- '))
+      ) {
+        return change;
+      }
       return applyTaskProgressToChange(change, progress);
     } catch {
       return change;

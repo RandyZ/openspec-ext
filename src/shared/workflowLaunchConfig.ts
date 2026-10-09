@@ -32,8 +32,11 @@ export interface WorkflowLaunchRuntimeContext {
 
 export type EffectiveWorkflowAdapterId = PreferredAgentAdapter | null;
 
+export type AgentAutoSubmitMode = 'never' | 'readOnly' | 'always';
+
 export interface WorkflowLaunchConfigView extends WorkflowLaunchConfig {
   effectiveAdapterId: EffectiveWorkflowAdapterId;
+  agentAutoSubmit?: AgentAutoSubmitMode;
 }
 
 /** User explicitly chose copy-only via settings (package defaults do not count). */

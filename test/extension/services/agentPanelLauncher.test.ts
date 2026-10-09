@@ -242,6 +242,37 @@ describe('agentPanelLauncher', () => {
     expect(executeCommand.mock.calls.filter(([c]) => c === 'composer.createNew')).toHaveLength(2);
   });
 
+  it('does not invoke composer focus or open commands after createNew', async () => {
+    const executeCommand = vi.fn(async (command: string) => {
+      if (command === 'composer.getOrderedSelectedComposerIds') {
+        return executeCommand.mock.calls.filter(([c]) => c === 'composer.getOrderedSelectedComposerIds').length === 1
+          ? ['a']
+          : ['a', 'b'];
+      }
+      return undefined;
+    });
+
+    await launchAgentPanelPrompt(
+      { text: '/opsx-apply demo', autoSubmit: false },
+      {
+        isCursorHost: () => true,
+        getCommands: async () => new Set([
+          'composer.createNew',
+          'composer.getOrderedSelectedComposerIds',
+          'composer.openComposer',
+          'composer.focusComposer',
+        ]),
+        executeCommand,
+        sleep: async () => undefined,
+      },
+    );
+
+    const commands = executeCommand.mock.calls.map(([command]) => command);
+    expect(commands).not.toContain('composer.openComposer');
+    expect(commands).not.toContain('composer.focusComposer');
+    expect(commands).not.toContain('composer.selectComposer');
+  });
+
   it('falls back to chat.open when composer.createNew rejects quickly', async () => {
     const executeCommand = vi.fn((command: string) => {
       if (command === 'composer.getOrderedSelectedComposerIds') return Promise.resolve(['a']);

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5-agent-panel.2] - 2026-10-09
+
+### Fixed
+
+- **BLOCKER:** Removed post–`composer.createNew` `composer.openComposer` / focus calls that broke Cursor 3.21.16 Agent tabs; restored 0.2.4-agent-panel.18 launch behavior.
+- Task progress: OpenSpec CLI–aligned checkbox counting (`ws2-zeta-markers` 3/8); immediate `changeTaskProgressPatch` to sidebar and detail on `tasks.md` edits; project-first sidebar no longer CLI-reloads on every dashboard refresh.
+- Prefill hint at most once per activation; Verify/Archive hints follow `agentAutoSubmit`; prefill launches receipt status `prefilled` / 「已预填」.
+
 ## [0.2.5-agent-panel.1] - 2026-10-09
 
 ### Changed

@@ -35,6 +35,7 @@ function getReceiptLabel(status: string): string {
   const labels: Record<string, Parameters<typeof t>[0]> = {
     pending: 'workflow.receiptPending',
     delivered: 'workflow.receiptDelivered',
+    prefilled: 'workflow.receiptPrefilled',
     copied: 'workflow.receiptCopied',
     fallback: 'workflow.receiptFallback',
     failed: 'workflow.receiptFailed',

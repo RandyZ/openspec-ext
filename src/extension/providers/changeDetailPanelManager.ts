@@ -20,6 +20,7 @@ import {
   isWorkflowSnapshotBoundTo,
   type ChangeWorkflowSnapshot,
 } from '../../shared/changeWorkflow';
+import type { ChangeTaskProgressPatch } from '../../shared/changeTaskProgressPatch';
 import type { OpenSpecScope } from '../services/openspecScope';
 import type { OpenSpecRootBinding, ProjectContext } from '../services/types';
 
@@ -428,6 +429,17 @@ export class ChangeDetailPanelManager {
    * Notify an open panel that certain artifact caches should be invalidated.
    * Called by DataManager's onArtifactChanged subscriber when upstream files change.
    */
+  public broadcastTaskProgressPatch(patch: ChangeTaskProgressPatch): void {
+    for (const [key, panel] of this.panels) {
+      if (!this.keyMatchesChange(key, patch.changeName)) continue;
+      try {
+        panel.webview.postMessage(patch);
+      } catch (err) {
+        logger.warn(`broadcastTaskProgressPatch: panel ${patch.changeName} may be disposed`, err as Error);
+      }
+    }
+  }
+
   public notifyArtifactChanged(changeName: string, artifactTypes: string[], rootPath?: string): void {
     for (const [key, panel] of this.panels) {
       if (!this.keyMatchesChange(key, changeName)) continue;

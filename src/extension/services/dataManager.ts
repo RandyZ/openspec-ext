@@ -27,6 +27,7 @@ import {
   overlayChangeTaskProgressFromFiles,
   taskProgressFromTasksMarkdown,
 } from './changeTaskProgressFromFile';
+import type { ChangeTaskProgressPatch } from '../../shared/changeTaskProgressPatch';
 
 export interface ScopeInfo {
   id: string;
@@ -133,7 +134,9 @@ export class DataManager {
   private queuedRefresh: Promise<DashboardData> | null = null;
   private queuedRefreshScope: OpenSpecScope | undefined;
   private refreshCallbacks: Set<(data: DashboardData) => void> = new Set();
+  private taskProgressPatchCallbacks: Set<(patch: ChangeTaskProgressPatch) => void> = new Set();
   private artifactChangedCallbacks: Set<(event: ArtifactChangedEvent) => void> = new Set();
+  private tasksOnlyRefreshTimer: ReturnType<typeof setTimeout> | undefined;
   private cliAvailable = false;
 
   // Scope-aware additions
@@ -545,8 +548,8 @@ export class DataManager {
             logger.warn('autoCompleteParents after tasks.md change', err as Error)
           );
           const scope = this.resolveScopeForRoot(this.watchedProjectRoot);
-          void this.patchCachedTaskProgressFromFile(tasksChangeName, scope).catch((err) =>
-            logger.warn('patchCachedTaskProgressFromFile after tasks.md change', err as Error)
+          void this.publishTaskProgressFromFile(tasksChangeName, scope).catch((err) =>
+            logger.warn('publishTaskProgressFromFile after tasks.md change', err as Error)
           );
         }
 
@@ -574,13 +577,22 @@ export class DataManager {
         });
       }
 
-      logger.info(`File changes detected (${events.length} events), refreshing...`);
-      void (async () => {
-        await this.invalidateDashboardCache(this.resolveScopeForRoot(this.watchedProjectRoot));
-        await this.refresh();
-      })().catch((error) => {
-        logger.warn('Failed to refresh after file changes', error as Error);
+      const onlyTasksMd = events.length > 0 && events.every((event) => {
+        const relative = path.relative(this.watchedProjectRoot, event.uri.fsPath).replace(/\\/g, '/');
+        return /\/tasks\.md$/.test(relative);
       });
+
+      if (onlyTasksMd) {
+        this.scheduleTasksOnlyBackgroundRefresh(this.resolveScopeForRoot(this.watchedProjectRoot));
+      } else {
+        logger.info(`File changes detected (${events.length} events), refreshing...`);
+        void (async () => {
+          await this.invalidateDashboardCache(this.resolveScopeForRoot(this.watchedProjectRoot));
+          await this.refresh();
+        })().catch((error) => {
+          logger.warn('Failed to refresh after file changes', error as Error);
+        });
+      }
     });
 
     this.warmDashboardData();
@@ -1343,13 +1355,25 @@ export class DataManager {
     await fs.promises.writeFile(filePath, YAML.stringify(data), 'utf8');
   }
 
-  private async patchCachedTaskProgressFromFile(
+  private scheduleTasksOnlyBackgroundRefresh(scope?: OpenSpecScope): void {
+    if (this.tasksOnlyRefreshTimer) {
+      clearTimeout(this.tasksOnlyRefreshTimer);
+    }
+    this.tasksOnlyRefreshTimer = setTimeout(() => {
+      this.tasksOnlyRefreshTimer = undefined;
+      void (async () => {
+        await this.invalidateDashboardCache(scope);
+        await this.refresh(scope);
+      })().catch((error) => {
+        logger.warn('Failed deferred tasks-only refresh', error as Error);
+      });
+    }, 2000);
+  }
+
+  private async publishTaskProgressFromFile(
     changeName: string,
     scope?: OpenSpecScope,
   ): Promise<void> {
-    if (!this.cachedData || !this.isCurrentScope(scope)) {
-      return;
-    }
     const services = this.getScopedServices(scope);
     let content: string;
     try {
@@ -1357,22 +1381,68 @@ export class DataManager {
     } catch {
       return;
     }
-    const progress = taskProgressFromTasksMarkdown(content);
-    const index = this.cachedData.changes.findIndex((c) => c.name === changeName);
-    if (index < 0) {
+    if (!content.trim()) {
       return;
     }
-    const updatedChange = applyTaskProgressToChange(this.cachedData.changes[index], progress);
-    const changes = [...this.cachedData.changes];
-    changes[index] = enrichChangeWithLifecycle(updatedChange);
-    const data: DashboardData = {
-      ...this.cachedData,
-      changes,
-      changeStatusCounts: buildChangeStatusCounts(changes, this.cachedData.archivedChanges),
-      lastRefresh: Date.now(),
-    };
-    this.cachedData = data;
-    this.notifyRefresh(data);
+
+    let progress = taskProgressFromTasksMarkdown(content);
+    if (this.cachedData && this.isCurrentScope(scope)) {
+      const existing = this.cachedData.changes.find((c) => c.name === changeName);
+      if (
+        existing
+        && progress.totalTasks === 0
+        && existing.totalTasks > 0
+        && (content.includes('[') || content.includes('- '))
+      ) {
+        progress = {
+          completedTasks: existing.completedTasks,
+          totalTasks: existing.totalTasks,
+          status: existing.status,
+        };
+      }
+    }
+
+    if (this.cachedData && this.isCurrentScope(scope)) {
+      const index = this.cachedData.changes.findIndex((c) => c.name === changeName);
+      if (index >= 0) {
+        const updatedChange = applyTaskProgressToChange(this.cachedData.changes[index], progress);
+        const changes = [...this.cachedData.changes];
+        changes[index] = enrichChangeWithLifecycle(updatedChange);
+        this.cachedData = {
+          ...this.cachedData,
+          changes,
+          changeStatusCounts: buildChangeStatusCounts(changes, this.cachedData.archivedChanges),
+          lastRefresh: Date.now(),
+        };
+      }
+    }
+
+    this.notifyTaskProgressPatch({
+      type: 'changeTaskProgressPatch',
+      changeName,
+      scopeId: scope?.id,
+      completedTasks: progress.completedTasks,
+      totalTasks: progress.totalTasks,
+      tasksContent: content,
+      revisedAt: Date.now(),
+    });
+  }
+
+  onTaskProgressPatch(callback: (patch: ChangeTaskProgressPatch) => void): vscode.Disposable {
+    this.taskProgressPatchCallbacks.add(callback);
+    return new vscode.Disposable(() => {
+      this.taskProgressPatchCallbacks.delete(callback);
+    });
+  }
+
+  private notifyTaskProgressPatch(patch: ChangeTaskProgressPatch): void {
+    for (const callback of this.taskProgressPatchCallbacks) {
+      try {
+        callback(patch);
+      } catch (error) {
+        logger.error('Error in taskProgressPatch callback', error as Error);
+      }
+    }
   }
 
   /**

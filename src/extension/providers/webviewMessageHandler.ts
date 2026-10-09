@@ -1461,11 +1461,20 @@ export async function handleAgentUnavailableMessage(
   }
 }
 
+function readAgentAutoSubmitModeForUi(): 'never' | 'readOnly' | 'always' {
+  const raw = vscode.workspace.getConfiguration('openspec').get<string>('agentAutoSubmit');
+  if (raw === 'never' || raw === 'always' || raw === 'readOnly') return raw;
+  return 'readOnly';
+}
+
 export function getWorkflowLaunchConfigMessage() {
   const config = getWorkflowLaunchConfig();
   return {
     type: 'workflowLaunchConfig' as const,
-    config: toWorkflowLaunchConfigView(config),
+    config: {
+      ...toWorkflowLaunchConfigView(config),
+      agentAutoSubmit: readAgentAutoSubmitModeForUi(),
+    },
     isCursorHost: isCursorHost(),
   };
 }

@@ -20,6 +20,8 @@ import type {
   ProjectSidebarData,
   ProjectSpecsExplorerData,
 } from '../../webview/types/messages';
+import type { ChangeTaskProgressPatch } from '../../shared/changeTaskProgressPatch';
+import { enrichChangeWithLifecycle } from '../../shared/changeLifecycle';
 import {
   handleWebviewMessage,
   getWebviewContent,
@@ -116,11 +118,82 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           this.skipNextProjectRefreshCallback = false;
           return;
         }
-        void this.reloadProjectSidebarData();
+        this.mergeDashboardTaskProgressIntoProjectSidebar(data);
         return;
       }
       this.postDashboardData(data);
     });
+  }
+
+  public applyTaskProgressPatch(patch: ChangeTaskProgressPatch): void {
+    if (this.isProjectFirst()) {
+      this.patchProjectSidebarTaskProgress(patch);
+    }
+    const post = (webview: vscode.Webview | undefined) => {
+      webview?.postMessage(patch);
+    };
+    post(this._view?.webview);
+    post(this.dashboardPanel?.webview);
+    for (const panel of this.explorerPanels.values()) {
+      post(panel.webview);
+    }
+  }
+
+  private patchProjectSidebarTaskProgress(patch: ChangeTaskProgressPatch): void {
+    if (!this.cachedProjectSidebarData) return;
+    const index = this.cachedProjectSidebarData.changes.findIndex((c) => c.name === patch.changeName);
+    if (index < 0) return;
+    const current = this.cachedProjectSidebarData.changes[index];
+    const updated = enrichChangeWithLifecycle({
+      ...current,
+      completedTasks: patch.completedTasks,
+      totalTasks: patch.totalTasks,
+      status: patch.totalTasks === 0
+        ? 'draft'
+        : patch.completedTasks === patch.totalTasks
+          ? 'complete'
+          : 'in-progress',
+    });
+    const changes = [...this.cachedProjectSidebarData.changes];
+    changes[index] = updated;
+    this.cachedProjectSidebarData = {
+      ...this.cachedProjectSidebarData,
+      changes,
+    };
+  }
+
+  private mergeDashboardTaskProgressIntoProjectSidebar(data: DashboardData): void {
+    if (!data?.changes?.length) {
+      return;
+    }
+    if (!this.cachedProjectSidebarData) {
+      void this.reloadProjectSidebarData();
+      return;
+    }
+    const byName = new Map(data.changes.map((change) => [change.name, change]));
+    const changes = this.cachedProjectSidebarData.changes.map((change) => {
+      const fresh = byName.get(change.name);
+      if (!fresh) return change;
+      return enrichChangeWithLifecycle({
+        ...change,
+        completedTasks: fresh.completedTasks,
+        totalTasks: fresh.totalTasks,
+        status: fresh.status,
+        lifecycleStatus: fresh.lifecycleStatus,
+        attention: fresh.attention,
+      });
+    });
+    this.cachedProjectSidebarData = {
+      ...this.cachedProjectSidebarData,
+      changes,
+    };
+    this.publishProjectSnapshot(
+      this.cachedProjectSidebarData,
+      this._view?.webview,
+      'sidebar',
+      { source: 'memory', stale: false },
+      true,
+    );
   }
 
   /**

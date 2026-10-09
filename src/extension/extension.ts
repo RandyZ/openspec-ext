@@ -139,6 +139,13 @@ export async function activate(context: vscode.ExtensionContext) {
     );
 
     context.subscriptions.push(
+      dataManager.onTaskProgressPatch((patch) => {
+        changeDetailPanelManager.broadcastTaskProgressPatch(patch);
+        dashboardViewProvider.applyTaskProgressPatch(patch);
+      })
+    );
+
+    context.subscriptions.push(
       vscode.workspace.onDidChangeConfiguration((event) => {
         const launchConfigChanged =
           event.affectsConfiguration('openspec.workflowLaunchMode') ||

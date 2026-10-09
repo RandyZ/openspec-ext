@@ -548,6 +548,27 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         })) {
           setVerifyArchiveTasksLoading(false);
         }
+      } else if (data.type === 'changeTaskProgressPatch' && data.changeName === changeName) {
+        if (data.scopeId && scopeId && data.scopeId !== scopeId) {
+          return;
+        }
+        setTasksProgressError(null);
+        setTasksProgressUnknown(false);
+        setCompletedTasks(data.completedTasks);
+        setTotalTasks(data.totalTasks);
+        setVerifyArchiveTasksLoading(false);
+        if (typeof data.tasksContent === 'string') {
+          if (activeTabRef.current === 'tasks' || activeTabRef.current === 'verifyArchive') {
+            setContent(data.tasksContent);
+          }
+          completeArtifactFetchAndStoreContent({
+            scopeId,
+            artifactType: 'tasks',
+            content: data.tasksContent,
+            coordinator: artifactFetchCoordinatorRef.current,
+            contentCache: contentCacheRef.current,
+          });
+        }
       } else if (data.type === 'workflowActionReceipt'
         && data.changeName === changeName
         && workflowSnapshot

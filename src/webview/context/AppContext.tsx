@@ -10,6 +10,8 @@ import type {
   WebviewCacheMeta,
 } from '../types/messages';
 import { adaptLegacyDashboardData } from '../types/legacyDashboardAdapter';
+import { applyTaskProgressPatchToChanges } from '../utils/applyTaskProgressPatch';
+import type { ChangeTaskProgressPatch } from '../../shared/changeTaskProgressPatch';
 
 export type DashboardActivity =
   | { kind: 'idle' }
@@ -49,6 +51,7 @@ export type AppAction =
   | { type: 'START_SCOPE_SWITCH'; scopeId: string }
   | { type: 'SET_DATA'; payload: DashboardData; cache?: WebviewCacheMeta }
   | { type: 'SET_PROJECT_SIDEBAR'; payload: ProjectSidebarData }
+  | { type: 'PATCH_TASK_PROGRESS'; payload: ChangeTaskProgressPatch }
   | { type: 'SET_PAGE_CONTEXT'; payload: ProjectPageContextMessage }
   | { type: 'CLEAR_PAGE_CONTEXT' }
   | { type: 'SET_ERROR'; payload: string }
@@ -172,6 +175,27 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         error: null,
         cliDiagnostic: null,
         activity: { kind: 'idle' },
+      };
+    }
+
+    case 'PATCH_TASK_PROGRESS': {
+      const patch = action.payload;
+      const nextSidebar = state.projectSidebar
+        ? {
+          ...state.projectSidebar,
+          changes: applyTaskProgressPatchToChanges(state.projectSidebar.changes, patch),
+        }
+        : null;
+      const nextData = state.data
+        ? {
+          ...state.data,
+          changes: applyTaskProgressPatchToChanges(state.data.changes, patch),
+        }
+        : null;
+      return {
+        ...state,
+        projectSidebar: nextSidebar,
+        data: nextData,
       };
     }
 

@@ -80,33 +80,6 @@ function composerIdsIncreased(before: string[] | undefined, after: string[] | un
   return after.length > before.length;
 }
 
-function findNewComposerId(before: string[] | undefined, after: string[] | undefined): string | undefined {
-  if (!after?.length) return undefined;
-  if (!before?.length) return after[after.length - 1];
-  const beforeSet = new Set(before);
-  const added = after.filter((id) => !beforeSet.has(id));
-  return added[added.length - 1] ?? (after.length > before.length ? after[after.length - 1] : undefined);
-}
-
-const COMPOSER_FOCUS_COMMANDS = [
-  'composer.openComposer',
-  'composer.focusComposer',
-  'composer.selectComposer',
-] as const;
-
-function tryFocusComposerById(
-  composerId: string,
-  cmds: Set<string>,
-  executeCommand: NonNullable<AgentPanelLauncherDeps['executeCommand']>,
-): void {
-  for (const command of COMPOSER_FOCUS_COMMANDS) {
-    if (!cmds.has(command)) continue;
-    void executeCommand(command, { composerId }).then(undefined, () => undefined);
-    void executeCommand(command, composerId).then(undefined, () => undefined);
-    return;
-  }
-}
-
 async function tryCursorComposerCreateNew(
   request: AgentPanelLaunchRequest,
   deps: AgentPanelLauncherDeps,
@@ -160,13 +133,6 @@ async function tryCursorComposerCreateNew(
   }
 
   void (async () => {
-    await sleep(100);
-    const earlyIds = await readComposerPaneIds(executeCommand, cmds);
-    const newComposerId = findNewComposerId(beforeIds, earlyIds);
-    if (newComposerId) {
-      tryFocusComposerById(newComposerId, cmds, executeCommand);
-    }
-
     await sleep(COMPOSER_SUCCESS_WAIT_MS);
     const afterIds = await readComposerPaneIds(executeCommand, cmds);
     if (!composerIdsIncreased(beforeIds, afterIds)) {
@@ -178,12 +144,6 @@ async function tryCursorComposerCreateNew(
           ? t('agentLaunch.submitNotConfirmed')
           : t('agentLaunch.panelNotConfirmed'),
       );
-      void vscode.window.showInformationMessage?.(t('agentLaunch.cursorNewTabHint'));
-    } else {
-      const confirmedNewId = findNewComposerId(beforeIds, afterIds);
-      if (confirmedNewId) {
-        tryFocusComposerById(confirmedNewId, cmds, executeCommand);
-      }
     }
   })();
 

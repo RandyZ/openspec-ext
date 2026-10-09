@@ -11,6 +11,11 @@ vi.mock('vscode', () => ({
     clipboard: { writeText: vi.fn() },
     openExternal: vi.fn(),
   },
+  workspace: {
+    getConfiguration: vi.fn(() => ({
+      get: vi.fn((key: string) => (key === 'agentAutoSubmit' ? 'readOnly' : undefined)),
+    })),
+  },
   window: {
     showInformationMessage: vi.fn(),
   },

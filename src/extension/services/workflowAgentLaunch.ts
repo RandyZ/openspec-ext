@@ -26,6 +26,7 @@ import {
 import { isCursorHost } from '../utils/isCursorHost';
 import { notifyWorkflowCommandCopied } from './workflowClipboardNotify';
 import { notifyAgentPrefillLaunchHint } from './agentLaunchPrefillNotify';
+import { maybeShowFirstCursorAgentPanelLaunchHint } from './agentCursorSessionHint';
 
 export type WorkflowAgentLaunchTarget =
   | 'clipboard'
@@ -296,6 +297,9 @@ async function executeWorkflowAgentLaunch(
       outcome: panelResult.outcome,
       message: panelResult.message,
     };
+    if (isCursorHost() && panelResult.layer) {
+      maybeShowFirstCursorAgentPanelLaunchHint(panelResult.layer);
+    }
     notifyLaunchResult(result, payload.command);
     return result;
   }

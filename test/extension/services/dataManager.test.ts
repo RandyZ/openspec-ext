@@ -432,6 +432,8 @@ describe('DataManager dashboard data loading', () => {
       getScopedServices: scopedServices,
     });
 
+    const { mkdirSync } = await import('fs');
+    mkdirSync(`${projectRoot}/openspec/changes/same-name`, { recursive: true });
     try {
       await (manager as any).executeTaskRequest('same-name', 0, 'Task', projectScope);
       await (manager as any).setTaskExecutionState('same-name', 0, true, projectScope);

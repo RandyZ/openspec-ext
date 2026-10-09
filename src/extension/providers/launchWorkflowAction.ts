@@ -331,7 +331,13 @@ export async function processLaunchWorkflowAction(
       return;
     }
     if (launchResult.success) {
-      const status = launchResult.outcome === 'copied' ? 'copied' : 'delivered';
+      const status = launchResult.outcome === 'copied'
+        ? 'copied'
+        : launchResult.outcome === 'prefilled'
+          ? 'prefilled'
+          : launchResult.outcome === 'submitted'
+            ? 'delivered'
+            : 'delivered';
       postReceipt(receiptTarget, status, launchResult.message);
     } else {
       const reason = launchResult.message ?? t('agentLaunch.failed');

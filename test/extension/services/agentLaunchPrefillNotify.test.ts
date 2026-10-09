@@ -34,6 +34,20 @@ describe('agentLaunchPrefillNotify', () => {
     expect(vscode.window.showInformationMessage).toHaveBeenCalled();
   });
 
+  it('shows at most once per extension activation', async () => {
+    configureAgentLaunchPrefillNotify({
+      globalState: {
+        get: vi.fn(() => false),
+        update: vi.fn(),
+      },
+    } as unknown as vscode.ExtensionContext);
+
+    await notifyAgentPrefillLaunchHint();
+    await notifyAgentPrefillLaunchHint();
+
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledTimes(1);
+  });
+
   it('skips hint when suppressed in globalState', async () => {
     configureAgentLaunchPrefillNotify({
       globalState: {

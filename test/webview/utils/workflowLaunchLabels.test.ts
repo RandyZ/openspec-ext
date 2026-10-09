@@ -110,6 +110,19 @@ describe('workflow launch labels', () => {
     expect(getVerifyArchiveHint('verify', config)).not.toContain('/opsx-verify');
   });
 
+  it('verify hint reflects readOnly auto-submit for verify', () => {
+    const config: WorkflowLaunchConfigView = {
+      ...baseConfig,
+      workflowLaunchMode: 'adapter',
+      preferredAgentAdapter: 'cursor',
+      effectiveAdapterId: 'cursor',
+      cursorLaunchMode: 'agentPanel',
+      agentAutoSubmit: 'readOnly',
+    };
+    expect(getVerifyArchiveHint('verify', config, { isCursorHost: true }, 'demo')).toContain('automatically');
+    expect(getVerifyArchiveHint('archive', config, { isCursorHost: true }, 'demo')).toContain('Enter');
+  });
+
   it('shows generic launch wording for non-Cursor adapters', () => {
     expect(
       getWorkflowActionButtonLabel('Apply', {

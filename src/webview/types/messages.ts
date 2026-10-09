@@ -166,6 +166,7 @@ export interface ArtifactOutputDescriptor {
 }
 
 export type ExtensionMessage =
+  | import('../../shared/changeTaskProgressPatch').ChangeTaskProgressPatch
   | { type: 'dashboardData'; data: DashboardData; debug?: boolean; cache?: WebviewCacheMeta }
   | { type: 'cacheStats'; stats: CacheStatsView }
   | { type: 'cacheActionResult'; action: CacheAction; success: boolean; message?: string }
@@ -177,7 +178,7 @@ export type ExtensionMessage =
     bindingKey: string;
     action: WorkflowAction;
     target: WorkflowCommandTarget;
-    status: 'delivered' | 'copied' | 'fallback' | 'running' | 'completed' | 'failed';
+    status: 'delivered' | 'prefilled' | 'copied' | 'fallback' | 'running' | 'completed' | 'failed';
     message?: string;
   }
   | {

@@ -480,6 +480,8 @@ export const Dashboard: React.FC = () => {
           ...prev,
           [message.specId]: message.requirements ?? [],
         }));
+      } else if (message.type === 'changeTaskProgressPatch') {
+        dispatch({ type: 'PATCH_TASK_PROGRESS', payload: message });
       } else if (message.type === 'workflowLaunchConfig') {
         setWorkflowLaunchConfig(message.config ?? null);
         setWorkflowLaunchIsCursorHost(message.isCursorHost === true);

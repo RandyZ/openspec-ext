@@ -294,7 +294,7 @@ describe('DashboardViewProvider', () => {
     }));
   });
 
-  it('publishes one fresh Project snapshot to both open Project surfaces', async () => {
+  it('publishes merged task progress to both open Project surfaces on refresh', async () => {
     vi.useFakeTimers();
     const fixture = makeProjectFixture();
     const first = {
@@ -305,9 +305,8 @@ describe('DashboardViewProvider', () => {
       projectSpecs: [],
       referencedStoreSpecs: [],
     };
-    const second = { ...first, changes: [makeProjectChange('second-change')] };
     const gateway = {
-      loadProjectSidebarData: vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second),
+      loadProjectSidebarData: vi.fn().mockResolvedValue(first),
     };
     const sidebarPostMessage = vi.fn();
     const panel = makeEditorPanel();
@@ -325,19 +324,33 @@ describe('DashboardViewProvider', () => {
     sidebarPostMessage.mockClear();
     panel.webview.postMessage.mockClear();
 
-    const refreshCallback = (dataManager.onRefresh as any).mock.calls[0]?.[0] as (() => void) | undefined;
-    refreshCallback?.();
+    const refreshCallback = (dataManager.onRefresh as any).mock.calls[0]?.[0] as ((data: unknown) => void) | undefined;
+    refreshCallback?.(makeDashboardData({
+      changeName: 'first-change',
+      lastRefresh: 2,
+      completedTasks: 1,
+      totalTasks: 3,
+    }));
     await vi.runAllTimersAsync();
 
-    expect(sidebarPostMessage).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'setContext',
-      view: 'sidebar',
-      data: expect.objectContaining({ changes: [second.changes[0] ] }),
+    expect(gateway.loadProjectSidebarData).toHaveBeenCalledTimes(1);
+    const sidebarContext = sidebarPostMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'setContext' && message.view === 'sidebar')
+      .at(-1);
+    expect(sidebarContext).toEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        changes: [expect.objectContaining({ name: 'first-change', completedTasks: 1, totalTasks: 3 })],
+      }),
     }));
-    expect(panel.webview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'setContext',
-      view: 'dashboard',
-      data: expect.objectContaining({ changes: [second.changes[0] ] }),
+    const dashboardContext = panel.webview.postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'setContext' && message.view === 'dashboard')
+      .at(-1);
+    expect(dashboardContext).toEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        changes: [expect.objectContaining({ name: 'first-change', completedTasks: 1, totalTasks: 3 })],
+      }),
     }));
   });
 
@@ -651,16 +664,20 @@ describe('DashboardViewProvider', () => {
   function makeDashboardData({
     changeName,
     lastRefresh,
+    completedTasks = 0,
+    totalTasks = 1,
   }: {
     changeName: string;
     lastRefresh: number;
+    completedTasks?: number;
+    totalTasks?: number;
   }) {
     return {
       changes: [
         {
           name: changeName,
-          completedTasks: 0,
-          totalTasks: 1,
+          completedTasks,
+          totalTasks,
           lastModified: '2026-06-01T00:00:00.000Z',
           status: 'draft' as const,
           lifecycleStatus: 'planning' as const,
@@ -3397,7 +3414,7 @@ describe('DashboardViewProvider', () => {
     }));
   });
 
-  it('project refreshes use the Project loader for watcher and manual refresh', async () => {
+  it('project dashboard refresh merges task progress without reloading the Project loader', async () => {
     vi.useFakeTimers();
     const fixture = makeProjectFixture();
     const first = makeProjectChange('first-change');
@@ -3418,12 +3435,22 @@ describe('DashboardViewProvider', () => {
     postMessage.mockClear();
 
     const refreshCallback = (dataManager.onRefresh as any).mock.calls[0]?.[0] as ((data: any) => void) | undefined;
-    refreshCallback?.(makeDashboardData({ changeName: 'legacy-refresh', lastRefresh: 3 }));
+    refreshCallback?.(makeDashboardData({
+      changeName: first.name,
+      completedTasks: 1,
+      totalTasks: 3,
+      lastRefresh: 3,
+    }));
     await vi.runAllTimersAsync();
-    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'setContext',
-      view: 'sidebar',
-      data: expect.objectContaining({ changes: [second] }),
+    expect(gateway.loadChanges).toHaveBeenCalledTimes(1);
+    const mergedSidebar = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'setContext' && message.view === 'sidebar')
+      .at(-1);
+    expect(mergedSidebar).toEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        changes: [expect.objectContaining({ name: first.name, completedTasks: 1, totalTasks: 3 })],
+      }),
     }));
 
     postMessage.mockClear();

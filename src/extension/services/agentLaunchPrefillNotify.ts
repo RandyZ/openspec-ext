@@ -4,19 +4,26 @@ import { t } from '../../i18n';
 const GLOBAL_SUPPRESS_KEY = 'openspec.suppressAgentPrefillLaunchHint';
 
 let extensionContext: vscode.ExtensionContext | undefined;
+let prefillHintShownThisActivation = false;
 
 export function configureAgentLaunchPrefillNotify(context: vscode.ExtensionContext): void {
   extensionContext = context;
+  prefillHintShownThisActivation = false;
 }
 
 export function resetAgentLaunchPrefillNotifyForTests(): void {
   extensionContext = undefined;
+  prefillHintShownThisActivation = false;
 }
 
 export async function notifyAgentPrefillLaunchHint(): Promise<void> {
   if (extensionContext?.globalState.get<boolean>(GLOBAL_SUPPRESS_KEY)) {
     return;
   }
+  if (prefillHintShownThisActivation) {
+    return;
+  }
+  prefillHintShownThisActivation = true;
 
   const openSettingsLabel = t('agentLaunch.prefillHintOpenSettings');
   const dontShowLabel = t('agentLaunch.prefillHintDontShowAgain');
