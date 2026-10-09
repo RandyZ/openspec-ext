@@ -35,7 +35,7 @@ describe('buildExecutorLaunchPresentation', () => {
     expect(presentation.agentAdapters.currentId).toBe('clipboard');
     expect(presentation.uiWorkflowLaunchConfig.effectiveAdapterId).toBe('cursor');
     expect(getTaskNextButtonLabel(presentation.uiWorkflowLaunchConfig)).toBe('Next with Agent');
-    expect(getWorkflowActionButtonLabel('Continue planning', presentation.uiWorkflowLaunchConfig)).toBe('Open Cursor · Continue planning');
+    expect(getWorkflowActionButtonLabel('Continue planning', presentation.uiWorkflowLaunchConfig)).toBe('Open Agent panel · Continue planning');
     expect(getWorkflowLaunchModeHint(presentation.uiWorkflowLaunchConfig)).toBe('Opens Agent panel');
   });
 
@@ -51,7 +51,7 @@ describe('buildExecutorLaunchPresentation', () => {
     );
 
     expect(getTaskNextButtonLabel(presentation.uiWorkflowLaunchConfig)).toBe('Next with Agent');
-    expect(getWorkflowActionButtonLabel('Continue planning', presentation.uiWorkflowLaunchConfig)).toBe('Open Cursor · Continue planning');
+    expect(getWorkflowActionButtonLabel('Continue planning', presentation.uiWorkflowLaunchConfig)).toBe('Open Agent panel · Continue planning');
   });
 });
 
@@ -86,7 +86,7 @@ describe('b663c24 regression: settings cursor + runtime clipboard only', () => {
     setLocale('en');
     const settingsOnly = resolveUiWorkflowLaunchConfig(cursorSettingsConfig, null, []);
     expect(getTaskNextButtonLabel(settingsOnly)).toBe('Next with Agent');
-    expect(getWorkflowActionButtonLabel('Continue planning', settingsOnly)).toBe('Open Cursor · Continue planning');
+    expect(getWorkflowActionButtonLabel('Continue planning', settingsOnly)).toBe('Open Agent panel · Continue planning');
 
     const presentation = buildExecutorLaunchPresentation(
       cursorSettingsConfig,
@@ -95,7 +95,7 @@ describe('b663c24 regression: settings cursor + runtime clipboard only', () => {
     );
     expect(getTaskNextButtonLabel(presentation.uiWorkflowLaunchConfig)).toBe('Next with Agent');
     expect(getWorkflowActionButtonLabel('Continue planning', presentation.uiWorkflowLaunchConfig)).toBe(
-      'Open Cursor · Continue planning',
+      'Open Agent panel · Continue planning',
     );
     expect(getWorkflowLaunchModeHint(presentation.uiWorkflowLaunchConfig)).toBe('Opens Agent panel');
   });

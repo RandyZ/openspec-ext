@@ -19,6 +19,7 @@ vi.mock('vscode', () => ({
   },
   window: {
     showWarningMessage: vi.fn(),
+    showInformationMessage: vi.fn(),
   },
   env: {
     openExternal: vi.fn(async () => false),
@@ -104,11 +105,50 @@ describe('agentPanelLauncher', () => {
     );
 
     expect(result.layer).toBe('vscodeChat');
+    expect(result.outcome).toBe('prefilled');
     expect(executeCommand).toHaveBeenCalledWith('workbench.action.chat.open', {
       query: '/opsx:apply demo',
       isPartialQuery: true,
       mode: 'agent',
     });
+  });
+
+  it('submits on VS Code when autoSubmit is true', async () => {
+    const executeCommand = vi.fn(async () => undefined);
+    const result = await launchAgentPanelPrompt(
+      { text: '/opsx:verify demo', autoSubmit: true },
+      {
+        isCursorHost: () => false,
+        getCommands: async () => new Set(['workbench.action.chat.open']),
+        executeCommand,
+      },
+    );
+
+    expect(result.outcome).toBe('submitted');
+    expect(executeCommand).toHaveBeenCalledWith('workbench.action.chat.open', {
+      query: '/opsx:verify demo',
+      isPartialQuery: false,
+      mode: 'agent',
+    });
+  });
+
+  it('falls back to prefill when VS Code submit throws', async () => {
+    const executeCommand = vi.fn(async (_cmd: string, args?: { isPartialQuery?: boolean }) => {
+      if (args?.isPartialQuery === false) {
+        throw new Error('submit unsupported');
+      }
+    });
+    const result = await launchAgentPanelPrompt(
+      { text: '/opsx:verify demo', autoSubmit: true },
+      {
+        isCursorHost: () => false,
+        getCommands: async () => new Set(['workbench.action.chat.open']),
+        executeCommand,
+      },
+    );
+
+    expect(result.outcome).toBe('prefilled');
+    expect(executeCommand).toHaveBeenCalledTimes(2);
   });
 
   it('clipboard is the final fallback', async () => {
@@ -227,6 +267,10 @@ describe('agentPanelLauncher', () => {
 
     expect(result.layer).toBe('chatOpen');
     expect(executeCommand).toHaveBeenCalledWith('composer.createNew', expect.any(Object));
-    expect(executeCommand).toHaveBeenCalledWith('workbench.action.chat.open', { query: '/opsx:apply demo' });
+    expect(executeCommand).toHaveBeenCalledWith('workbench.action.chat.open', {
+      query: '/opsx:apply demo',
+      isPartialQuery: true,
+      mode: 'agent',
+    });
   });
 });

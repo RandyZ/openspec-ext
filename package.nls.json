@@ -1,0 +1,6 @@
+{
+  "configuration.openspec.agentAutoSubmit.description": "When launching workflow commands into the IDE Agent panel (VS Code Chat/Copilot or Cursor), control whether the command is sent automatically or only prefilled. Applies to both VS Code and Cursor. never: always prefill; readOnly (default): auto-send explore and verify only; always: auto-send every workflow action including apply and archive. If auto-send is unsupported in your editor version, the extension prefills instead.",
+  "configuration.openspec.agentAutoSubmit.enum.never": "Never auto-send — always prefill the Agent input and wait for Enter.",
+  "configuration.openspec.agentAutoSubmit.enum.readOnly": "Auto-send read-only workflow commands (explore, verify) in VS Code and Cursor.",
+  "configuration.openspec.agentAutoSubmit.enum.always": "Auto-send every workflow command (apply, archive, etc.) in VS Code and Cursor."
+}

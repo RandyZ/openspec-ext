@@ -10,6 +10,7 @@ import { OpenSpecCacheService } from './services/openSpecCacheService';
 import { createProjectContext, ProjectDataGateway } from './services/projectDataGateway';
 import { setLocale, t } from '../i18n';
 import { AgentUnavailableViewProvider } from './providers/agentUnavailableViewProvider';
+import { configureAgentLaunchPrefillNotify } from './services/agentLaunchPrefillNotify';
 
 let dataManager: DataManager | null = null;
 
@@ -89,6 +90,7 @@ export async function activate(context: vscode.ExtensionContext) {
       extensionVersion: context.extension.packageJSON.version ?? '0.0.0',
     });
     dataManager = new DataManager(workspaceRoot, { cacheService, projectRoots });
+    configureAgentLaunchPrefillNotify(context);
     await dataManager.initialize();
 
     let dashboardViewProviderRef: DashboardViewProvider | null = null;

@@ -57,7 +57,7 @@ describe('executorUiLaunchConfig', () => {
     expect(uiConfig.workflowLaunchMode).toBe('adapter');
     expect(uiConfig.preferredAgentAdapter).toBe('cursor');
     expect(getTaskNextButtonLabel(uiConfig)).toBe('Next with Agent');
-    expect(getWorkflowActionButtonLabel('Continue planning', uiConfig)).toBe('Open Cursor · Continue planning');
+    expect(getWorkflowActionButtonLabel('Continue planning', uiConfig)).toBe('Open Agent panel · Continue planning');
     expect(getExecutorUiModeLabel(uiConfig)).toBe('cursor');
   });
 
@@ -94,7 +94,7 @@ describe('executorUiLaunchConfig', () => {
     });
 
     expect(getTaskNextButtonLabel(uiConfig)).toBe('Copy');
-    expect(getWorkflowActionButtonLabel('Continue planning', uiConfig)).not.toContain('Open Cursor');
+    expect(getWorkflowActionButtonLabel('Continue planning', uiConfig)).not.toContain('Open Agent panel');
     expect(getWorkflowLaunchModeHint(uiConfig)).toBe('Copies command');
   });
 
@@ -142,7 +142,7 @@ describe('executorUiLaunchConfig', () => {
       getExampleWorkflowCommand('verify', withoutHostFlag.uiWorkflowLaunchConfig, {
         isCursorHost: withoutHostFlag.isCursorHost === true,
       }),
-    ).toBe('/opsx:verify my-change');
+    ).toBe('/opsx:verify <change-name>');
 
     const withHostFlag = normalizeExecutorPresentation({
       agentAdapters: message.agentAdapters,
@@ -155,7 +155,7 @@ describe('executorUiLaunchConfig', () => {
       getExampleWorkflowCommand('verify', withHostFlag.uiWorkflowLaunchConfig, {
         isCursorHost: withHostFlag.isCursorHost === true,
       }),
-    ).toBe('/opsx-verify my-change');
+    ).toBe('/opsx-verify <change-name>');
   });
 
 });

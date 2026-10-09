@@ -22,6 +22,11 @@ import {
   enrichChangeWithLifecycle,
   type ChangeStatusCounts,
 } from '../../shared/changeLifecycle';
+import {
+  applyTaskProgressToChange,
+  overlayChangeTaskProgressFromFiles,
+  taskProgressFromTasksMarkdown,
+} from './changeTaskProgressFromFile';
 
 export interface ScopeInfo {
   id: string;
@@ -539,6 +544,10 @@ export class DataManager {
           this.contentAccess.autoCompleteParents(tasksChangeName).catch((err) =>
             logger.warn('autoCompleteParents after tasks.md change', err as Error)
           );
+          const scope = this.resolveScopeForRoot(this.watchedProjectRoot);
+          void this.patchCachedTaskProgressFromFile(tasksChangeName, scope).catch((err) =>
+            logger.warn('patchCachedTaskProgressFromFile after tasks.md change', err as Error)
+          );
         }
 
         // Detect which artifact changed and compute downstream invalidations
@@ -833,7 +842,11 @@ export class DataManager {
         services.stateReader.listSpecs(),
         services.stateReader.listArchivedChanges(),
       ]);
-      const changesWithLifecycle = rawChanges.map((change) => enrichChangeWithLifecycle(change));
+      const rawWithFileTaskProgress = await overlayChangeTaskProgressFromFiles(
+        rawChanges,
+        services.contentAccess,
+      );
+      const changesWithLifecycle = rawWithFileTaskProgress.map((change) => enrichChangeWithLifecycle(change));
       const changes = await this.enrichChangesWithProposalWhy(changesWithLifecycle, services.contentAccess);
       const changeStatusCounts = buildChangeStatusCounts(changes, archivedChanges);
 
@@ -1328,6 +1341,38 @@ export class DataManager {
       timestamp: Date.now(),
     };
     await fs.promises.writeFile(filePath, YAML.stringify(data), 'utf8');
+  }
+
+  private async patchCachedTaskProgressFromFile(
+    changeName: string,
+    scope?: OpenSpecScope,
+  ): Promise<void> {
+    if (!this.cachedData || !this.isCurrentScope(scope)) {
+      return;
+    }
+    const services = this.getScopedServices(scope);
+    let content: string;
+    try {
+      content = await services.contentAccess.readArtifact(changeName, 'tasks');
+    } catch {
+      return;
+    }
+    const progress = taskProgressFromTasksMarkdown(content);
+    const index = this.cachedData.changes.findIndex((c) => c.name === changeName);
+    if (index < 0) {
+      return;
+    }
+    const updatedChange = applyTaskProgressToChange(this.cachedData.changes[index], progress);
+    const changes = [...this.cachedData.changes];
+    changes[index] = enrichChangeWithLifecycle(updatedChange);
+    const data: DashboardData = {
+      ...this.cachedData,
+      changes,
+      changeStatusCounts: buildChangeStatusCounts(changes, this.cachedData.archivedChanges),
+      lastRefresh: Date.now(),
+    };
+    this.cachedData = data;
+    this.notifyRefresh(data);
   }
 
   /**

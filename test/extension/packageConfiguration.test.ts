@@ -40,6 +40,7 @@ describe('OpenSpec package configuration', () => {
       type: 'string',
       enum: ['never', 'readOnly', 'always'],
       default: 'readOnly',
+      description: '%configuration.openspec.agentAutoSubmit.description%',
     });
     expect(properties['openspec.cursorLaunchMode']).toMatchObject({
       type: 'string',

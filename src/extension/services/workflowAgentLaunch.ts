@@ -25,6 +25,7 @@ import {
 } from './agentPanelLauncher';
 import { isCursorHost } from '../utils/isCursorHost';
 import { notifyWorkflowCommandCopied } from './workflowClipboardNotify';
+import { notifyAgentPrefillLaunchHint } from './agentLaunchPrefillNotify';
 
 export type WorkflowAgentLaunchTarget =
   | 'clipboard'
@@ -102,7 +103,7 @@ function notifyLaunchResult(
   command: string,
 ): void {
   if (result.outcome === 'deduped') {
-    void vscode.window.showInformationMessage(t('workflow.launchDeduped'));
+    void vscode.window.showInformationMessage(t('workflow.launchJustLaunched'));
     return;
   }
   if (result.target === 'clipboard' || result.outcome === 'copied') {
@@ -113,8 +114,16 @@ function notifyLaunchResult(
     void vscode.window.showInformationMessage(t('agentLaunch.deeplinkPrefilled', { command }));
     return;
   }
-  if (result.layer === 'vscodeChat' || result.target === 'externalAdapter') {
-    void vscode.window.showInformationMessage(t('agentLaunch.prefilledChat', { command }));
+  if (result.outcome === 'prefilled') {
+    void notifyAgentPrefillLaunchHint();
+    return;
+  }
+  if (result.outcome === 'submitted' || result.layer === 'vscodeChat') {
+    void vscode.window.showInformationMessage(t('agentLaunch.openedPanel', { command }));
+    return;
+  }
+  if (result.target === 'externalAdapter') {
+    void notifyAgentPrefillLaunchHint();
     return;
   }
   void vscode.window.showInformationMessage(t('agentLaunch.openedPanel', { command }));
@@ -147,7 +156,7 @@ function buildDedupedLaunchResult(request: WorkflowAgentLaunchRequest): Workflow
     target: resolveLaunchTargetFromPayload(payload, view),
     layer: undefined,
     outcome: 'deduped',
-    message: t('workflow.launchDeduped'),
+    message: t('workflow.launchJustLaunched'),
   };
 }
 

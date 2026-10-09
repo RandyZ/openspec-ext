@@ -11,6 +11,12 @@ vi.mock('@extension/services/agentPanelLauncher', () => ({
   launchAgentPanelPrompt,
 }));
 
+const notifyAgentPrefillLaunchHint = vi.hoisted(() => vi.fn(async () => undefined));
+
+vi.mock('@extension/services/agentLaunchPrefillNotify', () => ({
+  notifyAgentPrefillLaunchHint,
+}));
+
 vi.mock('@extension/adapters', () => ({
   getCurrentAdapter: vi.fn(async () => ({ id: 'cursor', displayName: 'Cursor', fillChat: vi.fn(), executeTask: vi.fn(), isAvailable: vi.fn() })),
   getAdapterById: vi.fn(),
@@ -188,6 +194,22 @@ describe('launchWorkflowAgentCommand', () => {
 
     expect(vscode.env.clipboard.writeText).toHaveBeenCalledTimes(2);
     expect(launchAgentPanelPrompt).not.toHaveBeenCalled();
+  });
+
+  it('shows prefill hint when launch ends in prefill-only', async () => {
+    launchAgentPanelPrompt.mockResolvedValue({
+      success: true,
+      layer: 'vscodeChat',
+      outcome: 'prefilled',
+    });
+
+    await launchWorkflowAgentCommand({
+      action: 'apply',
+      changeName: 'demo-change',
+      workspaceRoot: '/workspace',
+    });
+
+    expect(notifyAgentPrefillLaunchHint).toHaveBeenCalled();
   });
 
   it('dedupes rapid repeat launches for the same change and action', async () => {

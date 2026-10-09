@@ -13,19 +13,22 @@ const agentPanelLaunchConfig = {
   effectiveAdapterId: 'cursor' as const,
 };
 
+const changeName = 'demo-change';
+
 describe('VerifyArchivePanel', () => {
   it('renders run controls for verify and archive', () => {
     setLocale('en');
     const html = renderToStaticMarkup(
       React.createElement(VerifyArchivePanel, {
+        changeName,
         isArchived: false,
         workflowLaunchConfig: agentPanelLaunchConfig,
         onRun: () => undefined,
       })
     );
 
-    expect(html).toContain('Open Cursor · Verify');
-    expect(html).toContain('Open Cursor · Archive');
+    expect(html).toContain('Open Agent panel · Verify');
+    expect(html).toContain('Open Agent panel · Archive');
     expect(html).toContain('Archive Now');
   });
 
@@ -33,6 +36,7 @@ describe('VerifyArchivePanel', () => {
     setLocale('en');
     const html = renderToStaticMarkup(
       React.createElement(VerifyArchivePanel, {
+        changeName,
         isArchived: false,
         canArchiveNow: false,
         archiveNowDisabledReason: 'Complete all required tasks before archiving directly.',
@@ -50,6 +54,7 @@ describe('VerifyArchivePanel', () => {
   it('keeps both archive actions non-executable for archived changes', () => {
     const html = renderToStaticMarkup(
       React.createElement(VerifyArchivePanel, {
+        changeName,
         isArchived: true,
         canArchiveNow: false,
         archiveNowDisabledReason: 'Archived changes are read-only.',
@@ -65,6 +70,7 @@ describe('VerifyArchivePanel', () => {
   it('disables archive when the change is already archived', () => {
     const html = renderToStaticMarkup(
       React.createElement(VerifyArchivePanel, {
+        changeName,
         isArchived: true,
         workflowLaunchConfig: agentPanelLaunchConfig,
         onRun: () => undefined,
@@ -72,21 +78,37 @@ describe('VerifyArchivePanel', () => {
     );
 
     expect(html).toContain('disabled');
-    expect(html).toContain('Open Cursor · Archive');
+    expect(html).toContain('Open Agent panel · Archive');
   });
 
   it('describes Agent panel launch hints instead of terminal session controls', () => {
     setLocale('en');
     const html = renderToStaticMarkup(
       React.createElement(VerifyArchivePanel, {
+        changeName,
         isArchived: false,
         onRun: () => undefined,
       })
     );
 
-    expect(html).toContain('/opsx:verify my-change');
-    expect(html).toContain('/opsx:archive my-change');
+    expect(html).toContain('/opsx:verify demo-change');
+    expect(html).toContain('/opsx:archive demo-change');
     expect(html).not.toContain('Reveal Terminal');
     expect(html).not.toContain('Clear Session');
+  });
+
+  it('localizes action labels in zh-CN', () => {
+    setLocale('zh-cn');
+    const html = renderToStaticMarkup(
+      React.createElement(VerifyArchivePanel, {
+        changeName,
+        isArchived: false,
+        workflowLaunchConfig: agentPanelLaunchConfig,
+        onRun: () => undefined,
+      })
+    );
+
+    expect(html).toContain('打开 Agent 面板 · 验证');
+    expect(html).toContain('打开 Agent 面板 · 归档');
   });
 });

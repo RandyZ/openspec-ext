@@ -2,7 +2,7 @@
   "name": "openspec-workflow",
   "displayName": "OpenSpec Workflow",
   "description": "Project-first OpenSpec dashboard for changes, specs, stores, worksets, and safe workflow actions",
-  "version": "0.2.4-agent-panel.18",
+  "version": "0.2.5-agent-panel.1",
   "publisher": "randysss",
   "license": "MIT",
   "engines": {
@@ -109,11 +109,11 @@
             "always"
           ],
           "default": "readOnly",
-          "description": "When launching in the Cursor Agent panel via composer.createNew, auto-send the workflow command. readOnly auto-sends explore and verify only; other layers always prefill.",
+          "description": "%configuration.openspec.agentAutoSubmit.description%",
           "enumDescriptions": [
-            "Never auto-send; always prefill and wait for Enter.",
-            "Auto-send read-only workflow commands (explore, verify).",
-            "Auto-send every workflow command (including apply and archive)."
+            "%configuration.openspec.agentAutoSubmit.enum.never%",
+            "%configuration.openspec.agentAutoSubmit.enum.readOnly%",
+            "%configuration.openspec.agentAutoSubmit.enum.always%"
           ]
         },
         "openspec.cursorLaunchMode": {

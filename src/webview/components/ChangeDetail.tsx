@@ -1025,6 +1025,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         {activeTab === 'verifyArchive' ? (
           <div className="flex flex-col gap-4 max-w-4xl">
             <VerifyArchivePanel
+              changeName={changeName}
               isArchived={isArchived}
               canArchiveNow={canArchiveNow}
               archiveNowDisabledReason={archiveNowDisabledReason}

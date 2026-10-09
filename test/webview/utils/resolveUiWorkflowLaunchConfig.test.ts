@@ -19,6 +19,6 @@ describe('resolveUiWorkflowLaunchConfig re-export', () => {
     setLocale('en');
     const uiConfig = resolveUiWorkflowLaunchConfig(cursorLaunchConfig, 'clipboard');
     expect(getTaskNextButtonLabel(uiConfig)).toBe('Next with Agent');
-    expect(getWorkflowActionButtonLabel('Continue planning', uiConfig)).toBe('Open Cursor · Continue planning');
+    expect(getWorkflowActionButtonLabel('Continue planning', uiConfig)).toBe('Open Agent panel · Continue planning');
   });
 });

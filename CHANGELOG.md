@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5-agent-panel.1] - 2026-10-09
+
+### Changed
+
+- `openspec.agentAutoSubmit` now applies to VS Code Chat (`workbench.action.chat.open` with `isPartialQuery: false` to submit) as well as Cursor; prefill-only launches show a one-shot hint with a link to the setting.
+- Dashboard task counts are derived from `tasks.md` parsing (CLI-aligned) for faster updates after edits; sidebar receives immediate patches on file watch.
+- Localized workflow action labels in zh-CN; copy/command hints use the current change name instead of `my-change`.
+- Dedupe toast uses “just launched” semantics; Agent panel button wording clarified.
+
+### Fixed
+
+- Cursor: best-effort focus on new composer after `composer.createNew` (see `docs/CURSOR_COMPOSER_FOCUS.md`).
+
+## [0.2.5-agent-panel.0] - 2026-10-08
+
 ### Changed
 
 - Workflow actions (Apply, Verify, Archive, Continue, etc.) now launch through a unified IDE Agent panel path on Cursor and VS Code instead of opening an editor-area `agent` terminal by default.
