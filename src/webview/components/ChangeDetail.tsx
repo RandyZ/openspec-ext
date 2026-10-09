@@ -58,6 +58,7 @@ import {
   shouldShowActiveTabLoadingForArtifactFetch,
 } from '../utils/changeDetailTasksFetch';
 import type { WorkflowActionReceipt } from '../../shared/changeWorkflow';
+import { isChangeTaskProgressPatch } from '../../shared/changeTaskProgressPatch';
 
 const MISSING_ARTIFACT_MESSAGE = t('artifact.missing');
 
@@ -548,23 +549,24 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         })) {
           setVerifyArchiveTasksLoading(false);
         }
-      } else if (data.type === 'changeTaskProgressPatch' && data.changeName === changeName) {
-        if (data.scopeId && scopeId && data.scopeId !== scopeId) {
+      } else if (isChangeTaskProgressPatch(msg) && msg.changeName === changeName) {
+        const patch = msg;
+        if (patch.scopeId && scopeId && patch.scopeId !== scopeId) {
           return;
         }
         setTasksProgressError(null);
         setTasksProgressUnknown(false);
-        setCompletedTasks(data.completedTasks);
-        setTotalTasks(data.totalTasks);
+        setCompletedTasks(patch.completedTasks);
+        setTotalTasks(patch.totalTasks);
         setVerifyArchiveTasksLoading(false);
-        if (typeof data.tasksContent === 'string') {
+        if (typeof patch.tasksContent === 'string') {
           if (activeTabRef.current === 'tasks' || activeTabRef.current === 'verifyArchive') {
-            setContent(data.tasksContent);
+            setContent(patch.tasksContent);
           }
           completeArtifactFetchAndStoreContent({
             scopeId,
             artifactType: 'tasks',
-            content: data.tasksContent,
+            content: patch.tasksContent,
             coordinator: artifactFetchCoordinatorRef.current,
             contentCache: contentCacheRef.current,
           });

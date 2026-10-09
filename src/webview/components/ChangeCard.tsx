@@ -12,11 +12,12 @@ import type { OpenSpecRootBinding } from '../types/messages';
 import {
   getWorkflowActionButtonLabel,
   getWorkflowActionTitle,
+  localizeWorkflowActionDisplayLabel,
   type WorkflowLaunchConfigView,
 } from '../utils/workflowLaunchLabels';
 import { formatDateLabel, formatRelativeDateLabel } from '../utils/dateLabels';
 
-const LIFECYCLE_BADGE_KEYS: Record<ChangeLifecycleStatus, string> = {
+const LIFECYCLE_BADGE_KEYS: Record<ChangeLifecycleStatus, Parameters<typeof t>[0]> = {
   planning: 'dashboard.lifecyclePlanning',
   'ready-to-apply': 'dashboard.lifecycleReadyToApply',
   applying: 'dashboard.lifecycleApplying',
@@ -205,7 +206,11 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
           data-workflow-summary
           style={{ color: 'var(--vscode-descriptionForeground)' }}
         >
-          <span>{resolvedActions.recommended?.label ?? t('dashboard.noRecommendedAction')}</span>
+          <span>
+            {resolvedActions.recommended
+              ? localizeWorkflowActionDisplayLabel(resolvedActions.recommended.label)
+              : t('dashboard.noRecommendedAction')}
+          </span>
           {additionalActionCount > 0 && <span>{t('dashboard.moreActions', { count: additionalActionCount })}</span>}
           {resolvedActions.blocked.length > 0 && <span>{t('dashboard.blockedCount', { count: resolvedActions.blocked.length })}</span>}
           {resolvedActions.skipped.length > 0 && <span>{t('dashboard.skippedCount', { count: resolvedActions.skipped.length })}</span>}

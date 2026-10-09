@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5-agent-panel.3] - 2026-10-09
+
+### Fixed
+
+- Typecheck: narrow `changeTaskProgressPatch` messages in Change Detail; accept `readonly` change lists in task-progress patch helper.
+- CI typecheck gate: `check-typecheck-baseline.sh` counts errors with `grep` (no `rg` dependency); fails loudly on missing tools or unparseable output.
+- zh-CN: localized sidebar card action summaries, lifecycle labels, New Change, and Verify & Archive intro copy (slash commands unchanged).
+
 ## [0.2.5-agent-panel.2] - 2026-10-09
 
 ### Fixed

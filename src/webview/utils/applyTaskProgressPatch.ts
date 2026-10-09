@@ -1,10 +1,12 @@
 import type { ChangeInfo } from '../types/messages';
 import type { ChangeTaskProgressPatch } from '../../shared/changeTaskProgressPatch';
 
-export function applyTaskProgressPatchToChange(
-  change: ChangeInfo,
+type ChangeTaskProgressRow = Pick<ChangeInfo, 'name' | 'completedTasks' | 'totalTasks' | 'status'>;
+
+export function applyTaskProgressPatchToChange<T extends ChangeTaskProgressRow>(
+  change: T,
   patch: ChangeTaskProgressPatch,
-): ChangeInfo {
+): T {
   if (change.name !== patch.changeName) return change;
   const status = patch.totalTasks === 0
     ? 'draft'
@@ -19,9 +21,9 @@ export function applyTaskProgressPatchToChange(
   };
 }
 
-export function applyTaskProgressPatchToChanges(
-  changes: ChangeInfo[],
+export function applyTaskProgressPatchToChanges<T extends ChangeTaskProgressRow>(
+  changes: readonly T[],
   patch: ChangeTaskProgressPatch,
-): ChangeInfo[] {
+): T[] {
   return changes.map((change) => applyTaskProgressPatchToChange(change, patch));
 }
