@@ -317,7 +317,11 @@ describe('Dashboard recommended action rail', () => {
     expect(html).toMatch(/data-priority-row="recommended-change"[^>]*data-priority-status="[^"]+"/);
     expect(html).toMatch(/data-change-name="attention-change"[^>]*class="[^"]*truncate/);
     expect(html).toMatch(/data-priority-row="recommended-change"[^>]*flex-col/);
-    expect(html).toMatch(/data-priority-cta="recommended-change"[^>]*max-w-\[55%\]/);
+    expect(html).toContain('flex-wrap');
+    expect(html).toMatch(/data-priority-change="recommended-change"[^>]*min-w-\[7rem\]/);
+    expect(html).toMatch(/data-priority-cta="recommended-change"[^>]*shrink-0/);
+    expect(html).not.toMatch(/data-priority-cta="recommended-change"[^>]*truncate/);
+    expect(html).not.toMatch(/data-priority-cta="recommended-change"[^>]*max-w-\[55%\]/);
     expect(html).toContain('Review');
     expect(html).toContain('Copy Verify');
     expect(html).toContain('Copy Continue planning');

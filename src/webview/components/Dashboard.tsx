@@ -868,12 +868,12 @@ export const Dashboard: React.FC = () => {
                       {group.label}
                     </div>
                   </div>
-                  <div className="flex min-w-0 items-center gap-2 pl-6">
+                  <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 pl-6">
                     <button
                       type="button"
                       data-change-name={change.name}
                       data-priority-change={change.name}
-                      className="min-w-0 flex-1 truncate text-left text-xs focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)]"
+                      className="min-w-[7rem] min-w-0 flex-1 truncate text-left text-xs focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)]"
                       title={change.name}
                       aria-label={`${change.name} · ${t('action.openInEditor')}`}
                       onClick={() => handleOpenChange(change.name)}
@@ -883,7 +883,7 @@ export const Dashboard: React.FC = () => {
                     <button
                       type="button"
                       data-priority-cta={change.name}
-                      className="max-w-[55%] shrink-0 truncate rounded px-2 py-1 text-xs focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)]"
+                      className="shrink-0 rounded px-2 py-1 text-xs focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)]"
                       style={{
                         background: 'var(--vscode-button-secondaryBackground)',
                         color: 'var(--vscode-button-secondaryForeground)',
