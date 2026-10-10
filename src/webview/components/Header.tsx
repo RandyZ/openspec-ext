@@ -29,9 +29,28 @@ export interface HeaderProps {
   onOpenWorksets?: () => void;
   onOpenDashboard?: () => void;
   worksetCount?: number;
+  /** Total specs in project + referenced stores; badge shown only when count is positive. */
+  specsCount?: number;
   /** Host capability fact; `false` explains the disabled tab with the upgrade copy. */
   worksetsCapabilityAvailable?: boolean;
   activeProjectTab?: 'changes' | 'specs' | 'worksets';
+}
+
+const navListBorderColor = 'var(--vscode-sideBarSectionHeader-border, var(--vscode-panel-border))';
+
+function NavCountBadge({ count }: { count: number }) {
+  return (
+    <span
+      className="shrink-0 rounded-full px-1.5 text-[10.5px] leading-4 tabular-nums"
+      style={{
+        background: 'var(--vscode-badge-background)',
+        color: 'var(--vscode-badge-foreground)',
+      }}
+      aria-hidden="true"
+    >
+      {count}
+    </span>
+  );
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -51,6 +70,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenWorksets,
   onOpenDashboard,
   worksetCount,
+  specsCount = 0,
   worksetsCapabilityAvailable,
   activeProjectTab,
 }) => {
@@ -69,8 +89,14 @@ export const Header: React.FC<HeaderProps> = ({
     ? t('scope.featureGated.upgradeNotice')
     : t('projectSidebar.worksetsUnavailable');
   const worksetsAccessibleName = `${t('projectSidebar.worksets')}${worksetCount !== undefined ? ` (${worksetCount})` : ''}`;
-  const dashboardAccessibleName = `${t('projectSidebar.dashboard')} · ${t('action.openInEditor')}`;
+  const dashboardNavLabel = t('projectSidebar.navProjectDashboard');
+  const dashboardAccessibleName = `${dashboardNavLabel} · ${t('action.openInEditor')}`;
+  const specsNavLabel = t('projectSidebar.specs');
+  const specsTooltip = t('projectSidebar.cardSpecsSupporting');
+  const worksetsNavLabel = t('projectSidebar.navWorksetProjects');
   const worksetsUnavailableId = 'project-worksets-unavailable';
+  const navRowClass =
+    'group flex h-[26px] w-full min-w-0 items-center gap-2 rounded px-1.5 text-left text-xs focus:outline-none focus-visible:outline focus-visible:outline-1 disabled:cursor-not-allowed disabled:opacity-60';
 
   // Disable root actions during any in-flight scope/store operation so the
   // selector reflects the pending state (preserved from the old ScopeBar logic).
@@ -153,35 +179,52 @@ export const Header: React.FC<HeaderProps> = ({
             aria-label={t('projectSidebar.navigationLabel')}
             data-project-navigation
           >
-            <div className="grid grid-cols-2 gap-1" data-project-action-grid>
+            <div
+              className="py-0.5"
+              data-project-nav-list
+              style={{
+                borderTop: `1px solid ${navListBorderColor}`,
+                borderBottom: `1px solid ${navListBorderColor}`,
+              }}
+            >
+              <button
+                type="button"
+                onClick={onOpenDashboard}
+                data-project-action="dashboard"
+                aria-label={dashboardAccessibleName}
+                title={t('projectSidebar.cardDashboardSupporting')}
+                className={`${navRowClass} hover:bg-[var(--vscode-list-hoverBackground)]`}
+                style={{
+                  color: 'var(--vscode-foreground)',
+                  outlineColor: 'var(--vscode-focusBorder)',
+                }}
+              >
+                <span className="codicon codicon-dashboard shrink-0 text-base" aria-hidden="true" style={{ color: 'var(--vscode-icon-foreground)' }} />
+                <span className="min-w-0 flex-1 truncate">{dashboardNavLabel}</span>
+                <span className="codicon codicon-link-external shrink-0 text-[11px] opacity-70" aria-hidden="true" />
+              </button>
               <button
                 type="button"
                 onClick={onOpenSpecs}
                 data-project-action="specs"
                 aria-pressed={activeProjectTab === 'specs'}
-                aria-label={t('projectSidebar.specs')}
-                title={t('projectSidebar.specs')}
-                className="group min-w-0 overflow-hidden rounded border px-2 py-2 text-left text-xs hover:brightness-110 focus:outline-none focus-visible:ring-1"
+                aria-label={specsNavLabel}
+                title={specsTooltip}
+                className={`${navRowClass} hover:bg-[var(--vscode-list-hoverBackground)]`}
                 style={{
-                  borderColor: 'var(--vscode-panel-border)',
                   background: activeProjectTab === 'specs'
                     ? 'var(--vscode-list-activeSelectionBackground)'
-                    : 'var(--vscode-sideBar-background)',
+                    : undefined,
                   color: activeProjectTab === 'specs'
                     ? 'var(--vscode-list-activeSelectionForeground)'
                     : 'var(--vscode-foreground)',
                   outlineColor: 'var(--vscode-focusBorder)',
                 }}
               >
-                <span className="flex min-w-0 items-start gap-2">
-                  <span className="codicon codicon-book mt-0.5 shrink-0" aria-hidden="true" />
-                  <span className="min-w-0">
-                    <span className="block truncate font-semibold">{t('projectSidebar.specs')}</span>
-                    <span data-project-action-supporting className="block truncate text-[10px]" style={{ color: 'var(--vscode-descriptionForeground)' }}>
-                      {t('projectSidebar.cardSpecsSupporting')}
-                    </span>
-                  </span>
-                </span>
+                <span className="codicon codicon-symbol-namespace shrink-0 text-base" aria-hidden="true" style={{ color: 'var(--vscode-icon-foreground)' }} />
+                <span className="min-w-0 flex-1 truncate">{specsNavLabel}</span>
+                {specsCount > 0 ? <NavCountBadge count={specsCount} /> : null}
+                <span className="codicon codicon-chevron-right shrink-0 text-[11px] opacity-70" aria-hidden="true" />
               </button>
               <button
                 type="button"
@@ -192,58 +235,30 @@ export const Header: React.FC<HeaderProps> = ({
                 aria-describedby={!worksetsAvailable ? worksetsUnavailableId : undefined}
                 aria-label={worksetsAccessibleName}
                 title={worksetsAvailable
-                  ? t('projectSidebar.worksets')
+                  ? t('projectSidebar.cardWorksetsSupporting')
                   : worksetsDisabledCopy}
-                className="group min-w-0 overflow-hidden rounded border px-2 py-2 text-left text-xs hover:brightness-110 focus:outline-none focus-visible:ring-1 disabled:cursor-not-allowed disabled:opacity-60"
+                className={`${navRowClass} hover:bg-[var(--vscode-list-hoverBackground)]`}
                 style={{
-                  borderColor: 'var(--vscode-panel-border)',
-                  background: 'var(--vscode-sideBar-background)',
-                  color: 'var(--vscode-foreground)',
+                  background: activeProjectTab === 'worksets'
+                    ? 'var(--vscode-list-activeSelectionBackground)'
+                    : undefined,
+                  color: activeProjectTab === 'worksets'
+                    ? 'var(--vscode-list-activeSelectionForeground)'
+                    : 'var(--vscode-foreground)',
                   outlineColor: 'var(--vscode-focusBorder)',
                 }}
               >
-                <span className="flex min-w-0 items-start gap-2">
-                  <span className="codicon codicon-repo-clone mt-0.5 shrink-0" aria-hidden="true" />
-                  <span className="min-w-0">
-                    <span className="block truncate font-semibold">
-                      {t('projectSidebar.worksets')}{worksetCount ? ` (${worksetCount})` : ''}
-                    </span>
-                    <span
-                      id={!worksetsAvailable ? worksetsUnavailableId : undefined}
-                      data-project-action-supporting
-                      className="block truncate text-[10px]"
-                      style={{ color: 'var(--vscode-descriptionForeground)' }}
-                    >
-                      {worksetsAvailable
-                        ? t('projectSidebar.cardWorksetsSupporting')
-                        : worksetsDisabledCopy}
-                    </span>
+                <span className="codicon codicon-folder-library shrink-0 text-base" aria-hidden="true" style={{ color: 'var(--vscode-icon-foreground)' }} />
+                <span className="min-w-0 flex-1 truncate">{worksetsNavLabel}</span>
+                {worksetsAvailable && worksetCount !== undefined ? (
+                  <NavCountBadge count={worksetCount} />
+                ) : null}
+                <span className="codicon codicon-chevron-right shrink-0 text-[11px] opacity-70" aria-hidden="true" />
+                {!worksetsAvailable ? (
+                  <span id={worksetsUnavailableId} className="sr-only">
+                    {worksetsDisabledCopy}
                   </span>
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={onOpenDashboard}
-                data-project-action="dashboard"
-                aria-label={dashboardAccessibleName}
-                title={dashboardAccessibleName}
-                className="group min-w-0 overflow-hidden rounded border px-2 py-2 text-left text-xs hover:brightness-110 focus:outline-none focus-visible:ring-1"
-                style={{
-                  borderColor: 'var(--vscode-panel-border)',
-                  background: 'var(--vscode-sideBar-background)',
-                  color: 'var(--vscode-foreground)',
-                  outlineColor: 'var(--vscode-focusBorder)',
-                }}
-              >
-                <span className="flex min-w-0 items-start gap-2">
-                  <span className="codicon codicon-dashboard mt-0.5 shrink-0" aria-hidden="true" />
-                  <span className="min-w-0">
-                    <span className="block truncate font-semibold">{t('projectSidebar.dashboard')}</span>
-                    <span data-project-action-supporting className="block truncate text-[10px]" style={{ color: 'var(--vscode-descriptionForeground)' }}>
-                      {t('projectSidebar.cardDashboardSupporting')}
-                    </span>
-                  </span>
-                </span>
+                ) : null}
               </button>
             </div>
           </nav>

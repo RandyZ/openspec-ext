@@ -210,7 +210,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
             <button
               type="button"
               data-open-changes-in-editor
-              className="codicon codicon-link-external shrink-0 rounded p-0.5 text-xs hover:bg-[var(--vscode-toolbar-hoverBackground)] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)]"
+              className="codicon codicon-link-external shrink-0 rounded border border-transparent p-0.5 text-base opacity-70 hover:border-[var(--vscode-panel-border)] hover:bg-[var(--vscode-toolbar-hoverBackground)] hover:opacity-100 focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)]"
               style={{ color: 'var(--vscode-icon-foreground)' }}
               aria-label={t('action.openInEditor')}
               title={t('action.openInEditor')}

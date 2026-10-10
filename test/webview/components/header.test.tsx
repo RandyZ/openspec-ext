@@ -25,20 +25,6 @@ function collectProjectActionButtons(node: React.ReactNode): ActionButton[] {
     : children;
 }
 
-function collectElements(node: React.ReactNode, predicate: (element: React.ReactElement) => boolean): React.ReactElement[] {
-  if (Array.isArray(node)) return node.flatMap((item) => collectElements(item, predicate));
-  if (!React.isValidElement(node)) return [];
-
-  const props = node.props as { children?: React.ReactNode };
-  return [
-    ...(predicate(node) ? [node] : []),
-    ...React.Children.toArray(props.children).flatMap((item) => collectElements(item, predicate)),
-  ];
-}
-
-// Direct-call rendering returns `ReactNode | Promise<ReactNode>` under React 19
-// types; Header renders synchronously, so a precise element return type keeps
-// every collector call site free of tsc debt.
 function createProjectHeader(overrides: Partial<HeaderProps> = {}): React.ReactElement {
   return Header({
     onRefresh: vi.fn(),
@@ -51,7 +37,7 @@ function createProjectHeader(overrides: Partial<HeaderProps> = {}): React.ReactE
 describe('Project-first Header', () => {
   afterEach(() => setLocale('en'));
 
-  it('renders the three actions in a narrow, non-tablist launcher', () => {
+  it('renders the three nav rows in a vertical list (not tablist tiles)', () => {
     const html = renderToStaticMarkup(
       <Header
         onRefresh={vi.fn()}
@@ -60,23 +46,25 @@ describe('Project-first Header', () => {
         project={{ id: '/projects/current', label: 'Current Project', projectPath: '/projects/current' }}
         onOpenSpecs={vi.fn()}
         onOpenWorksets={vi.fn()}
+        onOpenDashboard={vi.fn()}
         activeProjectTab="specs"
       />
     );
 
-    expect(html).toContain('data-project-action-grid');
+    expect(html).toContain('data-project-nav-list');
+    expect(html).not.toContain('data-project-action-grid');
     expect(html).not.toContain('role="tablist"');
     expect(html).not.toContain('data-project-action="changes"');
     expect(html).toContain('aria-pressed="true"');
+    expect(html.indexOf('data-project-action="dashboard"')).toBeLessThan(
+      html.indexOf('data-project-action="specs"'),
+    );
     expect(html.indexOf('data-project-action="specs"')).toBeLessThan(
       html.indexOf('data-project-action="worksets"'),
     );
-    expect(html.indexOf('data-project-action="worksets"')).toBeLessThan(
-      html.indexOf('data-project-action="dashboard"'),
-    );
   });
 
-  it('keeps the Worksets cell visible and disabled when navigation is unavailable', () => {
+  it('keeps the Worksets row visible and disabled when navigation is unavailable', () => {
     const html = renderToStaticMarkup(
       <Header
         onRefresh={vi.fn()}
@@ -92,40 +80,29 @@ describe('Project-first Header', () => {
     expect(html).toMatch(/No trusted Workset membership|Worksets unavailable/i);
   });
 
-  it('renders three named, bounded card buttons with icons and local selection semantics', () => {
+  it('renders compact nav rows with short labels, badges, and trailing cues', () => {
     const header = createProjectHeader({
       onOpenSpecs: vi.fn(),
       onOpenWorksets: vi.fn(),
       onOpenDashboard: vi.fn(),
       worksetCount: 2,
+      specsCount: 12,
       activeProjectTab: 'specs',
     });
     const buttons = collectProjectActionButtons(header);
 
     expect(buttons).toHaveLength(3);
     expect(buttons.map((button) => button.props['aria-label'])).toEqual([
+      'Project Dashboard · Open in Editor',
       'Specs',
       'Browse Workset Projects (2)',
-      'Dashboard · Open in Editor',
     ]);
-    expect(buttons.every((button) => button.props.type === 'button')).toBe(true);
-    expect(buttons.every((button) => button.props.className?.includes('min-w-0'))).toBe(true);
-    expect(buttons.every((button) => button.props.className?.includes('hover:'))).toBe(true);
-    expect(buttons.every((button) => button.props.className?.includes('focus-visible'))).toBe(true);
-    expect(buttons.map((button) => button.props['aria-pressed'])).toEqual([true, false, undefined]);
-    expect(buttons.map((button) => (
-      collectElements(button, (element) => (
-        typeof (element.props as { className?: unknown }).className === 'string'
-        && (element.props as { className: string }).className.includes('codicon-')
-      )).length
-    ))).toEqual([1, 1, 1]);
-    expect(buttons.every((button) => collectElements(button, (element) => (
-      Boolean((element.props as { 'data-project-action-supporting'?: string })['data-project-action-supporting'])
-    )).length === 1)).toBe(true);
-
-    const dashboard = buttons[2];
-    expect(dashboard.props.title).toContain('Dashboard');
-    expect(dashboard.props.title).toContain('Editor');
+    expect(buttons.map((button) => button.props['aria-pressed'])).toEqual([undefined, true, false]);
+    expect(renderToStaticMarkup(header)).toContain('Project Dashboard');
+    expect(renderToStaticMarkup(header)).toContain('Workset Projects');
+    expect(renderToStaticMarkup(header)).toContain('codicon-link-external');
+    expect(renderToStaticMarkup(header)).toContain('codicon-chevron-right');
+    expect(renderToStaticMarkup(header)).not.toContain('data-project-action-supporting');
   });
 
   it('includes an explicit Editor cue in the Dashboard accessible name', () => {
@@ -141,8 +118,6 @@ describe('Project-first Header', () => {
 
   it('gives unavailable Worksets a complete reason and prevents navigation', () => {
     const onOpenWorksets = vi.fn();
-    // No onOpenWorksets handler: upstream (navigation + capability) decided the
-    // surface is unavailable, so the tab must stay disabled and inert.
     const header = createProjectHeader({
       onOpenSpecs: vi.fn(),
       onOpenDashboard: vi.fn(),
@@ -157,11 +132,6 @@ describe('Project-first Header', () => {
     expect(worksets?.props.disabled).toBe(true);
     expect(worksets?.props['aria-describedby']).toBeDefined();
     expect(worksets?.props.title).toContain('No trusted Workset membership available');
-    const reason = collectElements(header, (element) => (
-      (element.props as { id?: string }).id === worksets?.props['aria-describedby']
-    ));
-    expect(reason).toHaveLength(1);
-    expect(reason[0].props.children).toContain('No trusted Workset membership available');
     expect(worksets?.props.onClick).toBeUndefined();
     if (worksets && !worksets.props.disabled) worksets.props.onClick?.();
     expect(onOpenWorksets).not.toHaveBeenCalled();
@@ -176,19 +146,10 @@ describe('Project-first Header', () => {
     );
 
     expect(worksets?.props.disabled).toBe(true);
-    expect(worksets?.props['aria-describedby']).toBeDefined();
     expect(worksets?.props.title).toContain('Stores and worksets require OpenSpec 1.5.0 or newer.');
-    const reason = collectElements(header, (element) => (
-      (element.props as { id?: string }).id === worksets?.props['aria-describedby']
-    ));
-    expect(reason).toHaveLength(1);
-    expect((reason[0]?.props as { children?: string } | undefined)?.children)
-      .toContain('Stores and worksets require OpenSpec 1.5.0 or newer.');
   });
 
   it('keeps Worksets available for zero worksets when an open handler exists', () => {
-    // Zero worksets is the first-creation case, never an unavailable state:
-    // the count must not gate the tab, only the upstream-provided handler does.
     const onOpenWorksets = vi.fn();
     const header = createProjectHeader({
       onOpenWorksets,
@@ -200,7 +161,6 @@ describe('Project-first Header', () => {
     );
 
     expect(worksets?.props.disabled).toBe(false);
-    expect(worksets?.props['aria-describedby']).toBeUndefined();
     expect(worksets?.props.title).toContain('Browse Workset Projects');
     worksets?.props.onClick?.();
     expect(onOpenWorksets).toHaveBeenCalledTimes(1);
@@ -245,13 +205,11 @@ describe('Project-first Header', () => {
     expect(html).toContain('aria-label="Current Project"');
     expect(html).toContain('data-project-identity');
     expect(html).toContain('data-project-navigation');
-    expect(html).toContain('Current Project');
     expect(html.indexOf('data-project-identity')).toBeLessThan(html.indexOf('data-project-navigation'));
     expect(html).toContain('data-project-navigation="true"');
-    expect(html).toContain('class="flex flex-col gap-1"');
   });
 
-  it('exposes a separate Worksets navigation action without moving Project identity', () => {
+  it('exposes Worksets with a short visible label and descriptive accessible name', () => {
     const html = renderToStaticMarkup(
       <Header
         onRefresh={vi.fn()}
@@ -263,14 +221,14 @@ describe('Project-first Header', () => {
       />
     );
 
-    expect(html).toContain('Browse Workset Projects');
+    expect(html).toContain('Workset Projects');
     expect(html).toContain('data-project-action="worksets"');
     expect(html).toContain('aria-label="Browse Workset Projects (1)"');
     expect(html).toContain('title="Browse Workset Projects"');
-    expect(html.indexOf('data-project-identity')).toBeLessThan(html.indexOf('Browse Workset Projects'));
+    expect(html.indexOf('data-project-identity')).toBeLessThan(html.indexOf('Workset Projects'));
   });
 
-  it('translates card supporting text and navigation accessible names', () => {
+  it('translates nav labels and keeps long copy in tooltips', () => {
     setLocale('zh-cn');
     const html = renderToStaticMarkup(
       <Header
@@ -280,16 +238,16 @@ describe('Project-first Header', () => {
         project={{ id: '/projects/current', label: 'Current Project', projectPath: '/projects/current' }}
         onOpenSpecs={vi.fn()}
         onOpenDashboard={vi.fn()}
+        onOpenWorksets={vi.fn()}
+        worksetCount={4}
       />
     );
 
     expect(html).toContain('aria-label="项目导航"');
-    expect(html).toContain('浏览本地 Spec');
-    expect(html).toContain('在编辑器中打开项目 Dashboard');
-    // The Worksets launcher keeps its browsing-for-current-Project accessible
-    // name in zh-cn too (short visible label, descriptive accessible name).
-    expect(html).toContain('浏览 Workset 项目');
+    expect(html).toContain('项目仪表盘');
+    expect(html).toContain('Workset 项目');
+    expect(html).toContain('title="浏览本地 Spec"');
+    expect(html).toContain('title="在编辑器中打开项目 Dashboard"');
     expect(html).not.toContain('aria-label="Project navigation"');
-    expect(html).not.toContain('Browse Workset Projects');
   });
 });

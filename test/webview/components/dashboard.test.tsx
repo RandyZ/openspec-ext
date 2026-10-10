@@ -645,18 +645,20 @@ describe('project page contract', () => {
       }],
     });
 
-    expect(html).toContain('data-project-action-grid');
+    expect(html).toContain('data-project-nav-list');
+    expect(html).not.toContain('data-project-action-grid');
     expect(html).not.toContain('data-project-action="changes"');
     expect(html).toContain('data-project-action="specs"');
     expect(html).toContain('data-project-action="worksets"');
     expect(html).toContain('data-project-action="dashboard"');
     expect(html).toContain('data-open-changes-in-editor');
+    expect(html).toContain('Project Dashboard');
     expect(html).not.toContain('role="tablist"');
+    expect(html.indexOf('data-project-action="dashboard"')).toBeLessThan(
+      html.indexOf('data-project-action="specs"'),
+    );
     expect(html.indexOf('data-project-action="specs"')).toBeLessThan(
       html.indexOf('data-project-action="worksets"'),
-    );
-    expect(html.indexOf('data-project-action="worksets"')).toBeLessThan(
-      html.indexOf('data-project-action="dashboard"'),
     );
     expect(html).toContain('active-change');
     expect(html).not.toContain('Project Specs');
@@ -684,7 +686,7 @@ describe('project page contract', () => {
     expect(html).toContain('data-project-action="worksets"');
     // The disabled attribute must be absent (Tailwind disabled: classes always exist).
     expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*data-project-action="worksets"/);
-    expect(html).toContain('Browse Workset Projects');
+    expect(html).toContain('Workset Projects');
     expect(html).not.toContain('No trusted Workset membership available');
   });
 

@@ -338,6 +338,8 @@
   "projectSidebar.referencedStoreSpecs": "Referenced Store Specs: {storeId}",
   "projectSidebar.emptyStoreSpecs": "No specs in referenced Store {storeId}",
   "projectSidebar.worksets": "Browse Workset Projects",
+  "projectSidebar.navProjectDashboard": "Project Dashboard",
+  "projectSidebar.navWorksetProjects": "Workset Projects",
   "projectSidebar.dashboard": "Dashboard",
   "projectSidebar.worksetsUnavailable": "No trusted Workset membership available",
   "projectDashboard.title": "Project Dashboard",

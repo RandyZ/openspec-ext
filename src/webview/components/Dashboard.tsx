@@ -744,6 +744,13 @@ export const Dashboard: React.FC = () => {
     .slice(0, 3);
   const priorityWorkflowConfig = workflowLaunchConfig ?? projectSidebar?.workflowLaunchConfig;
   const projectBinding = projectSidebar?.binding;
+  const projectSpecsCount = projectSidebar
+    ? (projectSidebar.projectSpecs?.length ?? 0)
+      + (projectSidebar.referencedStoreSpecs ?? []).reduce(
+        (total, group) => total + group.specs.length,
+        0,
+      )
+    : 0;
 
   return (
     <div className="min-h-screen" style={{ 
@@ -772,6 +779,7 @@ export const Dashboard: React.FC = () => {
             ? () => postMessage(sendMessage.openProjectDashboard())
             : undefined}
           activeProjectTab={projectSidebar ? projectFirstTab : undefined}
+          specsCount={projectSpecsCount}
           worksetCount={projectSidebar?.worksetNavigation?.worksets.length ?? 0}
           worksetsCapabilityAvailable={projectSidebar
             ? projectSidebar.worksetCapabilityAvailable !== false
