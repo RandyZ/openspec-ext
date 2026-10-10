@@ -86,7 +86,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   private projectRequestGeneration = 0;
   /** Newest in-flight (or settled) Project Sidebar reload; lets a superseded caller follow the chain. */
   private latestProjectReload?: Promise<ProjectReloadOutcome>;
-  private skipNextProjectRefreshCallback = false;
   /** Ephemeral, process-local explicit Planning Store selector for the current Project. */
   private explicitProjectStoreId?: string;
   /** Single-flight lock: at most one Workset creation may run at a time. */
@@ -114,10 +113,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         return;
       }
       if (this.isProjectFirst()) {
-        if (this.skipNextProjectRefreshCallback) {
-          this.skipNextProjectRefreshCallback = false;
-          return;
-        }
         this.mergeDashboardTaskProgressIntoProjectSidebar(data);
         return;
       }
@@ -187,6 +182,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     this.cachedProjectSidebarData = {
       ...this.cachedProjectSidebarData,
       changes,
+      archivedChanges: data.archivedChanges ?? this.cachedProjectSidebarData.archivedChanges,
+      lastRefresh: data.lastRefresh ?? this.cachedProjectSidebarData.lastRefresh,
     };
     this.publishProjectSnapshot(
       this.cachedProjectSidebarData,
@@ -1004,13 +1001,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         this.markAgentUnavailable(webview, getPrimaryWorkspacePath());
         return;
       }
-      this.skipNextProjectRefreshCallback = true;
       try {
         await this.dataManager.refresh();
       } catch (error) {
         logger.error('Project Sidebar refresh failed', error as Error);
-      } finally {
-        this.skipNextProjectRefreshCallback = false;
       }
       const surface = webview === this.dashboardPanel?.webview ? 'dashboard' : 'sidebar';
       await this.reloadProjectSidebarData(webview, surface);

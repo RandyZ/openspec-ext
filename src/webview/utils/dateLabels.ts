@@ -34,7 +34,7 @@ export function formatRelativeDateLabel(iso: string, now: Date = new Date()): st
   if (!date) return '';
   const diffMs = now.getTime() - date.getTime();
   if (diffMs < 0) {
-    return getLocale() === 'zh-cn' ? t('time.justNow') : t('time.today');
+    return t('time.justNow');
   }
   const calendarDaysAgo = localCalendarDayDifference(date, now);
   if (calendarDaysAgo === 0) return t('time.today');

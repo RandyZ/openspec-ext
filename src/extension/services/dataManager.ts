@@ -5,7 +5,7 @@ import YAML from 'yaml';
 import { logger } from '../utils/logger';
 import { OpenSpecCliService } from './openspecCli';
 import { FileManagerService } from './fileManager';
-import { FileWatcherService } from './fileWatcher';
+import { FileWatcherService, type FileChangeEvent } from './fileWatcher';
 import { TaskExecutorService } from './taskExecutorService';
 import { StateReader } from './stateReader';
 import type { IOpenSpecContentAccess } from './contentAccess';
@@ -120,6 +120,41 @@ export interface DataManagerOptions {
    * openspec/config.yaml must be filtered out by the caller.
    */
   projectRoots?: { path: string; label: string }[];
+}
+
+export function tasksMdChangeNameFromRelative(relative: string): string | null {
+  const archiveTasksMatch = relative.match(/^openspec\/changes\/archive\/([^/]+)\/tasks\.md$/);
+  const draftTasksMatch = relative.match(/^openspec\/changes\/(?!archive\/)([^/]+)\/tasks\.md$/);
+  if (archiveTasksMatch) return `archive:${archiveTasksMatch[1]}`;
+  if (draftTasksMatch) return draftTasksMatch[1];
+  return null;
+}
+
+/** Fast path: in-place task counts only — never for create/delete or unknown changes. */
+export function shouldUseTasksOnlyRefreshFastPath(
+  events: FileChangeEvent[],
+  watchedProjectRoot: string,
+  cachedData: Pick<DashboardData, 'changes' | 'archivedChanges'> | null | undefined,
+): boolean {
+  if (events.length === 0) return false;
+  const onlyTasksMd = events.every((event) => {
+    const relative = path.relative(watchedProjectRoot, event.uri.fsPath).replace(/\\/g, '/');
+    return /\/tasks\.md$/.test(relative);
+  });
+  if (!onlyTasksMd) return false;
+
+  const knownChanges = new Set<string>([
+    ...(cachedData?.changes.map((change) => change.name) ?? []),
+    ...(cachedData?.archivedChanges?.map((item) => item.name) ?? []),
+    ...(cachedData?.archivedChanges?.map((item) => `archive:${item.directoryName}`) ?? []),
+  ]);
+
+  return events.every((event) => {
+    if (event.type !== 'change') return false;
+    const relative = path.relative(watchedProjectRoot, event.uri.fsPath).replace(/\\/g, '/');
+    const changeName = tasksMdChangeNameFromRelative(relative);
+    return changeName != null && knownChanges.has(changeName);
+  });
 }
 
 export class DataManager {
@@ -541,7 +576,7 @@ export class DataManager {
   }
 
   private async handleFileWatcherEvents(
-    events: Array<{ uri: { fsPath: string } }>,
+    events: FileChangeEvent[],
   ): Promise<void> {
     const artifactChanges = new Map<string, Set<string>>();
     const tasksPatchedChanges = new Set<string>();
@@ -591,12 +626,7 @@ export class DataManager {
       });
     }
 
-    const onlyTasksMd = events.length > 0 && events.every((event) => {
-      const relative = path.relative(this.watchedProjectRoot, event.uri.fsPath).replace(/\\/g, '/');
-      return /\/tasks\.md$/.test(relative);
-    });
-
-    if (onlyTasksMd) {
+    if (shouldUseTasksOnlyRefreshFastPath(events, this.watchedProjectRoot, this.cachedData)) {
       for (const changeName of tasksPatchedChanges) {
         this.notifyArtifactChanged({
           changeName,

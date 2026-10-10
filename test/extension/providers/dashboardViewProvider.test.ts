@@ -3479,6 +3479,44 @@ describe('DashboardViewProvider', () => {
     ).toBe(false);
   });
 
+  it('still merges watcher refresh data while a manual Project Sidebar refresh is in flight', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture();
+    const gateway = {
+      loadChanges: vi.fn()
+        .mockResolvedValue({ project: fixture.project, binding: fixture.binding, changes: [makeProjectChange('seed-change')] }),
+    };
+    let resolveRefresh: ((value: unknown) => void) | undefined;
+    const refresh = vi.fn(() => new Promise((resolve) => {
+      resolveRefresh = resolve;
+    }));
+    const dataManager = makeDataManager({ refresh });
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(dataManager, gateway, fixture);
+
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    postMessage.mockClear();
+
+    const refreshCallback = (dataManager.onRefresh as any).mock.calls[0]?.[0] as ((data: any) => void) | undefined;
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+    const manualRefresh = handler?.({ type: 'refresh' });
+    refreshCallback?.(makeDashboardData({
+      changeName: 'watcher-added-change',
+      lastRefresh: 99,
+    }));
+    resolveRefresh?.(makeDashboardData({ changeName: 'watcher-added-change', lastRefresh: 99 }));
+    await manualRefresh;
+    await vi.runAllTimersAsync();
+
+    expect(postMessage.mock.calls.some(([message]) => (
+      message.type === 'setContext'
+      && message.view === 'sidebar'
+      && message.data?.changes?.some((change: { name: string }) => change.name === 'watcher-added-change')
+    ))).toBe(true);
+  });
+
   it('project dashboard refresh merges task progress without reloading the Project loader', async () => {
     vi.useFakeTimers();
     const fixture = makeProjectFixture();

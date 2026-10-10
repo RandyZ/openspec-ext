@@ -61,7 +61,7 @@ describe('dateLabels', () => {
     setLocale('en');
     const now = new Date(2026, 5, 10, 12, 0, 0);
     const future = new Date(2026, 5, 11, 0, 0, 0);
-    expect(formatRelativeDateLabel(future.toISOString(), now)).toBe('Today');
+    expect(formatRelativeDateLabel(future.toISOString(), now)).toBe('Just now');
 
     setLocale('zh-cn');
     expect(formatRelativeDateLabel(future.toISOString(), now)).toBe('刚刚');
