@@ -13,7 +13,7 @@ import {
   getWorksetsTabAvailable,
   returnToCurrentProject,
   selectProjectFirstTab,
-  activateProjectChangesList,
+  openProjectChangesInEditor,
   sendProjectSidebarSpecDetail,
   toWorksetCreateResultState,
   toWorksetPickedMembersState,
@@ -646,15 +646,12 @@ describe('project page contract', () => {
     });
 
     expect(html).toContain('data-project-action-grid');
-    expect(html).toContain('data-project-action="changes"');
+    expect(html).not.toContain('data-project-action="changes"');
     expect(html).toContain('data-project-action="specs"');
     expect(html).toContain('data-project-action="worksets"');
     expect(html).toContain('data-project-action="dashboard"');
+    expect(html).toContain('data-open-changes-in-editor');
     expect(html).not.toContain('role="tablist"');
-    expect(html).toContain('aria-pressed="true"');
-    expect(html.indexOf('data-project-action="changes"')).toBeLessThan(
-      html.indexOf('data-project-action="specs"'),
-    );
     expect(html.indexOf('data-project-action="specs"')).toBeLessThan(
       html.indexOf('data-project-action="worksets"'),
     );
@@ -701,10 +698,9 @@ describe('project page contract', () => {
     expect(html).toContain('data-project-action="worksets"');
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*data-project-action="worksets"/);
     expect(html).toContain('Stores and worksets require OpenSpec 1.5.0 or newer.');
-    // Changes/Specs stay fully usable next to the disabled Worksets tab.
-    expect(html).toContain('data-project-action="changes"');
+    // Specs stay fully usable next to the disabled Worksets tab.
+    expect(html).not.toContain('data-project-action="changes"');
     expect(html).toContain('data-project-action="specs"');
-    expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*data-project-action="changes"/);
     expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*data-project-action="specs"/);
   });
 
@@ -718,16 +714,29 @@ describe('project page contract', () => {
     expect(postMessage).not.toHaveBeenCalled();
   });
 
-  it('opens the bound Changes list when the All Changes tile is activated', () => {
-    const setTab = vi.fn();
+  it('opens the bound Changes explorer when the list title action is activated', () => {
     const postMessage = vi.fn();
 
-    activateProjectChangesList(setTab, postMessage, projectContext, projectBinding);
+    openProjectChangesInEditor(postMessage, projectContext, projectBinding);
 
-    expect(setTab).toHaveBeenCalledWith('changes');
     expect(postMessage).toHaveBeenCalledWith(
       sendMessage.openChangesExplorer(projectContext, projectBinding),
     );
+  });
+
+  it('renders the open-in-editor control beside the Changes list title', () => {
+    const html = renderProjectSidebar(projectSidebarData);
+
+    expect(html).toMatch(/data-open-changes-in-editor[^>]*title="Open in Editor"/);
+    expect(html).toMatch(/data-open-changes-in-editor[^>]*aria-label="Open in Editor"/);
+  });
+
+  it('localizes the Changes list open-in-editor control in zh-cn', () => {
+    setLocale('zh-cn');
+    const html = renderProjectSidebar(projectSidebarData);
+
+    expect(html).toMatch(/data-open-changes-in-editor[^>]*title="在编辑器中打开"/);
+    expect(html).toMatch(/data-open-changes-in-editor[^>]*aria-label="在编辑器中打开"/);
   });
 
   it('renders priority change names as open-detail controls', () => {
@@ -983,10 +992,11 @@ describe('project page contract', () => {
 
     expect(html).toContain('Project A');
     expect(html).toContain('active-change');
-    expect(html).toContain('All Changes');
     expect(html).toContain('Specs');
+    expect(html).toContain('data-open-changes-in-editor');
     expect(html).toContain('New Change');
     expect(html).not.toContain('archive:old-change');
+    expect(html).not.toContain('data-project-action="changes"');
     expect(html).not.toContain('Root selector');
     expect(html).not.toContain('Stores & Worksets');
   });
@@ -1013,12 +1023,12 @@ describe('project page contract', () => {
     });
   });
 
-  it('keeps All Changes and Specs available when active work is empty', () => {
+  it('keeps Specs launcher and Changes list title action when active work is empty', () => {
     const html = renderProjectSidebar({ ...projectSidebarData, changes: [] });
 
     expect(html).toMatch(/No changes in this Root/i);
-    expect(html).toContain('All Changes');
     expect(html).toContain('Specs');
+    expect(html).toContain('data-open-changes-in-editor');
     expect(html).toContain('New Change');
   });
 

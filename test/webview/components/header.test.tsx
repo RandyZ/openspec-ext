@@ -51,26 +51,23 @@ function createProjectHeader(overrides: Partial<HeaderProps> = {}): React.ReactE
 describe('Project-first Header', () => {
   afterEach(() => setLocale('en'));
 
-  it('renders the four actions in a narrow, non-tablist launcher', () => {
+  it('renders the three actions in a narrow, non-tablist launcher', () => {
     const html = renderToStaticMarkup(
       <Header
         onRefresh={vi.fn()}
         onNewChange={vi.fn()}
         loading={false}
         project={{ id: '/projects/current', label: 'Current Project', projectPath: '/projects/current' }}
-        onOpenChanges={vi.fn()}
         onOpenSpecs={vi.fn()}
         onOpenWorksets={vi.fn()}
-        activeProjectTab="changes"
+        activeProjectTab="specs"
       />
     );
 
     expect(html).toContain('data-project-action-grid');
     expect(html).not.toContain('role="tablist"');
+    expect(html).not.toContain('data-project-action="changes"');
     expect(html).toContain('aria-pressed="true"');
-    expect(html.indexOf('data-project-action="changes"')).toBeLessThan(
-      html.indexOf('data-project-action="specs"'),
-    );
     expect(html.indexOf('data-project-action="specs"')).toBeLessThan(
       html.indexOf('data-project-action="worksets"'),
     );
@@ -86,7 +83,6 @@ describe('Project-first Header', () => {
         onNewChange={vi.fn()}
         loading={false}
         project={{ id: '/projects/current', label: 'Current Project', projectPath: '/projects/current' }}
-        onOpenChanges={vi.fn()}
         onOpenSpecs={vi.fn()}
         activeProjectTab="changes"
       />
@@ -96,9 +92,8 @@ describe('Project-first Header', () => {
     expect(html).toMatch(/No trusted Workset membership|Worksets unavailable/i);
   });
 
-  it('renders four named, bounded card buttons with icons and local selection semantics', () => {
+  it('renders three named, bounded card buttons with icons and local selection semantics', () => {
     const header = createProjectHeader({
-      onOpenChanges: vi.fn(),
       onOpenSpecs: vi.fn(),
       onOpenWorksets: vi.fn(),
       onOpenDashboard: vi.fn(),
@@ -107,9 +102,8 @@ describe('Project-first Header', () => {
     });
     const buttons = collectProjectActionButtons(header);
 
-    expect(buttons).toHaveLength(4);
+    expect(buttons).toHaveLength(3);
     expect(buttons.map((button) => button.props['aria-label'])).toEqual([
-      'All Changes',
       'Specs',
       'Browse Workset Projects (2)',
       'Dashboard · Open in Editor',
@@ -118,18 +112,18 @@ describe('Project-first Header', () => {
     expect(buttons.every((button) => button.props.className?.includes('min-w-0'))).toBe(true);
     expect(buttons.every((button) => button.props.className?.includes('hover:'))).toBe(true);
     expect(buttons.every((button) => button.props.className?.includes('focus-visible'))).toBe(true);
-    expect(buttons.map((button) => button.props['aria-pressed'])).toEqual([false, true, false, undefined]);
+    expect(buttons.map((button) => button.props['aria-pressed'])).toEqual([true, false, undefined]);
     expect(buttons.map((button) => (
       collectElements(button, (element) => (
         typeof (element.props as { className?: unknown }).className === 'string'
         && (element.props as { className: string }).className.includes('codicon-')
       )).length
-    ))).toEqual([1, 1, 1, 1]);
+    ))).toEqual([1, 1, 1]);
     expect(buttons.every((button) => collectElements(button, (element) => (
       Boolean((element.props as { 'data-project-action-supporting'?: string })['data-project-action-supporting'])
     )).length === 1)).toBe(true);
 
-    const dashboard = buttons[3];
+    const dashboard = buttons[2];
     expect(dashboard.props.title).toContain('Dashboard');
     expect(dashboard.props.title).toContain('Editor');
   });
@@ -150,7 +144,6 @@ describe('Project-first Header', () => {
     // No onOpenWorksets handler: upstream (navigation + capability) decided the
     // surface is unavailable, so the tab must stay disabled and inert.
     const header = createProjectHeader({
-      onOpenChanges: vi.fn(),
       onOpenSpecs: vi.fn(),
       onOpenDashboard: vi.fn(),
       worksetCount: 0,
@@ -216,7 +209,6 @@ describe('Project-first Header', () => {
   it('opens Dashboard in its Editor route without changing the selected local view', () => {
     const onOpenDashboard = vi.fn();
     const header = createProjectHeader({
-      onOpenChanges: vi.fn(),
       onOpenSpecs: vi.fn(),
       onOpenWorksets: vi.fn(),
       onOpenDashboard,
@@ -246,7 +238,6 @@ describe('Project-first Header', () => {
           rootPath: '/projects/long-project',
           rootSource: 'nearest',
         }}
-        onOpenChanges={vi.fn()}
         onOpenSpecs={vi.fn()}
       />
     );
@@ -287,14 +278,12 @@ describe('Project-first Header', () => {
         onNewChange={vi.fn()}
         loading={false}
         project={{ id: '/projects/current', label: 'Current Project', projectPath: '/projects/current' }}
-        onOpenChanges={vi.fn()}
         onOpenSpecs={vi.fn()}
         onOpenDashboard={vi.fn()}
       />
     );
 
     expect(html).toContain('aria-label="项目导航"');
-    expect(html).toContain('浏览本地 change');
     expect(html).toContain('浏览本地 Spec');
     expect(html).toContain('在编辑器中打开项目 Dashboard');
     // The Worksets launcher keeps its browsing-for-current-Project accessible

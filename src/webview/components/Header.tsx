@@ -25,7 +25,6 @@ export interface HeaderProps {
   onSetupStore?: () => void;
   project?: ProjectContext;
   binding?: OpenSpecRootBinding;
-  onOpenChanges?: () => void;
   onOpenSpecs?: () => void;
   onOpenWorksets?: () => void;
   onOpenDashboard?: () => void;
@@ -48,7 +47,6 @@ export const Header: React.FC<HeaderProps> = ({
   onSetupStore,
   project,
   binding,
-  onOpenChanges,
   onOpenSpecs,
   onOpenWorksets,
   onOpenDashboard,
@@ -156,35 +154,6 @@ export const Header: React.FC<HeaderProps> = ({
             data-project-navigation
           >
             <div className="grid grid-cols-2 gap-1" data-project-action-grid>
-              <button
-                type="button"
-                onClick={onOpenChanges}
-                data-project-action="changes"
-                aria-pressed={activeProjectTab === 'changes'}
-                aria-label={t('projectSidebar.allChanges')}
-                title={t('projectSidebar.allChanges')}
-                className="group min-w-0 overflow-hidden rounded border px-2 py-2 text-left text-xs hover:brightness-110 focus:outline-none focus-visible:ring-1"
-                style={{
-                  borderColor: 'var(--vscode-panel-border)',
-                  background: activeProjectTab === 'changes'
-                    ? 'var(--vscode-list-activeSelectionBackground)'
-                    : 'var(--vscode-sideBar-background)',
-                  color: activeProjectTab === 'changes'
-                    ? 'var(--vscode-list-activeSelectionForeground)'
-                    : 'var(--vscode-foreground)',
-                  outlineColor: 'var(--vscode-focusBorder)',
-                }}
-              >
-                <span className="flex min-w-0 items-start gap-2">
-                  <span className="codicon codicon-files mt-0.5 shrink-0" aria-hidden="true" />
-                  <span className="min-w-0">
-                    <span className="block truncate font-semibold">{t('projectSidebar.allChanges')}</span>
-                    <span data-project-action-supporting className="block truncate text-[10px]" style={{ color: 'var(--vscode-descriptionForeground)' }}>
-                      {t('projectSidebar.cardChangesSupporting')}
-                    </span>
-                  </span>
-                </span>
-              </button>
               <button
                 type="button"
                 onClick={onOpenSpecs}

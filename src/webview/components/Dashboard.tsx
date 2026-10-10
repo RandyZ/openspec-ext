@@ -71,13 +71,11 @@ export function selectProjectFirstTab(
   }
 }
 
-export function activateProjectChangesList(
-  setTab: (tab: ProjectFirstTab) => void,
+export function openProjectChangesInEditor(
   postMessage: DashboardPostMessage,
   project: ProjectContext,
   binding: OpenSpecRootBinding,
 ): void {
-  selectProjectFirstTab(setTab, 'changes');
   postMessage(sendMessage.openChangesExplorer(project, binding));
 }
 
@@ -767,14 +765,6 @@ export const Dashboard: React.FC = () => {
           onSetupStore={data?.scope?.capabilities?.stores ? handleSetupStore : undefined}
           project={projectSidebar?.project}
           binding={projectSidebar?.binding}
-          onOpenChanges={projectSidebar
-            ? () => activateProjectChangesList(
-              setProjectFirstTab,
-              postMessage,
-              projectSidebar.project,
-              projectSidebar.binding,
-            )
-            : undefined}
           onOpenSpecs={projectSidebar
             ? () => selectProjectFirstTab(setProjectFirstTab, 'specs')
             : undefined}
@@ -935,6 +925,11 @@ export const Dashboard: React.FC = () => {
                       workflowLaunchPendingKeys={workflowLaunchPending.pendingKeys}
                       workflowActionReceipts={workflowReceipts}
                       projectBinding={projectSidebar.binding}
+                      onOpenInEditor={() => openProjectChangesInEditor(
+                        postMessage,
+                        projectSidebar.project,
+                        projectSidebar.binding,
+                      )}
                       layout="narrow"
                     />
                   </div>
