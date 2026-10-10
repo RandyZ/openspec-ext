@@ -62,10 +62,12 @@ export function selectProjectFirstTab(
   tab: ProjectFirstTab,
 ): void {
   setTab(tab);
-  if (tab === 'changes' && typeof document !== 'undefined') {
-    requestAnimationFrame(() => {
-      document.getElementById('project-first-changes-panel')?.scrollIntoView({ block: 'nearest' });
-    });
+  if (tab === 'changes' && typeof globalThis.document !== 'undefined') {
+    const scrollToChangesPanel = () => {
+      globalThis.document?.getElementById('project-first-changes-panel')?.scrollIntoView({ block: 'nearest' });
+    };
+    const schedule = globalThis.requestAnimationFrame ?? ((callback: () => void) => setTimeout(callback, 0));
+    schedule(scrollToChangesPanel);
   }
 }
 
