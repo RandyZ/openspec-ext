@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-10-10
+
+### Added
+
+- Project sidebar **vertical navigation** (`data-project-nav-list`): **Project Dashboard** (open in editor), **Specs** (with count badge when &gt; 0), **Workset Projects**; tooltips and i18n (`navProjectDashboard`, `navWorksetProjects`).
+- **Changes (N)** section title action (**Open in editor**, `data-open-changes-in-editor`) to open the bound Changes explorer from the sidebar.
+- **Changes explorer** manual **refresh** control; explorer panel titles localized (`explorer.changesPanelTitle`, specs panel).
+- Relative **timestamps** on Project Dashboard (calendar-relative dates, clock-skew clamp); zh-CN calendar wording.
+- VSIX packaging check: `scripts/verify-vsix-webview.js` validates webview markers, `./index.ttf` in CSS, and font file inside the package.
+
+### Changed
+
+- Removed the **All Changes** tile from the project sidebar header; navigation and open-in-editor entry points replace it.
+- **Project Dashboard** recent updates and **priority change** cards: names and CTAs navigate to change detail; priority row layout tuned for narrow sidebar (260px).
+- **Priority card CTA** at 260px: drop `max-w-[55%]` / `truncate`; use `flex-wrap`, `min-w-[7rem]` on the name, and `shrink-0` on the button so full CTA labels wrap instead of clipping.
+- Rebuild project sidebar change list from dashboard refresh payloads; wire dashboard click targets (recent updates, priority names) to change detail.
+- zh-CN: **项目仪表盘** for project dashboard title; explorer and sidebar copy polish.
+
+### Fixed
+
+- **Auto-refresh** when changes are added/removed or updated externally: sidebar list reconciles from refresh payloads; publish explorer snapshots on sidebar merge/reload so open **Changes** panels update without stale data.
+- **Codicon** icons in the webview: Vite `base: './'`, relative `url(./index.ttf)` in CSS, CSP `font-src` and font preload in webview HTML; fixes square glyph boxes in sidebar and dashboard.
+- **ChangeCard** **APPLYING** lifecycle badge contrast in light theme (uses button foreground/background tokens).
+- Typecheck: cast explorer snapshot changes at `publishChangesExplorerSnapshots` to stay within CI baseline.
+
 ## [0.2.5-agent-panel.7] - 2026-10-09
 
 ### Fixed
