@@ -450,7 +450,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     const explorerData: ProjectChangesExplorerData = {
       project: data.project,
       binding: data.binding,
-      changes: data.changes,
+      changes: data.changes as ProjectChangesExplorerData['changes'],
       archivedChanges: data.archivedChanges ?? [],
     };
     panel.webview.postMessage({
