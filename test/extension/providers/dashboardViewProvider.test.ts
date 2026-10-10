@@ -3414,6 +3414,71 @@ describe('DashboardViewProvider', () => {
     }));
   });
 
+  it('project sidebar refresh reconciles added and removed changes from dashboard refresh data', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture();
+    const kept = makeProjectChange('kept-change');
+    const removed = makeProjectChange('removed-change');
+    const gateway = {
+      loadChanges: vi.fn()
+        .mockResolvedValueOnce({
+          project: fixture.project,
+          binding: fixture.binding,
+          changes: [kept, removed],
+        }),
+    };
+    const dataManager = makeDataManager();
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(dataManager, gateway, fixture);
+
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    postMessage.mockClear();
+
+    const refreshCallback = (dataManager.onRefresh as any).mock.calls[0]?.[0] as ((data: any) => void) | undefined;
+    refreshCallback?.({
+      changes: [
+        {
+          ...kept,
+          completedTasks: 2,
+          totalTasks: 4,
+        },
+        makeProjectChange('added-change'),
+      ],
+      specs: [],
+      archivedChanges: [],
+      changeStatusCounts: {
+        all: 2,
+        planning: 2,
+        readyToApply: 0,
+        applying: 0,
+        readyToVerify: 0,
+        archived: 0,
+        needsAttention: 0,
+      },
+      lastRefresh: 4,
+    });
+    await vi.runAllTimersAsync();
+
+    expect(gateway.loadChanges).toHaveBeenCalledTimes(1);
+    const mergedSidebar = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'setContext' && message.view === 'sidebar')
+      .at(-1);
+    expect(mergedSidebar).toEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        changes: [
+          expect.objectContaining({ name: 'kept-change', completedTasks: 2, totalTasks: 4 }),
+          expect.objectContaining({ name: 'added-change' }),
+        ],
+      }),
+    }));
+    expect(
+      (mergedSidebar as { data: ProjectSidebarData }).data.changes.some((change) => change.name === 'removed-change'),
+    ).toBe(false);
+  });
+
   it('project dashboard refresh merges task progress without reloading the Project loader', async () => {
     vi.useFakeTimers();
     const fixture = makeProjectFixture();

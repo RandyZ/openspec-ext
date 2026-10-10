@@ -13,6 +13,7 @@ import {
   getWorksetsTabAvailable,
   returnToCurrentProject,
   selectProjectFirstTab,
+  activateProjectChangesList,
   sendProjectSidebarSpecDetail,
   toWorksetCreateResultState,
   toWorksetPickedMembersState,
@@ -715,6 +716,45 @@ describe('project page contract', () => {
 
     expect(setTab).toHaveBeenCalledWith('specs');
     expect(postMessage).not.toHaveBeenCalled();
+  });
+
+  it('opens the bound Changes list when the All Changes tile is activated', () => {
+    const setTab = vi.fn();
+    const postMessage = vi.fn();
+
+    activateProjectChangesList(setTab, postMessage, projectContext, projectBinding);
+
+    expect(setTab).toHaveBeenCalledWith('changes');
+    expect(postMessage).toHaveBeenCalledWith(
+      sendMessage.openChangesExplorer(projectContext, projectBinding),
+    );
+  });
+
+  it('renders priority change names as open-detail controls', () => {
+    const verify = hostChange('verify-change', {
+      completedTasks: 1,
+      totalTasks: 1,
+      lifecycleStatus: 'ready-to-verify',
+      workflowSnapshot: {
+        changeName: 'verify-change',
+        schema: 'custom',
+        bindingKey: 'project-root',
+        artifacts: [{
+          id: 'proposal',
+          status: 'done',
+          requires: [],
+          missingDeps: [],
+          outputPath: 'proposal.md',
+          existingOutputPaths: ['proposal.md'],
+        }],
+      },
+    });
+    const html = renderProjectSidebar({
+      ...projectSidebarData,
+      changes: [verify],
+    });
+
+    expect(html).toMatch(/<button[^>]*data-priority-change="verify-change"/);
   });
 
   it('builds a dedicated Project Dashboard request instead of a list Explorer request', () => {

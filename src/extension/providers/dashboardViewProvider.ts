@@ -163,24 +163,25 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   }
 
   private mergeDashboardTaskProgressIntoProjectSidebar(data: DashboardData): void {
-    if (!data?.changes?.length) {
-      return;
-    }
     if (!this.cachedProjectSidebarData) {
       void this.reloadProjectSidebarData();
       return;
     }
-    const byName = new Map(data.changes.map((change) => [change.name, change]));
-    const changes = this.cachedProjectSidebarData.changes.map((change) => {
-      const fresh = byName.get(change.name);
-      if (!fresh) return change;
+    const incoming = data?.changes ?? [];
+    const cachedByName = new Map(
+      this.cachedProjectSidebarData.changes.map((change) => [change.name, change]),
+    );
+    const changes = incoming.map((fresh) => {
+      const cached = cachedByName.get(fresh.name);
+      const base = cached ?? fresh;
       return enrichChangeWithLifecycle({
-        ...change,
+        ...base,
         completedTasks: fresh.completedTasks,
         totalTasks: fresh.totalTasks,
         status: fresh.status,
-        lifecycleStatus: fresh.lifecycleStatus,
-        attention: fresh.attention,
+        lifecycleStatus: fresh.lifecycleStatus ?? base.lifecycleStatus,
+        attention: fresh.attention ?? base.attention,
+        lastModified: fresh.lastModified ?? base.lastModified,
       });
     });
     this.cachedProjectSidebarData = {

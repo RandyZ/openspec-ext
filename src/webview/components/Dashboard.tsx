@@ -62,6 +62,21 @@ export function selectProjectFirstTab(
   tab: ProjectFirstTab,
 ): void {
   setTab(tab);
+  if (tab === 'changes' && typeof document !== 'undefined') {
+    requestAnimationFrame(() => {
+      document.getElementById('project-first-changes-panel')?.scrollIntoView({ block: 'nearest' });
+    });
+  }
+}
+
+export function activateProjectChangesList(
+  setTab: (tab: ProjectFirstTab) => void,
+  postMessage: DashboardPostMessage,
+  project: ProjectContext,
+  binding: OpenSpecRootBinding,
+): void {
+  selectProjectFirstTab(setTab, 'changes');
+  postMessage(sendMessage.openChangesExplorer(project, binding));
 }
 
 export function sendProjectSidebarSpecDetail(
@@ -751,7 +766,12 @@ export const Dashboard: React.FC = () => {
           project={projectSidebar?.project}
           binding={projectSidebar?.binding}
           onOpenChanges={projectSidebar
-            ? () => selectProjectFirstTab(setProjectFirstTab, 'changes')
+            ? () => activateProjectChangesList(
+              setProjectFirstTab,
+              postMessage,
+              projectSidebar.project,
+              projectSidebar.binding,
+            )
             : undefined}
           onOpenSpecs={projectSidebar
             ? () => selectProjectFirstTab(setProjectFirstTab, 'specs')
@@ -844,13 +864,17 @@ export const Dashboard: React.FC = () => {
                     <div className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--vscode-descriptionForeground)' }}>
                       {group.label}
                     </div>
-                    <div
+                    <button
+                      type="button"
                       data-change-name={change.name}
-                      className="truncate text-xs"
+                      data-priority-change={change.name}
+                      className="truncate text-left text-xs focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)]"
                       title={change.name}
+                      aria-label={`${change.name} · ${t('action.openInEditor')}`}
+                      onClick={() => handleOpenChange(change.name)}
                     >
                       {change.name}
-                    </div>
+                    </button>
                   </div>
                   <button
                     type="button"
