@@ -36,8 +36,8 @@ const LIFECYCLE_BADGE_STYLES: Record<ChangeLifecycleStatus, React.CSSProperties>
     color: 'var(--vscode-button-foreground)',
   },
   applying: {
-    background: 'var(--vscode-progressBar-background)',
-    color: 'var(--vscode-editor-foreground)',
+    background: 'var(--vscode-button-background)',
+    color: 'var(--vscode-button-foreground)',
   },
   'ready-to-verify': {
     background: 'var(--vscode-inputValidation-infoBackground)',

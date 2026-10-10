@@ -192,6 +192,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       { source: 'memory', stale: false },
       true,
     );
+    this.publishChangesExplorerSnapshots(this.cachedProjectSidebarData);
   }
 
   /**
@@ -439,6 +440,24 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     post(targetWebview, targetSurface);
     post(this._view?.webview, 'sidebar');
     if (publishDashboard) post(this.dashboardPanel?.webview, 'dashboard');
+    this.publishChangesExplorerSnapshots(data);
+  }
+
+  private publishChangesExplorerSnapshots(data: ProjectSidebarData): void {
+    const key = this.explorerPanelKey('changesExplorer', data.binding);
+    const panel = this.explorerPanels.get(key);
+    if (!panel) return;
+    const explorerData: ProjectChangesExplorerData = {
+      project: data.project,
+      binding: data.binding,
+      changes: data.changes,
+      archivedChanges: data.archivedChanges ?? [],
+    };
+    panel.webview.postMessage({
+      type: 'setContext',
+      view: 'changesExplorer',
+      data: explorerData,
+    });
   }
 
   private postProjectLoadFailure(
@@ -919,10 +938,17 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
    */
   private postPendingExplorerContext(webview: vscode.Webview): boolean {
     const pending = this.pendingExplorerContexts.get(webview);
-    if (!pending) return false;
+    if (!pending || pending.sent) return false;
     webview.postMessage(pending.message);
     pending.sent = true;
     return true;
+  }
+
+  private isExplorerPanelWebview(webview: vscode.Webview): boolean {
+    for (const panel of this.explorerPanels.values()) {
+      if (panel.webview === webview) return true;
+    }
+    return false;
   }
 
   private async handleMessage(
@@ -991,7 +1017,16 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         return;
       }
       if (explorerContextConsumed) return;
-      const surface = webview === this.dashboardPanel?.webview ? 'dashboard' : 'sidebar';
+      if (this.isExplorerPanelWebview(webview)) {
+        const pending = this.pendingExplorerContexts.get(webview);
+        if (pending?.sent) {
+          webview.postMessage(pending.message);
+        } else if (this.cachedProjectSidebarData) {
+          this.publishChangesExplorerSnapshots(this.cachedProjectSidebarData);
+        }
+        return;
+      }
+      const surface = this.resolveProjectSurface(webview);
       await this.postCachedProjectSidebarData(webview, surface);
       await this.reloadProjectSidebarData(webview, surface);
       return;
@@ -1006,7 +1041,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       } catch (error) {
         logger.error('Project Sidebar refresh failed', error as Error);
       }
-      const surface = webview === this.dashboardPanel?.webview ? 'dashboard' : 'sidebar';
+      const surface = this.resolveProjectSurface(webview);
       await this.reloadProjectSidebarData(webview, surface);
       return;
     }
@@ -1150,6 +1185,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       logger.warn('Rejected Project binding request', error as Error);
       return undefined;
     }
+  }
+
+  private resolveProjectSurface(webview: vscode.Webview): ProjectSurface {
+    if (webview === this.dashboardPanel?.webview) return 'dashboard';
+    return 'sidebar';
   }
 
   private explorerPanelKey(
@@ -1654,12 +1694,22 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     if (existing) {
       existing.reveal(vscode.ViewColumn.One);
       if (this.explorerPanels.get(key) === existing) {
-        existing.webview.postMessage(contextMessage);
+        if (
+          pageKind === 'changesExplorer'
+          && this.cachedProjectSidebarData
+          && this.sameBinding(this.cachedProjectSidebarData.binding, binding)
+        ) {
+          this.publishChangesExplorerSnapshots(this.cachedProjectSidebarData);
+        } else {
+          existing.webview.postMessage(contextMessage);
+        }
       }
       return;
     }
 
-    const title = pageKind === 'changesExplorer' ? 'OpenSpec Changes' : 'OpenSpec Specs';
+    const title = pageKind === 'changesExplorer'
+      ? t('explorer.changesPanelTitle')
+      : t('explorer.specsPanelTitle');
     const viewType = pageKind === 'changesExplorer'
       ? 'openspecChangesExplorer'
       : 'openspecSpecsExplorer';

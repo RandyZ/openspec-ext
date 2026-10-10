@@ -326,6 +326,8 @@
   "projectSidebar.navigationLabel": "Project navigation",
   "projectSidebar.rootContextLabel": "OpenSpec root context",
   "projectSidebar.project": "Project",
+  "explorer.changesPanelTitle": "OpenSpec Changes",
+  "explorer.specsPanelTitle": "OpenSpec Specs",
   "projectSidebar.allChanges": "All Changes",
   "projectSidebar.specs": "Specs",
   "projectSidebar.cardChangesSupporting": "Browse local Changes",

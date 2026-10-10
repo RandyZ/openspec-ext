@@ -118,6 +118,9 @@ describe('agent unavailable webview handler', () => {
 
     expect(html).toContain('data-openspec-view="agentUnavailable"');
     expect(html).toContain('data-workspace-path="/tmp/ws-b"');
+    expect(html).toContain('font-src vscode-webview:');
+    expect(html).toContain('rel="preload"');
+    expect(html).toContain('index.ttf');
   });
 
   it('postAgentUnavailableContext includes workflow launch config', () => {

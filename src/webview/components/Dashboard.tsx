@@ -853,43 +853,48 @@ export const Dashboard: React.FC = () => {
                   key={`${group.key}:${change.name}:${change.workflowSnapshot?.bindingKey ?? ''}`}
                   data-priority-row={change.name}
                   data-priority-status={group.key}
-                  className="flex min-w-0 items-center gap-2 rounded border px-2 py-1.5 transition-colors hover:bg-[var(--vscode-list-hoverBackground)]"
+                  className="flex min-w-0 flex-col gap-1 rounded border px-2 py-1.5 transition-colors hover:bg-[var(--vscode-list-hoverBackground)]"
                   style={{
                     background: 'var(--vscode-sideBar-background)',
                     borderColor: 'var(--vscode-panel-border)',
                   }}
                 >
-                  <span className={`codicon ${statusIcon} shrink-0`} aria-hidden="true" />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--vscode-descriptionForeground)' }}>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className={`codicon ${statusIcon} shrink-0`} aria-hidden="true" />
+                    <div
+                      className="min-w-0 flex-1 truncate text-[10px] uppercase tracking-wide"
+                      style={{ color: 'var(--vscode-descriptionForeground)' }}
+                    >
                       {group.label}
                     </div>
+                  </div>
+                  <div className="flex min-w-0 items-center gap-2 pl-6">
                     <button
                       type="button"
                       data-change-name={change.name}
                       data-priority-change={change.name}
-                      className="truncate text-left text-xs focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)]"
+                      className="min-w-0 flex-1 truncate text-left text-xs focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)]"
                       title={change.name}
                       aria-label={`${change.name} · ${t('action.openInEditor')}`}
                       onClick={() => handleOpenChange(change.name)}
                     >
                       {change.name}
                     </button>
+                    <button
+                      type="button"
+                      data-priority-cta={change.name}
+                      className="max-w-[55%] shrink-0 truncate rounded px-2 py-1 text-xs focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)]"
+                      style={{
+                        background: 'var(--vscode-button-secondaryBackground)',
+                        color: 'var(--vscode-button-secondaryForeground)',
+                      }}
+                      title={ctaAccessibleName}
+                      aria-label={ctaAccessibleName}
+                      onClick={() => handleOpenPriorityChange(change, group.key)}
+                    >
+                      {ctaLabel}
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    data-priority-cta={change.name}
-                    className="shrink-0 rounded px-2 py-1 text-xs focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)]"
-                    style={{
-                      background: 'var(--vscode-button-secondaryBackground)',
-                      color: 'var(--vscode-button-secondaryForeground)',
-                    }}
-                    title={ctaAccessibleName}
-                    aria-label={ctaAccessibleName}
-                    onClick={() => handleOpenPriorityChange(change, group.key)}
-                  >
-                    {ctaLabel}
-                  </button>
                 </div>
               );
             })}

@@ -91,13 +91,27 @@ export const ChangesExplorer: React.FC<ChangesExplorerProps> = ({ data }) => {
       data-root-path={data.binding.rootPath}
       className="p-4"
     >
-      <header className="mb-4">
-        <h1 className="text-lg font-semibold" style={{ color: 'var(--vscode-foreground)' }}>
-          {t('projectSidebar.allChanges')}
-        </h1>
-        <div className="text-xs" style={{ color: 'var(--vscode-descriptionForeground)' }}>
-          {data.project.label} · {data.binding.rootPath}
+      <header className="mb-4 flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h1 className="text-lg font-semibold" style={{ color: 'var(--vscode-foreground)' }}>
+            {t('projectSidebar.allChanges')}
+          </h1>
+          <div className="text-xs truncate" style={{ color: 'var(--vscode-descriptionForeground)' }}>
+            {data.project.label} · {data.binding.rootPath}
+          </div>
         </div>
+        <button
+          type="button"
+          data-changes-explorer-refresh
+          className="shrink-0 rounded px-2 py-1 text-xs"
+          style={{
+            background: 'var(--vscode-button-background)',
+            color: 'var(--vscode-button-foreground)',
+          }}
+          onClick={() => postMessage(sendMessage.refresh())}
+        >
+          {`⟳ ${t('header.refresh')}`}
+        </button>
       </header>
       <ChangesSection
         changes={[...data.changes]}

@@ -33,6 +33,7 @@ if (!fs.existsSync(inputPath)) {
 }
 
 let contents;
+let packagedCss;
 let label = path.basename(inputPath);
 if (inputPath.endsWith('.js')) {
   contents = fs.readFileSync(inputPath, 'utf8');
@@ -45,6 +46,15 @@ if (inputPath.endsWith('.js')) {
       fail('extension/dist/webview/index.js missing in VSIX');
     }
     contents = fs.readFileSync(webviewJs, 'utf8');
+    const cssPath = path.join(tmpDir, 'extension', 'dist', 'webview', 'index.css');
+    const fontPath = path.join(tmpDir, 'extension', 'dist', 'webview', 'index.ttf');
+    if (!fs.existsSync(cssPath)) {
+      fail('extension/dist/webview/index.css missing in VSIX');
+    }
+    if (!fs.existsSync(fontPath)) {
+      fail('extension/dist/webview/index.ttf missing in VSIX');
+    }
+    packagedCss = fs.readFileSync(cssPath, 'utf8');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -68,6 +78,15 @@ try {
   console.log(`verify-vsix-webview: gate pattern matches (${GATE_PATTERN}): ${gateMatches.length}`);
   if (gateMatches.length === 0) {
     fail(`gate pattern "${GATE_PATTERN}" matched 0 times in webview/index.js`);
+  }
+
+  if (packagedCss) {
+    if (/url\(\/index\.ttf/.test(packagedCss) || /url\(['"]?\//.test(packagedCss)) {
+      fail('webview CSS must not use root-absolute font urls');
+    }
+    if (!/url\(\.\/index\.ttf\?/.test(packagedCss)) {
+      fail('webview CSS must reference ./index.ttf for codicon');
+    }
   }
 
   console.log(`verify-vsix-webview: PASS (${label})`);
