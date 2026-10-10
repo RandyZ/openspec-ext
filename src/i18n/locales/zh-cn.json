@@ -422,6 +422,7 @@
   "action.showInSidebar": "在侧边栏中显示",
 
   "time.today": "今天",
+  "time.justNow": "刚刚",
   "time.yesterday": "昨天",
   "time.daysAgo": "{days}天前",
   "time.weeksAgo": "{weeks}周前",

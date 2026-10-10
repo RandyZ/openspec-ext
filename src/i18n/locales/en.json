@@ -422,6 +422,7 @@
   "action.showInSidebar": "Show in sidebar",
 
   "time.today": "Today",
+  "time.justNow": "Just now",
   "time.yesterday": "Yesterday",
   "time.daysAgo": "{days}d ago",
   "time.weeksAgo": "{weeks}w ago",
