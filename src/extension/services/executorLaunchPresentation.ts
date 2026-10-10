@@ -3,15 +3,14 @@ import {
   buildExecutorLaunchPresentation,
   type ExecutorLaunchPresentation,
 } from '../../shared/executorLaunchPresentation';
-import { toWorkflowLaunchConfigView } from '../../shared/workflowLaunchConfig';
 import type { DataManager } from './dataManager';
-import { getWorkflowLaunchConfig } from './workflowLaunchConfig';
+import { getWorkflowLaunchConfigViewForUi } from './workflowLaunchConfig';
 import { isCursorHost } from '../utils/isCursorHost';
 
 export async function createExecutorLaunchPresentation(
   dataManager: DataManager,
 ): Promise<ExecutorLaunchPresentation> {
-  const workflowLaunchConfig = toWorkflowLaunchConfigView(getWorkflowLaunchConfig());
+  const workflowLaunchConfig = getWorkflowLaunchConfigViewForUi();
   const adapters = await dataManager.getAgentAdaptersInfo();
   return {
     ...buildExecutorLaunchPresentation(

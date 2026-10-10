@@ -294,7 +294,7 @@ describe('DashboardViewProvider', () => {
     }));
   });
 
-  it('publishes one fresh Project snapshot to both open Project surfaces', async () => {
+  it('publishes merged task progress to both open Project surfaces on refresh', async () => {
     vi.useFakeTimers();
     const fixture = makeProjectFixture();
     const first = {
@@ -305,9 +305,8 @@ describe('DashboardViewProvider', () => {
       projectSpecs: [],
       referencedStoreSpecs: [],
     };
-    const second = { ...first, changes: [makeProjectChange('second-change')] };
     const gateway = {
-      loadProjectSidebarData: vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second),
+      loadProjectSidebarData: vi.fn().mockResolvedValue(first),
     };
     const sidebarPostMessage = vi.fn();
     const panel = makeEditorPanel();
@@ -325,19 +324,33 @@ describe('DashboardViewProvider', () => {
     sidebarPostMessage.mockClear();
     panel.webview.postMessage.mockClear();
 
-    const refreshCallback = (dataManager.onRefresh as any).mock.calls[0]?.[0] as (() => void) | undefined;
-    refreshCallback?.();
+    const refreshCallback = (dataManager.onRefresh as any).mock.calls[0]?.[0] as ((data: unknown) => void) | undefined;
+    refreshCallback?.(makeDashboardData({
+      changeName: 'first-change',
+      lastRefresh: 2,
+      completedTasks: 1,
+      totalTasks: 3,
+    }));
     await vi.runAllTimersAsync();
 
-    expect(sidebarPostMessage).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'setContext',
-      view: 'sidebar',
-      data: expect.objectContaining({ changes: [second.changes[0] ] }),
+    expect(gateway.loadProjectSidebarData).toHaveBeenCalledTimes(1);
+    const sidebarContext = sidebarPostMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'setContext' && message.view === 'sidebar')
+      .at(-1);
+    expect(sidebarContext).toEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        changes: [expect.objectContaining({ name: 'first-change', completedTasks: 1, totalTasks: 3 })],
+      }),
     }));
-    expect(panel.webview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'setContext',
-      view: 'dashboard',
-      data: expect.objectContaining({ changes: [second.changes[0] ] }),
+    const dashboardContext = panel.webview.postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'setContext' && message.view === 'dashboard')
+      .at(-1);
+    expect(dashboardContext).toEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        changes: [expect.objectContaining({ name: 'first-change', completedTasks: 1, totalTasks: 3 })],
+      }),
     }));
   });
 
@@ -651,16 +664,20 @@ describe('DashboardViewProvider', () => {
   function makeDashboardData({
     changeName,
     lastRefresh,
+    completedTasks = 0,
+    totalTasks = 1,
   }: {
     changeName: string;
     lastRefresh: number;
+    completedTasks?: number;
+    totalTasks?: number;
   }) {
     return {
       changes: [
         {
           name: changeName,
-          completedTasks: 0,
-          totalTasks: 1,
+          completedTasks,
+          totalTasks,
           lastModified: '2026-06-01T00:00:00.000Z',
           status: 'draft' as const,
           lifecycleStatus: 'planning' as const,
@@ -3397,7 +3414,157 @@ describe('DashboardViewProvider', () => {
     }));
   });
 
-  it('project refreshes use the Project loader for watcher and manual refresh', async () => {
+  it('project sidebar refresh reconciles added and removed changes from dashboard refresh data', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture();
+    const kept = makeProjectChange('kept-change');
+    const removed = makeProjectChange('removed-change');
+    const gateway = {
+      loadChanges: vi.fn()
+        .mockResolvedValueOnce({
+          project: fixture.project,
+          binding: fixture.binding,
+          changes: [kept, removed],
+        }),
+    };
+    const dataManager = makeDataManager();
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(dataManager, gateway, fixture);
+
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    postMessage.mockClear();
+
+    const refreshCallback = (dataManager.onRefresh as any).mock.calls[0]?.[0] as ((data: any) => void) | undefined;
+    refreshCallback?.({
+      changes: [
+        {
+          ...kept,
+          completedTasks: 2,
+          totalTasks: 4,
+        },
+        makeProjectChange('added-change'),
+      ],
+      specs: [],
+      archivedChanges: [],
+      changeStatusCounts: {
+        all: 2,
+        planning: 2,
+        readyToApply: 0,
+        applying: 0,
+        readyToVerify: 0,
+        archived: 0,
+        needsAttention: 0,
+      },
+      lastRefresh: 4,
+    });
+    await vi.runAllTimersAsync();
+
+    expect(gateway.loadChanges).toHaveBeenCalledTimes(1);
+    const mergedSidebar = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'setContext' && message.view === 'sidebar')
+      .at(-1);
+    expect(mergedSidebar).toEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        changes: [
+          expect.objectContaining({ name: 'kept-change', completedTasks: 2, totalTasks: 4 }),
+          expect.objectContaining({ name: 'added-change' }),
+        ],
+      }),
+    }));
+    expect(
+      (mergedSidebar as { data: ProjectSidebarData }).data.changes.some((change) => change.name === 'removed-change'),
+    ).toBe(false);
+  });
+
+  it('still merges watcher refresh data while a manual Project Sidebar refresh is in flight', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture();
+    const gateway = {
+      loadChanges: vi.fn()
+        .mockResolvedValue({ project: fixture.project, binding: fixture.binding, changes: [makeProjectChange('seed-change')] }),
+    };
+    let resolveRefresh: ((value: unknown) => void) | undefined;
+    const refresh = vi.fn(() => new Promise((resolve) => {
+      resolveRefresh = resolve;
+    }));
+    const dataManager = makeDataManager({ refresh });
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(dataManager, gateway, fixture);
+
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    postMessage.mockClear();
+
+    const refreshCallback = (dataManager.onRefresh as any).mock.calls[0]?.[0] as ((data: any) => void) | undefined;
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+    const manualRefresh = handler?.({ type: 'refresh' });
+    refreshCallback?.(makeDashboardData({
+      changeName: 'watcher-added-change',
+      lastRefresh: 99,
+    }));
+    resolveRefresh?.(makeDashboardData({ changeName: 'watcher-added-change', lastRefresh: 99 }));
+    await manualRefresh;
+    await vi.runAllTimersAsync();
+
+    expect(postMessage.mock.calls.some(([message]) => (
+      message.type === 'setContext'
+      && message.view === 'sidebar'
+      && message.data?.changes?.some((change: { name: string }) => change.name === 'watcher-added-change')
+    ))).toBe(true);
+  });
+
+  it('merges watcher refresh into an open Changes Explorer panel', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture();
+    const change = makeProjectChange('explorer-change');
+    const gateway = {
+      resolveBinding: vi.fn().mockResolvedValue(fixture.binding),
+      loadChanges: vi.fn()
+        .mockResolvedValueOnce({ project: fixture.project, binding: fixture.binding, changes: [change] })
+        .mockResolvedValue({ project: fixture.project, binding: fixture.binding, changes: [change] }),
+      loadArchivedChanges: vi.fn().mockResolvedValue({
+        project: fixture.project,
+        binding: fixture.binding,
+        archivedChanges: [],
+      }),
+    };
+    const dataManager = makeDataManager();
+    const sidebarWebview = makeWebview();
+    const explorerPanel = makeEditorPanel();
+    const vscode = await import('vscode');
+    vi.mocked(vscode.window.createWebviewPanel).mockReturnValueOnce(explorerPanel as any);
+    const provider = makeProjectProvider(dataManager, gateway, fixture);
+
+    provider.resolveWebviewView(makeWebviewView(sidebarWebview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const handler = vi.mocked(sidebarWebview.onDidReceiveMessage).mock.calls[0]?.[0];
+    await handler?.({ type: 'openChangesExplorer', project: fixture.project, binding: fixture.binding });
+    await vi.runAllTimersAsync();
+    vi.mocked(explorerPanel.webview.postMessage).mockClear();
+
+    const refreshCallback = (dataManager.onRefresh as any).mock.calls[0]?.[0] as ((data: any) => void) | undefined;
+    refreshCallback?.(makeDashboardData({
+      changeName: 'watcher-added-change',
+      lastRefresh: 42,
+    }));
+    await vi.runAllTimersAsync();
+
+    expect(explorerPanel.webview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'setContext',
+      view: 'changesExplorer',
+      data: expect.objectContaining({
+        changes: expect.arrayContaining([
+          expect.objectContaining({ name: 'watcher-added-change' }),
+        ]),
+      }),
+    }));
+  });
+
+  it('project dashboard refresh merges task progress without reloading the Project loader', async () => {
     vi.useFakeTimers();
     const fixture = makeProjectFixture();
     const first = makeProjectChange('first-change');
@@ -3418,12 +3585,22 @@ describe('DashboardViewProvider', () => {
     postMessage.mockClear();
 
     const refreshCallback = (dataManager.onRefresh as any).mock.calls[0]?.[0] as ((data: any) => void) | undefined;
-    refreshCallback?.(makeDashboardData({ changeName: 'legacy-refresh', lastRefresh: 3 }));
+    refreshCallback?.(makeDashboardData({
+      changeName: first.name,
+      completedTasks: 1,
+      totalTasks: 3,
+      lastRefresh: 3,
+    }));
     await vi.runAllTimersAsync();
-    expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'setContext',
-      view: 'sidebar',
-      data: expect.objectContaining({ changes: [second] }),
+    expect(gateway.loadChanges).toHaveBeenCalledTimes(1);
+    const mergedSidebar = postMessage.mock.calls
+      .map(([message]) => message)
+      .filter((message) => message.type === 'setContext' && message.view === 'sidebar')
+      .at(-1);
+    expect(mergedSidebar).toEqual(expect.objectContaining({
+      data: expect.objectContaining({
+        changes: [expect.objectContaining({ name: first.name, completedTasks: 1, totalTasks: 3 })],
+      }),
     }));
 
     postMessage.mockClear();
@@ -3802,10 +3979,12 @@ describe('DashboardViewProvider', () => {
 
     const contextMessages = explorerPanel.webview.postMessage.mock.calls
       .map(([message]) => message)
-      .filter((message) => message?.type === 'setContext');
-    expect(contextMessages).toHaveLength(2);
-    expect(contextMessages[0]).toEqual(contextMessages[1]);
-    expect(contextMessages).not.toContainEqual(expect.objectContaining({ view: 'sidebar' }));
+      .filter((message) => message?.type === 'setContext' && message.view === 'changesExplorer');
+    expect(contextMessages.length).toBeGreaterThanOrEqual(2);
+    expect(contextMessages.at(-1)).toEqual(contextMessages.at(-2));
+    expect(explorerPanel.webview.postMessage.mock.calls).not.toContainEqual([
+      expect.objectContaining({ type: 'setContext', view: 'sidebar' }),
+    ]);
     expect(gateway.loadChanges).toHaveBeenCalledTimes(loadChangesCallsBeforeReplay);
   });
 

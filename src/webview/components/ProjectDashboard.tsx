@@ -2,6 +2,9 @@ import React from 'react';
 import { useAppState } from '../context/AppContext';
 import { t, type LocaleKey } from '../../i18n';
 import type { ChangeInfo, ProjectSidebarData } from '../types/messages';
+import { useVscode } from '../hooks/useVscode';
+import { sendMessage } from '../types/messages';
+import { formatRelativeDateLabel } from '../utils/dateLabels';
 
 export type ProjectDashboardLifecycle =
   | 'planning'
@@ -101,7 +104,20 @@ function Kpi({ label, value }: { label: string; value: string | number }) {
 
 export const ProjectDashboard: React.FC = () => {
   const { state } = useAppState();
+  const { postMessage } = useVscode();
   const data = state.projectSidebar;
+
+  const openChangeDetail = (changeName: string) => {
+    if (!data) return;
+    postMessage(sendMessage.openChangeDetailInEditor(
+      changeName,
+      undefined,
+      undefined,
+      undefined,
+      data.project,
+      data.binding,
+    ));
+  };
 
   if (!data && state.loading) {
     return <main data-page="projectDashboard" role="status" aria-label={t('projectDashboard.loading')} className="min-h-screen p-4">{t('projectDashboard.loading')}</main>;
@@ -202,8 +218,19 @@ export const ProjectDashboard: React.FC = () => {
           <ul className="space-y-2">
             {summary.recentUpdates.map((update) => (
               <li key={`${update.name}:${update.lastModified}`} className="flex flex-wrap justify-between gap-2 text-sm">
-                <span className="truncate" title={update.name}>{update.name}</span>
-                <time dateTime={update.lastModified} style={{ color: 'var(--vscode-descriptionForeground)' }}>{update.lastModified}</time>
+                <button
+                  type="button"
+                  data-recent-change={update.name}
+                  className="min-w-0 truncate text-left focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)]"
+                  title={update.name}
+                  aria-label={`${update.name} · ${t('action.openInEditor')}`}
+                  onClick={() => openChangeDetail(update.name)}
+                >
+                  {update.name}
+                </button>
+                <time dateTime={update.lastModified} style={{ color: 'var(--vscode-descriptionForeground)' }}>
+                  {formatRelativeDateLabel(update.lastModified)}
+                </time>
               </li>
             ))}
           </ul>

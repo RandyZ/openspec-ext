@@ -1,5 +1,7 @@
 /** Shared tasks.md line parsing — keep webview + extension host in sync. */
 
+import { countOpenSpecTaskProgress } from './openspecTaskProgress';
+
 export type TaskMarker = 'open' | 'done' | 'inProgress';
 
 export interface ParsedTaskLine {
@@ -37,14 +39,5 @@ export function parseTaskLine(line: string): ParsedTaskLine | null {
 }
 
 export function countTaskProgress(content: string): { completed: number; total: number } {
-  const lines = content.split('\n');
-  let total = 0;
-  let completed = 0;
-  for (const line of lines) {
-    const parsed = parseTaskLine(line);
-    if (!parsed) continue;
-    total += 1;
-    if (parsed.done) completed += 1;
-  }
-  return { completed, total };
+  return countOpenSpecTaskProgress(content);
 }

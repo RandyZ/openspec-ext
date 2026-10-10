@@ -54,7 +54,7 @@ describe('workflow launch labels', () => {
         cursorLaunchMode: 'deeplink',
         effectiveAdapterId: 'cursor',
       }),
-    ).toBe('Open Cursor · Apply');
+    ).toBe('Open Agent panel · Apply');
     expect(
       getWorkflowLaunchModeHint({
         ...baseConfig,
@@ -80,8 +80,8 @@ describe('workflow launch labels', () => {
 
   it('formats Verify & Archive copy description with IDE-specific command syntax', () => {
     const desc = getVerifyArchiveDescription(baseConfig, { isCursorHost: false });
-    expect(desc).toContain('/opsx:verify my-change');
-    expect(desc).toContain('/opsx:archive my-change');
+    expect(desc).toContain('/opsx:verify <change-name>');
+    expect(desc).toContain('/opsx:archive <change-name>');
     expect(desc).not.toContain('/opsx-verify');
 
     const cursorCopy: WorkflowLaunchConfigView = {
@@ -93,8 +93,8 @@ describe('workflow launch labels', () => {
       effectiveAdapterId: 'cursor',
     };
     const cursorDesc = getVerifyArchiveDescription(cursorCopy, { isCursorHost: true });
-    expect(cursorDesc).toContain('/opsx-verify my-change');
-    expect(cursorDesc).toContain('/opsx-archive my-change');
+    expect(cursorDesc).toContain('/opsx-verify <change-name>');
+    expect(cursorDesc).toContain('/opsx-archive <change-name>');
   });
 
   it('formats Verify & Archive hints with colon commands for VS Code Chat', () => {
@@ -104,10 +104,48 @@ describe('workflow launch labels', () => {
       preferredAgentAdapter: 'vscode-chat',
       effectiveAdapterId: 'vscode-chat',
     };
-    expect(getExampleWorkflowCommand('verify', config)).toBe('/opsx:verify my-change');
-    expect(getVerifyArchiveHint('verify', config)).toContain('/opsx:verify my-change');
+    expect(getExampleWorkflowCommand('verify', config)).toBe('/opsx:verify <change-name>');
+    expect(getVerifyArchiveHint('verify', config, undefined, 'real-change')).toContain('/opsx:verify real-change');
     expect(getVerifyArchiveHint('verify', config)).toContain('Chat');
     expect(getVerifyArchiveHint('verify', config)).not.toContain('/opsx-verify');
+  });
+
+  it('verify hint reflects readOnly auto-submit for verify', () => {
+    const config: WorkflowLaunchConfigView = {
+      ...baseConfig,
+      workflowLaunchMode: 'adapter',
+      preferredAgentAdapter: 'cursor',
+      effectiveAdapterId: 'cursor',
+      cursorLaunchMode: 'agentPanel',
+      agentAutoSubmit: 'readOnly',
+    };
+    expect(getVerifyArchiveHint('verify', config, { isCursorHost: true }, 'demo')).toContain('automatically');
+    expect(getVerifyArchiveHint('archive', config, { isCursorHost: true }, 'demo')).toContain('Enter');
+  });
+
+  it('verify hint reflects never auto-submit (prefill, not send)', () => {
+    const config: WorkflowLaunchConfigView = {
+      ...baseConfig,
+      workflowLaunchMode: 'adapter',
+      preferredAgentAdapter: 'vscode-chat',
+      effectiveAdapterId: 'vscode-chat',
+      agentAutoSubmit: 'never',
+    };
+    const verifyHint = getVerifyArchiveHint('verify', config, undefined, 'demo-change');
+    expect(verifyHint).toContain('Enter');
+    expect(verifyHint).not.toContain('automatically');
+  });
+
+  it('verify hint reflects always auto-submit for verify and archive', () => {
+    const config: WorkflowLaunchConfigView = {
+      ...baseConfig,
+      workflowLaunchMode: 'adapter',
+      preferredAgentAdapter: 'vscode-chat',
+      effectiveAdapterId: 'vscode-chat',
+      agentAutoSubmit: 'always',
+    };
+    expect(getVerifyArchiveHint('verify', config, undefined, 'demo-change')).toContain('automatically');
+    expect(getVerifyArchiveHint('archive', config, undefined, 'demo-change')).toContain('automatically');
   });
 
   it('shows generic launch wording for non-Cursor adapters', () => {

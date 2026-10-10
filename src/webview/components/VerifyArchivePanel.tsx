@@ -10,6 +10,7 @@ import {
 } from '../utils/workflowLaunchLabels';
 
 export interface VerifyArchivePanelProps {
+  changeName: string;
   isArchived: boolean;
   canArchiveNow?: boolean;
   archiveNowDisabledReason?: string;
@@ -56,6 +57,7 @@ const mutedTextStyle: React.CSSProperties = {
 };
 
 export const VerifyArchivePanel: React.FC<VerifyArchivePanelProps> = ({
+  changeName,
   isArchived,
   canArchiveNow = false,
   archiveNowDisabledReason,
@@ -86,11 +88,12 @@ export const VerifyArchivePanel: React.FC<VerifyArchivePanelProps> = ({
       )}
       <div style={cardStyle}>
         <div className="text-sm font-semibold mb-2">{t('verifyArchive.title')}</div>
-        <p style={mutedTextStyle}>{getVerifyArchiveDescription(workflowLaunchConfig, commandFormatRuntime)}</p>
+        <p style={mutedTextStyle}>{getVerifyArchiveDescription(workflowLaunchConfig, commandFormatRuntime, changeName)}</p>
       </div>
 
       <WorkflowActionCard
         action="verify"
+        changeName={changeName}
         disabled={false}
         launching={pendingAction === 'verify'}
         workflowLaunchConfig={workflowLaunchConfig}
@@ -100,6 +103,7 @@ export const VerifyArchivePanel: React.FC<VerifyArchivePanelProps> = ({
 
       <WorkflowActionCard
         action="archive"
+        changeName={changeName}
         disabled={isArchived}
         launching={pendingAction === 'archive'}
         workflowLaunchConfig={workflowLaunchConfig}
@@ -148,6 +152,7 @@ export const VerifyArchivePanel: React.FC<VerifyArchivePanelProps> = ({
 
 export const WorkflowActionCard: React.FC<{
   action: InteractiveWorkflowAction;
+  changeName: string;
   disabled: boolean;
   disabledMessage?: string;
   launching?: boolean;
@@ -156,6 +161,7 @@ export const WorkflowActionCard: React.FC<{
   onRun: (action: InteractiveWorkflowAction) => void;
 }> = ({
   action,
+  changeName,
   disabled,
   disabledMessage,
   launching = false,
@@ -166,7 +172,7 @@ export const WorkflowActionCard: React.FC<{
   const isVerify = action === 'verify';
   const title = isVerify ? t('verifyArchive.verifyTitle') : t('verifyArchive.reviewArchiveTitle');
   const runLabel = getVerifyArchiveRunLabel(action, workflowLaunchConfig, { launching });
-  const hint = getVerifyArchiveHint(action, workflowLaunchConfig, commandFormatRuntime);
+  const hint = getVerifyArchiveHint(action, workflowLaunchConfig, commandFormatRuntime, changeName);
 
   return (
     <section style={cardStyle}>

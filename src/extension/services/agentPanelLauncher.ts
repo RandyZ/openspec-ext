@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { buildChatOpenLaunchArgs } from '../../shared/chatOpenLaunchArgs';
 import { buildCursorPromptDeeplink } from './cursorDeeplink';
 import { logger } from '../utils/logger';
 import { t } from '../../i18n';
@@ -164,14 +165,15 @@ async function tryCursorChatOpen(
   const executeCommand = deps.executeCommand ?? vscode.commands.executeCommand.bind(vscode.commands);
 
   try {
-    await executeCommand('workbench.action.chat.open', { query: request.text });
+    const chatArgs = buildChatOpenLaunchArgs(request.text, request.autoSubmit);
+    await executeCommand('workbench.action.chat.open', chatArgs);
     if (cmds.has('composerMode.agent')) {
       void executeCommand('composerMode.agent').then(undefined, () => undefined);
     }
     return {
       success: true,
       layer: 'chatOpen',
-      outcome: 'prefilled',
+      outcome: request.autoSubmit ? 'submitted' : 'prefilled',
     };
   } catch (error) {
     logger.warn('workbench.action.chat.open failed on Cursor', error as Error);
@@ -208,18 +210,29 @@ async function tryVsCodeChatOpen(
   }
   const executeCommand = deps.executeCommand ?? vscode.commands.executeCommand.bind(vscode.commands);
 
+  const chatArgs = buildChatOpenLaunchArgs(request.text, request.autoSubmit);
   try {
-    await executeCommand('workbench.action.chat.open', {
-      query: request.text,
-      isPartialQuery: true,
-      mode: 'agent',
-    });
+    await executeCommand('workbench.action.chat.open', chatArgs);
     return {
       success: true,
       layer: 'vscodeChat',
-      outcome: 'prefilled',
+      outcome: request.autoSubmit ? 'submitted' : 'prefilled',
     };
   } catch (error) {
+    if (request.autoSubmit) {
+      logger.warn('workbench.action.chat.open submit failed; falling back to prefill', error as Error);
+      try {
+        await executeCommand('workbench.action.chat.open', buildChatOpenLaunchArgs(request.text, false));
+        return {
+          success: true,
+          layer: 'vscodeChat',
+          outcome: 'prefilled',
+        };
+      } catch (fallbackError) {
+        logger.warn('workbench.action.chat.open prefill fallback failed on VS Code', fallbackError as Error);
+        return undefined;
+      }
+    }
     logger.warn('workbench.action.chat.open failed on VS Code', error as Error);
     return undefined;
   }

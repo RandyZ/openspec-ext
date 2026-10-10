@@ -23,7 +23,7 @@ export function clearTasksContentCache(
   }
 }
 
-/** Drop any stuck tasks fetch slot, clear cache, and schedule a refetch. */
+/** Drop any stuck tasks fetch slot and refetch without clearing visible content. */
 export function handleTasksArtifactInvalidated(params: {
   scopeId: string | undefined;
   coordinator: ArtifactFetchCoordinator;
@@ -34,8 +34,6 @@ export function handleTasksArtifactInvalidated(params: {
 }): void {
   params.resetVerifyArchiveLoadedFlag();
   params.coordinator.complete(tasksFetchCoordinatorKey(params.scopeId));
-  clearTasksContentCache(params.contentCache, params.scopeId);
-  params.markVerifyArchiveLoading();
   params.scheduleTasksRefetch();
 }
 

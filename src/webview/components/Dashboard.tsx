@@ -62,6 +62,21 @@ export function selectProjectFirstTab(
   tab: ProjectFirstTab,
 ): void {
   setTab(tab);
+  if (tab === 'changes' && typeof globalThis.document !== 'undefined') {
+    const scrollToChangesPanel = () => {
+      globalThis.document?.getElementById('project-first-changes-panel')?.scrollIntoView({ block: 'nearest' });
+    };
+    const schedule = globalThis.requestAnimationFrame ?? ((callback: () => void) => setTimeout(callback, 0));
+    schedule(scrollToChangesPanel);
+  }
+}
+
+export function openProjectChangesInEditor(
+  postMessage: DashboardPostMessage,
+  project: ProjectContext,
+  binding: OpenSpecRootBinding,
+): void {
+  postMessage(sendMessage.openChangesExplorer(project, binding));
 }
 
 export function sendProjectSidebarSpecDetail(
@@ -480,6 +495,8 @@ export const Dashboard: React.FC = () => {
           ...prev,
           [message.specId]: message.requirements ?? [],
         }));
+      } else if (message.type === 'changeTaskProgressPatch') {
+        dispatch({ type: 'PATCH_TASK_PROGRESS', payload: message });
       } else if (message.type === 'workflowLaunchConfig') {
         setWorkflowLaunchConfig(message.config ?? null);
         setWorkflowLaunchIsCursorHost(message.isCursorHost === true);
@@ -727,6 +744,13 @@ export const Dashboard: React.FC = () => {
     .slice(0, 3);
   const priorityWorkflowConfig = workflowLaunchConfig ?? projectSidebar?.workflowLaunchConfig;
   const projectBinding = projectSidebar?.binding;
+  const projectSpecsCount = projectSidebar
+    ? (projectSidebar.projectSpecs?.length ?? 0)
+      + (projectSidebar.referencedStoreSpecs ?? []).reduce(
+        (total, group) => total + group.specs.length,
+        0,
+      )
+    : 0;
 
   return (
     <div className="min-h-screen" style={{ 
@@ -748,9 +772,6 @@ export const Dashboard: React.FC = () => {
           onSetupStore={data?.scope?.capabilities?.stores ? handleSetupStore : undefined}
           project={projectSidebar?.project}
           binding={projectSidebar?.binding}
-          onOpenChanges={projectSidebar
-            ? () => selectProjectFirstTab(setProjectFirstTab, 'changes')
-            : undefined}
           onOpenSpecs={projectSidebar
             ? () => selectProjectFirstTab(setProjectFirstTab, 'specs')
             : undefined}
@@ -758,6 +779,7 @@ export const Dashboard: React.FC = () => {
             ? () => postMessage(sendMessage.openProjectDashboard())
             : undefined}
           activeProjectTab={projectSidebar ? projectFirstTab : undefined}
+          specsCount={projectSpecsCount}
           worksetCount={projectSidebar?.worksetNavigation?.worksets.length ?? 0}
           worksetsCapabilityAvailable={projectSidebar
             ? projectSidebar.worksetCapabilityAvailable !== false
@@ -831,39 +853,48 @@ export const Dashboard: React.FC = () => {
                   key={`${group.key}:${change.name}:${change.workflowSnapshot?.bindingKey ?? ''}`}
                   data-priority-row={change.name}
                   data-priority-status={group.key}
-                  className="flex min-w-0 items-center gap-2 rounded border px-2 py-1.5 transition-colors hover:bg-[var(--vscode-list-hoverBackground)]"
+                  className="flex min-w-0 flex-col gap-1 rounded border px-2 py-1.5 transition-colors hover:bg-[var(--vscode-list-hoverBackground)]"
                   style={{
                     background: 'var(--vscode-sideBar-background)',
                     borderColor: 'var(--vscode-panel-border)',
                   }}
                 >
-                  <span className={`codicon ${statusIcon} shrink-0`} aria-hidden="true" />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--vscode-descriptionForeground)' }}>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className={`codicon ${statusIcon} shrink-0`} aria-hidden="true" />
+                    <div
+                      className="min-w-0 flex-1 truncate text-[10px] uppercase tracking-wide"
+                      style={{ color: 'var(--vscode-descriptionForeground)' }}
+                    >
                       {group.label}
                     </div>
-                    <div
+                  </div>
+                  <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 pl-6">
+                    <button
+                      type="button"
                       data-change-name={change.name}
-                      className="truncate text-xs"
+                      data-priority-change={change.name}
+                      className="min-w-[7rem] min-w-0 flex-1 truncate text-left text-xs focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)]"
                       title={change.name}
+                      aria-label={`${change.name} · ${t('action.openInEditor')}`}
+                      onClick={() => handleOpenChange(change.name)}
                     >
                       {change.name}
-                    </div>
+                    </button>
+                    <button
+                      type="button"
+                      data-priority-cta={change.name}
+                      className="shrink-0 rounded px-2 py-1 text-xs focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)]"
+                      style={{
+                        background: 'var(--vscode-button-secondaryBackground)',
+                        color: 'var(--vscode-button-secondaryForeground)',
+                      }}
+                      title={ctaAccessibleName}
+                      aria-label={ctaAccessibleName}
+                      onClick={() => handleOpenPriorityChange(change, group.key)}
+                    >
+                      {ctaLabel}
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    data-priority-cta={change.name}
-                    className="shrink-0 rounded px-2 py-1 text-xs focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)]"
-                    style={{
-                      background: 'var(--vscode-button-secondaryBackground)',
-                      color: 'var(--vscode-button-secondaryForeground)',
-                    }}
-                    title={ctaAccessibleName}
-                    aria-label={ctaAccessibleName}
-                    onClick={() => handleOpenPriorityChange(change, group.key)}
-                  >
-                    {ctaLabel}
-                  </button>
                 </div>
               );
             })}
@@ -907,6 +938,11 @@ export const Dashboard: React.FC = () => {
                       workflowLaunchPendingKeys={workflowLaunchPending.pendingKeys}
                       workflowActionReceipts={workflowReceipts}
                       projectBinding={projectSidebar.binding}
+                      onOpenInEditor={() => openProjectChangesInEditor(
+                        postMessage,
+                        projectSidebar.project,
+                        projectSidebar.binding,
+                      )}
                       layout="narrow"
                     />
                   </div>

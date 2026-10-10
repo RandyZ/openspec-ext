@@ -5,10 +5,7 @@ import {
   getWorkflowCommandTargetForAdapter,
   buildWorkflowCommand,
 } from '../../shared/workflowCommand';
-import {
-  type AgentAutoSubmitMode,
-  shouldAutoSubmitWorkflowAction,
-} from '../../shared/agentAutoSubmit';
+import { shouldAutoSubmitWorkflowAction } from '../../shared/agentAutoSubmit';
 import {
   isCopyOnlyWorkflowMode,
   shouldForceCursorWorkflowRoute,
@@ -17,7 +14,7 @@ import {
 import { getCurrentAdapter, getAdapterById } from '../adapters';
 import { cursorAdapter } from '../adapters/cursor-adapter';
 import { t } from '../../i18n';
-import { getWorkflowLaunchConfig } from './workflowLaunchConfig';
+import { getAgentAutoSubmitMode, getWorkflowLaunchConfig } from './workflowLaunchConfig';
 import {
   launchAgentPanelPrompt,
   type AgentLaunchLayer,
@@ -25,6 +22,8 @@ import {
 } from './agentPanelLauncher';
 import { isCursorHost } from '../utils/isCursorHost';
 import { notifyWorkflowCommandCopied } from './workflowClipboardNotify';
+import { notifyAgentPrefillLaunchHint } from './agentLaunchPrefillNotify';
+import { maybeShowFirstCursorAgentPanelLaunchHint } from './agentCursorSessionHint';
 
 export type WorkflowAgentLaunchTarget =
   | 'clipboard'
@@ -89,20 +88,13 @@ function workflowLaunchDedupeKey(request: WorkflowAgentLaunchRequest): string {
   return `${request.workspaceRoot}\u0000${request.changeName}\u0000${request.action}`;
 }
 
-function readAgentAutoSubmitMode(): AgentAutoSubmitMode {
-  const raw = vscode.workspace.getConfiguration('openspec').get<string>('agentAutoSubmit');
-  if (raw === 'never' || raw === 'always' || raw === 'readOnly') {
-    return raw;
-  }
-  return 'readOnly';
-}
 
 function notifyLaunchResult(
   result: WorkflowAgentLaunchResult,
   command: string,
 ): void {
   if (result.outcome === 'deduped') {
-    void vscode.window.showInformationMessage(t('workflow.launchDeduped'));
+    void vscode.window.showInformationMessage(t('workflow.launchJustLaunched'));
     return;
   }
   if (result.target === 'clipboard' || result.outcome === 'copied') {
@@ -113,8 +105,16 @@ function notifyLaunchResult(
     void vscode.window.showInformationMessage(t('agentLaunch.deeplinkPrefilled', { command }));
     return;
   }
-  if (result.layer === 'vscodeChat' || result.target === 'externalAdapter') {
-    void vscode.window.showInformationMessage(t('agentLaunch.prefilledChat', { command }));
+  if (result.outcome === 'prefilled') {
+    void notifyAgentPrefillLaunchHint();
+    return;
+  }
+  if (result.outcome === 'submitted' || result.layer === 'vscodeChat') {
+    void vscode.window.showInformationMessage(t('agentLaunch.openedPanel', { command }));
+    return;
+  }
+  if (result.target === 'externalAdapter') {
+    void notifyAgentPrefillLaunchHint();
     return;
   }
   void vscode.window.showInformationMessage(t('agentLaunch.openedPanel', { command }));
@@ -147,7 +147,7 @@ function buildDedupedLaunchResult(request: WorkflowAgentLaunchRequest): Workflow
     target: resolveLaunchTargetFromPayload(payload, view),
     layer: undefined,
     outcome: 'deduped',
-    message: t('workflow.launchDeduped'),
+    message: t('workflow.launchJustLaunched'),
   };
 }
 
@@ -206,7 +206,7 @@ async function executeWorkflowAgentLaunch(
 ): Promise<WorkflowAgentLaunchResult> {
   const launchConfig = getWorkflowLaunchConfig();
   const launchConfigView = toWorkflowLaunchConfigView(launchConfig);
-  const autoSubmit = shouldAutoSubmitWorkflowAction(request.action, readAgentAutoSubmitMode());
+  const autoSubmit = shouldAutoSubmitWorkflowAction(request.action, getAgentAutoSubmitMode());
 
   const clipboardPayload = buildResolvedLaunchPayload(request.action, request.changeName);
 
@@ -287,6 +287,9 @@ async function executeWorkflowAgentLaunch(
       outcome: panelResult.outcome,
       message: panelResult.message,
     };
+    if (isCursorHost() && panelResult.layer) {
+      maybeShowFirstCursorAgentPanelLaunchHint(panelResult.layer);
+    }
     notifyLaunchResult(result, payload.command);
     return result;
   }

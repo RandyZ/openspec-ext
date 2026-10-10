@@ -31,6 +31,7 @@ export interface ChangeWorkflowSnapshot {
 
 export type WorkflowActionReceiptStatus =
   | 'delivered'
+  | 'prefilled'
   | 'copied'
   | 'fallback'
   | 'running'

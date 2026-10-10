@@ -1,0 +1,6 @@
+{
+  "configuration.openspec.agentAutoSubmit.description": "在 VS Code Chat/Copilot 或 Cursor 的 Agent 面板中启动工作流命令时，控制是自动发送还是仅预填。适用于 VS Code 与 Cursor。never：始终预填；readOnly（默认）：仅对 explore、verify 自动发送；always：对所有工作流动作（含 apply、archive）自动发送。若当前编辑器版本不支持自动发送，扩展会回退为预填。",
+  "configuration.openspec.agentAutoSubmit.enum.never": "从不自动发送 — 始终预填 Agent 输入框，按 Enter 发送。",
+  "configuration.openspec.agentAutoSubmit.enum.readOnly": "在 VS Code 与 Cursor 中仅对只读工作流（explore、verify）自动发送。",
+  "configuration.openspec.agentAutoSubmit.enum.always": "在 VS Code 与 Cursor 中对所有工作流命令（含 apply、archive）自动发送。"
+}

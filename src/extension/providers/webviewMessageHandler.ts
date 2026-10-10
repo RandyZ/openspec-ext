@@ -14,7 +14,7 @@ import type {
 import { t } from '../../i18n';
 import { buildWorkflowLaunchPayload } from '../../shared/workflowCommand';
 import type { WorkflowAction } from '../../shared/workflowCommand';
-import { getWorkflowLaunchConfig } from '../services/workflowLaunchConfig';
+import { getWorkflowLaunchConfigViewForUi } from '../services/workflowLaunchConfig';
 import { launchWorkflowAgentCommand } from '../services/workflowAgentLaunch';
 import { postExecutorLaunchPresentationFromHost } from '../services/executorLaunchPresentation';
 import {
@@ -22,7 +22,6 @@ import {
 } from '../services/interactiveAgentTerminalManager';
 import { confirmDirectArchive } from '../commands/archiveConfirm';
 import { formatBytes } from '../utils/formatBytes';
-import { toWorkflowLaunchConfigView } from '../../shared/workflowLaunchConfig';
 import { isCursorHost } from '../utils/isCursorHost';
 import type {
   InteractiveWorkflowAction,
@@ -680,6 +679,36 @@ export async function handleWebviewMessage(
       const artifactType = message.artifactId ?? message.artifactType;
       if (!changeName || !artifactType) break;
       const { rootPath, scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
+      if (
+        artifactType === 'tasks'
+        && !changeName.startsWith('archive:')
+      ) {
+        try {
+          const content = await dataManager.readArtifact(changeName, 'tasks', scope);
+          await dataManager.writeArtifactContentCache?.({
+            changeName,
+            artifactType: 'tasks',
+            scope,
+            content,
+          });
+          webview.postMessage({
+            type: 'artifactContent',
+            changeName,
+            artifactType: 'tasks',
+            content,
+            cache: { source: 'fresh', stale: false },
+          });
+        } catch {
+          webview.postMessage({
+            type: 'artifactContentError',
+            changeName,
+            artifactType: 'tasks',
+            message: t('artifact.missingShort'),
+            code: 'ARTIFACT_MISSING',
+          });
+        }
+        break;
+      }
       if (!isPathInWorkspaceFolders(rootPath)) {
         webview.postMessage({
           type: 'artifactContentError',
@@ -1462,10 +1491,9 @@ export async function handleAgentUnavailableMessage(
 }
 
 export function getWorkflowLaunchConfigMessage() {
-  const config = getWorkflowLaunchConfig();
   return {
     type: 'workflowLaunchConfig' as const,
-    config: toWorkflowLaunchConfigView(config),
+    config: getWorkflowLaunchConfigViewForUi(),
     isCursorHost: isCursorHost(),
   };
 }
@@ -1560,6 +1588,9 @@ export function getWebviewContent(
   const styleUri = webview.asWebviewUri(
     vscode.Uri.file(path.join(extensionPath, 'dist', 'webview', 'index.css'))
   );
+  const fontUri = webview.asWebviewUri(
+    vscode.Uri.file(path.join(extensionPath, 'dist', 'webview', 'index.ttf')),
+  );
   const lang = vscode.env.language || 'en';
   const rootAttributes = buildWebviewRootAttributes(bootstrap);
   const inlineBootstrap = buildInlineBootstrapScript(bootstrap);
@@ -1569,9 +1600,10 @@ export function getWebviewContent(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource} 'unsafe-inline';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource};">
   <title>OpenSpec Dashboard</title>
   <link rel="stylesheet" href="${styleUri}">
+  <link rel="preload" href="${fontUri}" as="font" type="font/ttf" crossorigin>
 </head>
 <body>
   <div id="root"${rootAttributes}></div>

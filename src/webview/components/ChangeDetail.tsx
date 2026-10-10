@@ -58,6 +58,8 @@ import {
   shouldShowActiveTabLoadingForArtifactFetch,
 } from '../utils/changeDetailTasksFetch';
 import type { WorkflowActionReceipt } from '../../shared/changeWorkflow';
+import { isChangeTaskProgressPatch } from '../../shared/changeTaskProgressPatch';
+import { changeTaskProgressPatchAppliesToPanel } from '../../shared/changeTaskProgressScope';
 
 const MISSING_ARTIFACT_MESSAGE = t('artifact.missing');
 
@@ -349,11 +351,17 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
       artifactType === 'specs' ? selectedSpecIdRef.current : undefined,
     );
 
-  const requestArtifact = (artifactType: string, outputPath?: string) => {
+  const requestArtifact = (
+    artifactType: string,
+    outputPath?: string,
+    options?: { background?: boolean },
+  ) => {
     const fetchKey = resolveFetchKey(artifactType);
     const resolvedOutputPath = outputPath ?? selectedOutputPathsRef.current[artifactType];
     artifactFetchCoordinatorRef.current.schedule(fetchKey, () => {
-      if (shouldShowActiveTabLoadingForArtifactFetch(activeTabRef.current, artifactType)) {
+      const showLoading = !options?.background
+        && shouldShowActiveTabLoadingForArtifactFetch(activeTabRef.current, artifactType);
+      if (showLoading) {
         setLoading(true);
         setError(null);
         setErrorCode(undefined);
@@ -548,6 +556,30 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         })) {
           setVerifyArchiveTasksLoading(false);
         }
+      } else if (isChangeTaskProgressPatch(msg)) {
+        const patch = msg;
+        if (!changeTaskProgressPatchAppliesToPanel(patch, { changeName, scopeId, planningRoot })) {
+          return;
+        }
+        setTasksProgressError(null);
+        setTasksProgressUnknown(false);
+        setCompletedTasks(patch.completedTasks);
+        setTotalTasks(patch.totalTasks);
+        setVerifyArchiveTasksLoading(false);
+        if (typeof patch.tasksContent === 'string') {
+          const onTasksSurface = activeTabRef.current === 'tasks'
+            || activeTabRef.current === 'verifyArchive';
+          if (onTasksSurface) {
+            setContent(patch.tasksContent);
+          }
+          completeArtifactFetchAndStoreContent({
+            scopeId,
+            artifactType: 'tasks',
+            content: patch.tasksContent,
+            coordinator: artifactFetchCoordinatorRef.current,
+            contentCache: contentCacheRef.current,
+          });
+        }
       } else if (data.type === 'workflowActionReceipt'
         && data.changeName === changeName
         && workflowSnapshot
@@ -700,7 +732,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
                 setVerifyArchiveTasksLoading(true);
               }
             },
-            scheduleTasksRefetch: () => requestArtifact('tasks'),
+            scheduleTasksRefetch: () => requestArtifact('tasks', undefined, { background: true }),
           });
         } else if (invalidated.includes(activeTabRef.current)) {
           initialArtifactFetchKeyRef.current = null;
@@ -1025,6 +1057,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         {activeTab === 'verifyArchive' ? (
           <div className="flex flex-col gap-4 max-w-4xl">
             <VerifyArchivePanel
+              changeName={changeName}
               isArchived={isArchived}
               canArchiveNow={canArchiveNow}
               archiveNowDisabledReason={archiveNowDisabledReason}

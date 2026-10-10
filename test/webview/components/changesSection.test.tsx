@@ -1,6 +1,7 @@
 import React, { isValidElement, type ReactElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { setLocale } from '../../../src/i18n';
 import { ChangesSection } from '../../../src/webview/components/ChangesSection';
 import { ChangeStatusFilter } from '../../../src/webview/components/ChangeStatusFilter';
 import type { ChangeStatusCounts } from '../../../src/shared/changeLifecycle';
@@ -145,6 +146,32 @@ describe('ChangesSection root-scoped empty states', () => {
 
     expect(html).toContain('No Archived changes in Store: team-plans');
     expect(html).not.toContain('Create New Change');
+  });
+});
+
+describe('Changes list title open-in-editor action', () => {
+  afterEach(() => setLocale('en'));
+
+  it('renders the external-link control with English tooltip when a handler is provided', () => {
+    const onOpenInEditor = vi.fn();
+    const html = renderSection({ onOpenInEditor });
+
+    expect(html).toContain('data-open-changes-in-editor');
+    expect(html).toMatch(/data-open-changes-in-editor[^>]*title="Open in Editor"/);
+    expect(html).toMatch(/data-open-changes-in-editor[^>]*aria-label="Open in Editor"/);
+  });
+
+  it('localizes the open-in-editor tooltip in zh-cn', () => {
+    setLocale('zh-cn');
+    const html = renderSection({ onOpenInEditor: vi.fn() });
+
+    expect(html).toMatch(/data-open-changes-in-editor[^>]*title="在编辑器中打开"/);
+    expect(html).toMatch(/data-open-changes-in-editor[^>]*aria-label="在编辑器中打开"/);
+  });
+
+  it('omits the control when no handler is provided', () => {
+    const html = renderSection();
+    expect(html).not.toContain('data-open-changes-in-editor');
   });
 });
 

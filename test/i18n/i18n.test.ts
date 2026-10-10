@@ -84,7 +84,7 @@ describe('i18n', () => {
       expect(t('task.executing')).toBe('执行中...');
       expect(t('action.openInEditor')).toBe('在编辑器中打开');
       expect(t('action.refresh')).toBe('刷新');
-      expect(t('action.archiveChange')).toBe('归档 Change');
+      expect(t('action.archiveChange')).toBe('归档 change');
       expect(t('dashboard.statusDraft')).toBe('草稿');
       expect(t('dashboard.statusInProgress')).toBe('进行中');
       expect(t('dashboard.statusComplete')).toBe('已完成');
@@ -92,8 +92,8 @@ describe('i18n', () => {
       expect(t('verify.completeness')).toContain('完整性');
       expect(t('verify.correctness')).toContain('正确性');
       expect(t('verify.coherence')).toContain('一致性');
-      expect(t('verifyArchive.runVerify')).toBe('Run Verify');
-      expect(t('verifyArchive.clearSession')).toBe('Clear Session');
+      expect(t('verifyArchive.runVerify')).toBe('运行验证');
+      expect(t('verifyArchive.clearSession')).toBe('清除会话');
       expect(t('verifyArchive.reviewArchive')).toBe('审查并归档');
       expect(t('verifyArchive.archiveNow')).toBe('立即归档');
       expect(t('extension.emptyWorkspaceMessage')).toBe(
@@ -103,7 +103,7 @@ describe('i18n', () => {
     });
 
     it('supports parameter substitution in Chinese', () => {
-      expect(t('command.created', { name: 'test-change' })).toBe('Change "test-change" 已创建');
+      expect(t('command.created', { name: 'test-change' })).toBe('change "test-change" 已创建');
       expect(t('adapter.switched', { name: 'Clipboard' })).toBe('已切换执行者: Clipboard');
       expect(t('time.daysAgo', { days: 3 })).toBe('3天前');
       expect(t('time.weeksAgo', { weeks: 2 })).toBe('2周前');
@@ -353,7 +353,7 @@ describe('i18n', () => {
       expect((en as Record<string, string>)['dashboard.priorityActionAriaLabel'])
         .toBe('{action} for Change {name}');
       expect((zhCn as Record<string, string>)['dashboard.priorityActionAriaLabel'])
-        .toBe('{action}（Change：{name}）');
+        .toBe('{action}（change：{name}）');
     });
   });
 });

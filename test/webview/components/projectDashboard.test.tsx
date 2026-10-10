@@ -1,6 +1,7 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
+import { setLocale } from '../../../src/i18n';
 import { AppProvider, type AppState } from '../../../src/webview/context/AppContext';
 import {
   deriveProjectDashboardSummary,
@@ -120,6 +121,81 @@ describe('ProjectDashboard summary', () => {
 });
 
 describe('ProjectDashboard surface', () => {
+  it('formats recent update timestamps as relative labels instead of raw ISO strings', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-23T12:00:00.000Z'));
+    const html = renderToStaticMarkup(
+      <AppProvider initialState={{
+        data: null,
+        projectSidebar: data,
+        page: 'dashboard',
+        projectFirst: true,
+        loading: false,
+        activity: { kind: 'idle' },
+        stale: false,
+        error: null,
+        selectedChange: null,
+        debug: false,
+        cliDiagnostic: null,
+      } as AppState}>
+        <ProjectDashboard />
+      </AppProvider>,
+    );
+
+    expect(html).toMatch(/<time dateTime="2026-08-23T00:00:00.000Z"[^>]*>Today<\/time>/);
+    expect(html).toMatch(/Yesterday|昨天/);
+    vi.useRealTimers();
+  });
+
+  it('formats recent update timestamps in Chinese locale', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-23T12:00:00.000Z'));
+    setLocale('zh-cn');
+    const html = renderToStaticMarkup(
+      <AppProvider initialState={{
+        data: null,
+        projectSidebar: data,
+        page: 'dashboard',
+        projectFirst: true,
+        loading: false,
+        activity: { kind: 'idle' },
+        stale: false,
+        error: null,
+        selectedChange: null,
+        debug: false,
+        cliDiagnostic: null,
+      } as AppState}>
+        <ProjectDashboard />
+      </AppProvider>,
+    );
+
+    expect(html).toMatch(/<time dateTime="2026-08-23T00:00:00.000Z"[^>]*>今天<\/time>/);
+    setLocale('en');
+    vi.useRealTimers();
+  });
+
+  it('renders recent change names as open-detail controls', () => {
+    const html = renderToStaticMarkup(
+      <AppProvider initialState={{
+        data: null,
+        projectSidebar: data,
+        page: 'dashboard',
+        projectFirst: true,
+        loading: false,
+        activity: { kind: 'idle' },
+        stale: false,
+        error: null,
+        selectedChange: null,
+        debug: false,
+        cliDiagnostic: null,
+      } as AppState}>
+        <ProjectDashboard />
+      </AppProvider>,
+    );
+
+    expect(html).toMatch(/<button[^>]*data-recent-change="verify-change"/);
+  });
+
   it('renders accessible summary labels, dynamic artifacts, and recent updates', () => {
     const html = renderToStaticMarkup(
       <AppProvider initialState={{

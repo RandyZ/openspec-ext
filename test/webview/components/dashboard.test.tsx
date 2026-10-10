@@ -13,6 +13,7 @@ import {
   getWorksetsTabAvailable,
   returnToCurrentProject,
   selectProjectFirstTab,
+  openProjectChangesInEditor,
   sendProjectSidebarSpecDetail,
   toWorksetCreateResultState,
   toWorksetPickedMembersState,
@@ -315,6 +316,12 @@ describe('Dashboard recommended action rail', () => {
     expect(html).toMatch(/data-priority-row="verify-change"[^>]*data-priority-status="[^"]+"/);
     expect(html).toMatch(/data-priority-row="recommended-change"[^>]*data-priority-status="[^"]+"/);
     expect(html).toMatch(/data-change-name="attention-change"[^>]*class="[^"]*truncate/);
+    expect(html).toMatch(/data-priority-row="recommended-change"[^>]*flex-col/);
+    expect(html).toContain('flex-wrap');
+    expect(html).toMatch(/data-priority-change="recommended-change"[^>]*min-w-\[7rem\]/);
+    expect(html).toMatch(/data-priority-cta="recommended-change"[^>]*shrink-0/);
+    expect(html).not.toMatch(/data-priority-cta="recommended-change"[^>]*truncate/);
+    expect(html).not.toMatch(/data-priority-cta="recommended-change"[^>]*max-w-\[55%\]/);
     expect(html).toContain('Review');
     expect(html).toContain('Copy Verify');
     expect(html).toContain('Copy Continue planning');
@@ -420,7 +427,7 @@ describe('Dashboard recommended action rail', () => {
     expect(html).toContain('aria-label="工作流优先级"');
     expect(html).toContain('需要关注');
     expect(html).toContain('可以验证');
-    expect(html).toContain('aria-label="审查并归档（Change：attention-change）"');
+    expect(html).toContain('aria-label="审查并归档（change：attention-change）"');
     setLocale('en');
   });
 
@@ -644,21 +651,20 @@ describe('project page contract', () => {
       }],
     });
 
-    expect(html).toContain('data-project-action-grid');
-    expect(html).toContain('data-project-action="changes"');
+    expect(html).toContain('data-project-nav-list');
+    expect(html).not.toContain('data-project-action-grid');
+    expect(html).not.toContain('data-project-action="changes"');
     expect(html).toContain('data-project-action="specs"');
     expect(html).toContain('data-project-action="worksets"');
     expect(html).toContain('data-project-action="dashboard"');
+    expect(html).toContain('data-open-changes-in-editor');
+    expect(html).toContain('Project Dashboard');
     expect(html).not.toContain('role="tablist"');
-    expect(html).toContain('aria-pressed="true"');
-    expect(html.indexOf('data-project-action="changes"')).toBeLessThan(
+    expect(html.indexOf('data-project-action="dashboard"')).toBeLessThan(
       html.indexOf('data-project-action="specs"'),
     );
     expect(html.indexOf('data-project-action="specs"')).toBeLessThan(
       html.indexOf('data-project-action="worksets"'),
-    );
-    expect(html.indexOf('data-project-action="worksets"')).toBeLessThan(
-      html.indexOf('data-project-action="dashboard"'),
     );
     expect(html).toContain('active-change');
     expect(html).not.toContain('Project Specs');
@@ -686,7 +692,7 @@ describe('project page contract', () => {
     expect(html).toContain('data-project-action="worksets"');
     // The disabled attribute must be absent (Tailwind disabled: classes always exist).
     expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*data-project-action="worksets"/);
-    expect(html).toContain('Browse Workset Projects');
+    expect(html).toContain('Workset Projects');
     expect(html).not.toContain('No trusted Workset membership available');
   });
 
@@ -700,10 +706,9 @@ describe('project page contract', () => {
     expect(html).toContain('data-project-action="worksets"');
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*data-project-action="worksets"/);
     expect(html).toContain('Stores and worksets require OpenSpec 1.5.0 or newer.');
-    // Changes/Specs stay fully usable next to the disabled Worksets tab.
-    expect(html).toContain('data-project-action="changes"');
+    // Specs stay fully usable next to the disabled Worksets tab.
+    expect(html).not.toContain('data-project-action="changes"');
     expect(html).toContain('data-project-action="specs"');
-    expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*data-project-action="changes"/);
     expect(html).not.toMatch(/<button[^>]*disabled=""[^>]*data-project-action="specs"/);
   });
 
@@ -715,6 +720,58 @@ describe('project page contract', () => {
 
     expect(setTab).toHaveBeenCalledWith('specs');
     expect(postMessage).not.toHaveBeenCalled();
+  });
+
+  it('opens the bound Changes explorer when the list title action is activated', () => {
+    const postMessage = vi.fn();
+
+    openProjectChangesInEditor(postMessage, projectContext, projectBinding);
+
+    expect(postMessage).toHaveBeenCalledWith(
+      sendMessage.openChangesExplorer(projectContext, projectBinding),
+    );
+  });
+
+  it('renders the open-in-editor control beside the Changes list title', () => {
+    const html = renderProjectSidebar(projectSidebarData);
+
+    expect(html).toMatch(/data-open-changes-in-editor[^>]*title="Open in Editor"/);
+    expect(html).toMatch(/data-open-changes-in-editor[^>]*aria-label="Open in Editor"/);
+  });
+
+  it('localizes the Changes list open-in-editor control in zh-cn', () => {
+    setLocale('zh-cn');
+    const html = renderProjectSidebar(projectSidebarData);
+
+    expect(html).toMatch(/data-open-changes-in-editor[^>]*title="在编辑器中打开"/);
+    expect(html).toMatch(/data-open-changes-in-editor[^>]*aria-label="在编辑器中打开"/);
+  });
+
+  it('renders priority change names as open-detail controls', () => {
+    const verify = hostChange('verify-change', {
+      completedTasks: 1,
+      totalTasks: 1,
+      lifecycleStatus: 'ready-to-verify',
+      workflowSnapshot: {
+        changeName: 'verify-change',
+        schema: 'custom',
+        bindingKey: 'project-root',
+        artifacts: [{
+          id: 'proposal',
+          status: 'done',
+          requires: [],
+          missingDeps: [],
+          outputPath: 'proposal.md',
+          existingOutputPaths: ['proposal.md'],
+        }],
+      },
+    });
+    const html = renderProjectSidebar({
+      ...projectSidebarData,
+      changes: [verify],
+    });
+
+    expect(html).toMatch(/<button[^>]*data-priority-change="verify-change"/);
   });
 
   it('builds a dedicated Project Dashboard request instead of a list Explorer request', () => {
@@ -943,10 +1000,11 @@ describe('project page contract', () => {
 
     expect(html).toContain('Project A');
     expect(html).toContain('active-change');
-    expect(html).toContain('All Changes');
     expect(html).toContain('Specs');
+    expect(html).toContain('data-open-changes-in-editor');
     expect(html).toContain('New Change');
     expect(html).not.toContain('archive:old-change');
+    expect(html).not.toContain('data-project-action="changes"');
     expect(html).not.toContain('Root selector');
     expect(html).not.toContain('Stores & Worksets');
   });
@@ -973,12 +1031,12 @@ describe('project page contract', () => {
     });
   });
 
-  it('keeps All Changes and Specs available when active work is empty', () => {
+  it('keeps Specs launcher and Changes list title action when active work is empty', () => {
     const html = renderProjectSidebar({ ...projectSidebarData, changes: [] });
 
     expect(html).toMatch(/No changes in this Root/i);
-    expect(html).toContain('All Changes');
     expect(html).toContain('Specs');
+    expect(html).toContain('data-open-changes-in-editor');
     expect(html).toContain('New Change');
   });
 

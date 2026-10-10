@@ -7,6 +7,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-10-10
+
+### Added
+
+- Project sidebar **vertical navigation** (`data-project-nav-list`): **Project Dashboard** (open in editor), **Specs** (with count badge when &gt; 0), **Workset Projects**; tooltips and i18n (`navProjectDashboard`, `navWorksetProjects`).
+- **Changes (N)** section title action (**Open in editor**, `data-open-changes-in-editor`) to open the bound Changes explorer from the sidebar.
+- **Changes explorer** manual **refresh** control; explorer panel titles localized (`explorer.changesPanelTitle`, specs panel).
+- Relative **timestamps** on Project Dashboard (calendar-relative dates, clock-skew clamp); zh-CN calendar wording.
+- VSIX packaging check: `scripts/verify-vsix-webview.js` validates webview markers, `./index.ttf` in CSS, and font file inside the package.
+
+### Changed
+
+- Removed the **All Changes** tile from the project sidebar header; navigation and open-in-editor entry points replace it.
+- **Project Dashboard** recent updates and **priority change** cards: names and CTAs navigate to change detail; priority row layout tuned for narrow sidebar (260px).
+- **Priority card CTA** at 260px: drop `max-w-[55%]` / `truncate`; use `flex-wrap`, `min-w-[7rem]` on the name, and `shrink-0` on the button so full CTA labels wrap instead of clipping.
+- Rebuild project sidebar change list from dashboard refresh payloads; wire dashboard click targets (recent updates, priority names) to change detail.
+- zh-CN: **项目仪表盘** for project dashboard title; explorer and sidebar copy polish.
+
+### Fixed
+
+- **Auto-refresh** when changes are added/removed or updated externally: sidebar list reconciles from refresh payloads; publish explorer snapshots on sidebar merge/reload so open **Changes** panels update without stale data.
+- **Codicon** icons in the webview: Vite `base: './'`, relative `url(./index.ttf)` in CSS, CSP `font-src` and font preload in webview HTML; fixes square glyph boxes in sidebar and dashboard.
+- **ChangeCard** **APPLYING** lifecycle badge contrast in light theme (uses button foreground/background tokens).
+- Typecheck: cast explorer snapshot changes at `publishChangesExplorerSnapshots` to stay within CI baseline.
+
+## [0.2.5-agent-panel.7] - 2026-10-09
+
+### Fixed
+
+- CI: resolve ESLint `no-useless-assignment` in tasks.md reconcile helpers (`dataManager.ts`).
+
+## [0.2.5-agent-panel.6] - 2026-10-09
+
+### Fixed
+
+- Detail task progress: match `changeTaskProgressPatch` by OpenSpec root + change name (project-bound `scopeId` no longer drops watcher patches); tasks-only watcher events send background `artifactInvalidated` safety net.
+- Lifecycle after tasks.md: debounced single-change `getChangeStatus` when file counts cross a lifecycle boundary; empty/deleted `tasks.md` immediately publishes 0/0; ordinary checkbox edits stay CLI-free.
+
+## [0.2.5-agent-panel.5] - 2026-10-09
+
+### Fixed
+
+- Detail page: `tasks.md` edits push `changeTaskProgressPatch` (counts + content) without `artifactInvalidated` / loading flash; tasks artifact reads skip CLI list/status; tasks-only watcher events no longer trigger full dashboard CLI refresh.
+- V&A hints: `agentAutoSubmit` included in executor launch presentation and refreshed on settings change; labels use host-effective mode (`never` / `readOnly` / `always`).
+- Optional missing artifacts log at debug instead of error.
+- zh-CN: keep **Dashboard** product label; lowercase **change** consistently.
+- Typecheck gate: fail on abnormal tsc exit (≥128) or missing `Found N error(s)` summary even when partial `error TS` lines exist.
+
+## [0.2.5-agent-panel.4] - 2026-10-09
+
+### Fixed
+
+- Typecheck gate: fail when `tsc` exits non-zero but emits zero `error TS` lines; baseline lowered to **12**.
+- zh-CN: Needs Attention filter/badge, lifecycle empty states, archive verify dialog, Proposal Why, V&A intro wording, and remaining English UI fragments.
+
+## [0.2.5-agent-panel.3] - 2026-10-09
+
+### Fixed
+
+- Typecheck: narrow `changeTaskProgressPatch` messages in Change Detail; accept `readonly` change lists in task-progress patch helper.
+- CI typecheck gate: `check-typecheck-baseline.sh` counts errors with `grep` (no `rg` dependency); fails loudly on missing tools or unparseable output.
+- zh-CN: localized sidebar card action summaries, lifecycle labels, New Change, and Verify & Archive intro copy (slash commands unchanged).
+
+## [0.2.5-agent-panel.2] - 2026-10-09
+
+### Fixed
+
+- **BLOCKER:** Removed post–`composer.createNew` `composer.openComposer` / focus calls that broke Cursor 3.21.16 Agent tabs; restored 0.2.4-agent-panel.18 launch behavior.
+- Task progress: OpenSpec CLI–aligned checkbox counting (`ws2-zeta-markers` 3/8); immediate `changeTaskProgressPatch` to sidebar and detail on `tasks.md` edits; project-first sidebar no longer CLI-reloads on every dashboard refresh.
+- Prefill hint at most once per activation; Verify/Archive hints follow `agentAutoSubmit`; prefill launches receipt status `prefilled` / 「已预填」.
+
+## [0.2.5-agent-panel.1] - 2026-10-09
+
+### Changed
+
+- `openspec.agentAutoSubmit` now applies to VS Code Chat (`workbench.action.chat.open` with `isPartialQuery: false` to submit) as well as Cursor; prefill-only launches show a one-shot hint with a link to the setting.
+- Dashboard task counts are derived from `tasks.md` parsing (CLI-aligned) for faster updates after edits; sidebar receives immediate patches on file watch.
+- Localized workflow action labels in zh-CN; copy/command hints use the current change name instead of `my-change`.
+- Dedupe toast uses “just launched” semantics; Agent panel button wording clarified.
+
+### Fixed
+
+- Cursor: best-effort focus on new composer after `composer.createNew` (see `docs/CURSOR_COMPOSER_FOCUS.md`).
+
+## [0.2.5-agent-panel.0] - 2026-10-08
+
 ### Changed
 
 - Workflow actions (Apply, Verify, Archive, Continue, etc.) now launch through a unified IDE Agent panel path on Cursor and VS Code instead of opening an editor-area `agent` terminal by default.

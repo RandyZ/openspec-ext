@@ -11,6 +11,11 @@ vi.mock('vscode', () => ({
     clipboard: { writeText: vi.fn() },
     openExternal: vi.fn(),
   },
+  workspace: {
+    getConfiguration: vi.fn(() => ({
+      get: vi.fn((key: string) => (key === 'agentAutoSubmit' ? 'readOnly' : undefined)),
+    })),
+  },
   window: {
     showInformationMessage: vi.fn(),
   },
@@ -31,6 +36,15 @@ vi.mock('@extension/services/workflowLaunchConfig', () => ({
     cursorLaunchMode: 'clipboard',
     cursorAgentModel: 'auto',
     cursorLaunchModeExplicit: false,
+  })),
+  getWorkflowLaunchConfigViewForUi: vi.fn(() => ({
+    workflowLaunchMode: 'clipboard',
+    preferredAgentAdapter: 'clipboard',
+    cursorLaunchMode: 'clipboard',
+    cursorAgentModel: 'auto',
+    cursorLaunchModeExplicit: false,
+    effectiveAdapterId: null,
+    agentAutoSubmit: 'readOnly',
   })),
 }));
 
@@ -104,6 +118,9 @@ describe('agent unavailable webview handler', () => {
 
     expect(html).toContain('data-openspec-view="agentUnavailable"');
     expect(html).toContain('data-workspace-path="/tmp/ws-b"');
+    expect(html).toContain('font-src vscode-webview:');
+    expect(html).toContain('rel="preload"');
+    expect(html).toContain('index.ttf');
   });
 
   it('postAgentUnavailableContext includes workflow launch config', () => {

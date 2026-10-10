@@ -19,6 +19,7 @@ vi.mock('vscode', () => ({
   },
   window: {
     showWarningMessage: vi.fn(),
+    showInformationMessage: vi.fn(),
   },
   env: {
     openExternal: vi.fn(async () => false),
@@ -104,11 +105,50 @@ describe('agentPanelLauncher', () => {
     );
 
     expect(result.layer).toBe('vscodeChat');
+    expect(result.outcome).toBe('prefilled');
     expect(executeCommand).toHaveBeenCalledWith('workbench.action.chat.open', {
       query: '/opsx:apply demo',
       isPartialQuery: true,
       mode: 'agent',
     });
+  });
+
+  it('submits on VS Code when autoSubmit is true', async () => {
+    const executeCommand = vi.fn(async () => undefined);
+    const result = await launchAgentPanelPrompt(
+      { text: '/opsx:verify demo', autoSubmit: true },
+      {
+        isCursorHost: () => false,
+        getCommands: async () => new Set(['workbench.action.chat.open']),
+        executeCommand,
+      },
+    );
+
+    expect(result.outcome).toBe('submitted');
+    expect(executeCommand).toHaveBeenCalledWith('workbench.action.chat.open', {
+      query: '/opsx:verify demo',
+      isPartialQuery: false,
+      mode: 'agent',
+    });
+  });
+
+  it('falls back to prefill when VS Code submit throws', async () => {
+    const executeCommand = vi.fn(async (_cmd: string, args?: { isPartialQuery?: boolean }) => {
+      if (args?.isPartialQuery === false) {
+        throw new Error('submit unsupported');
+      }
+    });
+    const result = await launchAgentPanelPrompt(
+      { text: '/opsx:verify demo', autoSubmit: true },
+      {
+        isCursorHost: () => false,
+        getCommands: async () => new Set(['workbench.action.chat.open']),
+        executeCommand,
+      },
+    );
+
+    expect(result.outcome).toBe('prefilled');
+    expect(executeCommand).toHaveBeenCalledTimes(2);
   });
 
   it('clipboard is the final fallback', async () => {
@@ -202,6 +242,37 @@ describe('agentPanelLauncher', () => {
     expect(executeCommand.mock.calls.filter(([c]) => c === 'composer.createNew')).toHaveLength(2);
   });
 
+  it('does not invoke composer focus or open commands after createNew', async () => {
+    const executeCommand = vi.fn(async (command: string) => {
+      if (command === 'composer.getOrderedSelectedComposerIds') {
+        return executeCommand.mock.calls.filter(([c]) => c === 'composer.getOrderedSelectedComposerIds').length === 1
+          ? ['a']
+          : ['a', 'b'];
+      }
+      return undefined;
+    });
+
+    await launchAgentPanelPrompt(
+      { text: '/opsx-apply demo', autoSubmit: false },
+      {
+        isCursorHost: () => true,
+        getCommands: async () => new Set([
+          'composer.createNew',
+          'composer.getOrderedSelectedComposerIds',
+          'composer.openComposer',
+          'composer.focusComposer',
+        ]),
+        executeCommand,
+        sleep: async () => undefined,
+      },
+    );
+
+    const commands = executeCommand.mock.calls.map(([command]) => command);
+    expect(commands).not.toContain('composer.openComposer');
+    expect(commands).not.toContain('composer.focusComposer');
+    expect(commands).not.toContain('composer.selectComposer');
+  });
+
   it('falls back to chat.open when composer.createNew rejects quickly', async () => {
     const executeCommand = vi.fn((command: string) => {
       if (command === 'composer.getOrderedSelectedComposerIds') return Promise.resolve(['a']);
@@ -227,6 +298,10 @@ describe('agentPanelLauncher', () => {
 
     expect(result.layer).toBe('chatOpen');
     expect(executeCommand).toHaveBeenCalledWith('composer.createNew', expect.any(Object));
-    expect(executeCommand).toHaveBeenCalledWith('workbench.action.chat.open', { query: '/opsx:apply demo' });
+    expect(executeCommand).toHaveBeenCalledWith('workbench.action.chat.open', {
+      query: '/opsx:apply demo',
+      isPartialQuery: true,
+      mode: 'agent',
+    });
   });
 });

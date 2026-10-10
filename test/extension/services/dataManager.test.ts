@@ -1,6 +1,10 @@
 import { realpathSync, rmSync } from 'fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { DataManager } from '@extension/services/dataManager';
+import {
+  DataManager,
+  shouldUseTasksOnlyRefreshFastPath,
+} from '@extension/services/dataManager';
+import type { FileChangeEvent } from '@extension/services/fileWatcher';
 import { TaskExecutorService } from '@extension/services/taskExecutorService';
 import type { ArchivedChangeInfo, ChangeInfo, SpecInfo } from '@extension/services/types';
 
@@ -432,6 +436,8 @@ describe('DataManager dashboard data loading', () => {
       getScopedServices: scopedServices,
     });
 
+    const { mkdirSync } = await import('fs');
+    mkdirSync(`${projectRoot}/openspec/changes/same-name`, { recursive: true });
     try {
       await (manager as any).executeTaskRequest('same-name', 0, 'Task', projectScope);
       await (manager as any).setTaskExecutionState('same-name', 0, true, projectScope);
@@ -461,6 +467,11 @@ describe('DataManager dashboard data loading', () => {
         autoCompleteParents: vi.fn().mockResolvedValue(undefined),
       },
       fileWatcher: { start, stop: vi.fn() },
+      cachedData: {
+        changes: [{ name: 'same-change', completedTasks: 0, totalTasks: 1, status: 'draft' }],
+        archivedChanges: [],
+        changeStatusCounts: { all: 1, planning: 1, readyToApply: 0, applying: 0, readyToVerify: 0, archived: 0, needsAttention: 0 },
+      },
     });
     vi.spyOn(manager as any, 'migrateExecutionStateFromGlobalFile').mockResolvedValue(undefined);
     vi.spyOn(manager as any, 'warmDashboardData').mockImplementation(() => undefined);
@@ -469,15 +480,253 @@ describe('DataManager dashboard data loading', () => {
 
     await manager.initialize();
     const watcherCallback = start.mock.calls[0][0];
-    watcherCallback([{
+    const patchSpy = vi.fn();
+    manager.onTaskProgressPatch(patchSpy);
+    vi.spyOn(manager as any, 'publishTaskProgressFromFile').mockResolvedValue(undefined);
+
+    await (manager as any).handleFileWatcherEvents([{
+      type: 'change',
       uri: { fsPath: '/tmp/openspec/changes/same-change/tasks.md' },
+      timestamp: Date.now(),
     }]);
 
-    expect(artifactChanged).toHaveBeenCalledWith({
+    expect(artifactChanged).toHaveBeenCalledWith(expect.objectContaining({
       changeName: 'same-change',
       artifactTypes: ['tasks'],
-      rootPath: realpathSync('/tmp'),
+      rootPath: '/tmp',
+    }));
+    expect((manager as any).publishTaskProgressFromFile).toHaveBeenCalledWith(
+      'same-change',
+      undefined,
+    );
+  });
+
+  it('refreshes when tasks.md is created for a change that is not cached yet', async () => {
+    const manager = new DataManager('/tmp');
+    Object.assign(manager as any, {
+      contentAccess: {
+        autoCompleteParents: vi.fn().mockResolvedValue(undefined),
+      },
+      cachedData: {
+        changes: [{ name: 'existing-change', completedTasks: 0, totalTasks: 1, status: 'draft' }],
+        archivedChanges: [],
+        changeStatusCounts: { all: 1, planning: 1, readyToApply: 0, applying: 0, readyToVerify: 0, archived: 0, needsAttention: 0 },
+      },
     });
+    vi.spyOn(manager as any, 'publishTaskProgressFromFile').mockResolvedValue(undefined);
+    vi.spyOn(manager as any, 'invalidateDashboardCache').mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn(manager, 'refresh').mockResolvedValue({} as any);
+
+    await (manager as any).handleFileWatcherEvents([{
+      type: 'create',
+      uri: { fsPath: '/tmp/openspec/changes/brand-new-change/tasks.md' },
+      timestamp: Date.now(),
+    }]);
+
+    expect(refreshSpy).toHaveBeenCalled();
+  });
+
+  it('refreshes on consecutive watcher batches that add and remove changes', async () => {
+    const manager = new DataManager('/tmp');
+    Object.assign(manager as any, {
+      contentAccess: {
+        autoCompleteParents: vi.fn().mockResolvedValue(undefined),
+      },
+      cachedData: {
+        changes: [{ name: 'existing-change', completedTasks: 0, totalTasks: 1, status: 'draft' }],
+        archivedChanges: [],
+        changeStatusCounts: { all: 1, planning: 1, readyToApply: 0, applying: 0, readyToVerify: 0, archived: 0, needsAttention: 0 },
+      },
+    });
+    vi.spyOn(manager as any, 'publishTaskProgressFromFile').mockResolvedValue(undefined);
+    vi.spyOn(manager as any, 'invalidateDashboardCache').mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn(manager, 'refresh').mockResolvedValue({} as any);
+
+    const createTasks = (name: string) => ([{
+      type: 'create' as const,
+      uri: { fsPath: `/tmp/openspec/changes/${name}/tasks.md` },
+      timestamp: Date.now(),
+    }]);
+    await (manager as any).handleFileWatcherEvents(createTasks('first-new'));
+    await (manager as any).handleFileWatcherEvents([{
+      type: 'delete',
+      uri: { fsPath: '/tmp/openspec/changes/first-new/proposal.md' },
+      timestamp: Date.now(),
+    }]);
+    await (manager as any).handleFileWatcherEvents(createTasks('second-new'));
+
+    expect(refreshSpy).toHaveBeenCalledTimes(3);
+  });
+
+  describe('shouldUseTasksOnlyRefreshFastPath', () => {
+    const cached = {
+      changes: [{ name: 'existing-change' }],
+      archivedChanges: [{ directoryName: '2026-archived', name: 'archived', archiveDate: '2026-01-01' }],
+    };
+
+    function event(
+      type: FileChangeEvent['type'],
+      fsPath: string,
+    ): FileChangeEvent {
+      return { type, uri: { fsPath }, timestamp: Date.now() };
+    }
+
+    it('allows the fast path only for in-place tasks.md edits on known changes', () => {
+      expect(shouldUseTasksOnlyRefreshFastPath(
+        [event('change', '/tmp/openspec/changes/existing-change/tasks.md')],
+        '/tmp',
+        cached as any,
+      )).toBe(true);
+    });
+
+    it('requires a full refresh for tasks.md create, delete, and unknown changes', () => {
+      expect(shouldUseTasksOnlyRefreshFastPath(
+        [event('create', '/tmp/openspec/changes/new-change/tasks.md')],
+        '/tmp',
+        cached as any,
+      )).toBe(false);
+      expect(shouldUseTasksOnlyRefreshFastPath(
+        [event('delete', '/tmp/openspec/changes/existing-change/tasks.md')],
+        '/tmp',
+        cached as any,
+      )).toBe(false);
+      expect(shouldUseTasksOnlyRefreshFastPath(
+        [event('change', '/tmp/openspec/changes/missing-change/tasks.md')],
+        '/tmp',
+        cached as any,
+      )).toBe(false);
+    });
+  });
+
+  it('does not invoke CLI refresh on tasks.md-only watcher events', async () => {
+    vi.useFakeTimers();
+    const manager = new DataManager('/tmp');
+    const execOpenSpec = vi.fn();
+    const start = vi.fn();
+    Object.assign(manager as any, {
+      cliService: {
+        checkAvailability: vi.fn().mockResolvedValue(true),
+        getCliActivationDiagnostic: vi.fn().mockReturnValue(null),
+        getVersion: vi.fn().mockResolvedValue('1.0.0'),
+        execOpenSpec,
+        runJson: vi.fn(),
+        listChanges: vi.fn(),
+        getChangeStatus: vi.fn(),
+      },
+      contentAccess: {
+        autoCompleteParents: vi.fn().mockResolvedValue(undefined),
+        readArtifact: vi.fn().mockResolvedValue('- [ ] Task\n'),
+      },
+      fileWatcher: { start, stop: vi.fn() },
+      cachedData: {
+        changes: [{ name: 'same-change', completedTasks: 0, totalTasks: 1, status: 'draft' }],
+        archivedChanges: [],
+        changeStatusCounts: { all: 1, planning: 1, readyToApply: 0, applying: 0, readyToVerify: 0, archived: 0, needsAttention: 0 },
+      },
+    });
+    vi.spyOn(manager as any, 'migrateExecutionStateFromGlobalFile').mockResolvedValue(undefined);
+    vi.spyOn(manager as any, 'warmDashboardData').mockImplementation(() => undefined);
+    vi.spyOn(manager as any, 'initializeScopeManager').mockResolvedValue(undefined);
+    const refreshSpy = vi.spyOn(manager, 'refresh').mockResolvedValue({} as any);
+
+    await manager.initialize();
+    const watcherCallback = start.mock.calls[0][0];
+    await watcherCallback([{
+      type: 'change',
+      uri: { fsPath: '/tmp/openspec/changes/same-change/tasks.md' },
+      timestamp: Date.now(),
+    }]);
+
+    expect(refreshSpy).not.toHaveBeenCalled();
+    expect(execOpenSpec).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(2500);
+    expect(refreshSpy).not.toHaveBeenCalled();
+    expect(execOpenSpec).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('publishes zero task counts when tasks.md is empty', async () => {
+    const manager = new DataManager('/tmp');
+    const patchSpy = vi.fn();
+    manager.onTaskProgressPatch(patchSpy);
+    Object.assign(manager as any, {
+      cliAvailable: true,
+      cliService: {
+        checkAvailability: vi.fn().mockResolvedValue(true),
+        getChangeStatus: vi.fn().mockResolvedValue({ artifacts: [] }),
+      },
+      contentAccess: {
+        readArtifact: vi.fn().mockResolvedValue(''),
+      },
+      cachedData: {
+        changes: [{
+          name: 'same-change',
+          completedTasks: 3,
+          totalTasks: 3,
+          status: 'complete',
+          lastModified: '2026-01-01',
+          lifecycleStatus: 'ready-to-verify',
+          artifacts: [{ id: 'tasks', outputPath: 't.md', status: 'done' }],
+        }],
+        archivedChanges: [],
+        changeStatusCounts: { all: 1, planning: 0, readyToApply: 0, applying: 0, readyToVerify: 1, archived: 0, needsAttention: 0 },
+      },
+    });
+    vi.spyOn(manager as any, 'isCurrentScope').mockReturnValue(true);
+
+    await (manager as any).publishTaskProgressFromFile('same-change', undefined);
+
+    expect(patchSpy).toHaveBeenCalledWith(expect.objectContaining({
+      changeName: 'same-change',
+      completedTasks: 0,
+      totalTasks: 0,
+      tasksContent: '',
+    }));
+  });
+
+  it('debounces a single status reconcile when task counts cross a lifecycle boundary', async () => {
+    vi.useFakeTimers();
+    const getChangeStatus = vi.fn().mockResolvedValue({
+      artifacts: [{ id: 'tasks', outputPath: 'tasks.md', status: 'done' }],
+    });
+    const manager = new DataManager('/tmp');
+    const patchSpy = vi.fn();
+    manager.onTaskProgressPatch(patchSpy);
+    Object.assign(manager as any, {
+      cliAvailable: true,
+      cliService: {
+        checkAvailability: vi.fn().mockResolvedValue(true),
+        getChangeStatus,
+      },
+      contentAccess: {
+        readArtifact: vi.fn()
+          .mockResolvedValueOnce('- [x] A\n- [x] B\n- [x] C\n')
+          .mockResolvedValue('- [x] A\n- [x] B\n- [x] C\n'),
+      },
+      cachedData: {
+        changes: [{
+          name: 'same-change',
+          completedTasks: 0,
+          totalTasks: 3,
+          status: 'in-progress',
+          lastModified: '2026-01-01',
+          lifecycleStatus: 'ready-to-apply',
+          artifacts: [{ id: 'tasks', outputPath: 'tasks.md', status: 'done' }],
+        }],
+        archivedChanges: [],
+        changeStatusCounts: { all: 1, planning: 0, readyToApply: 1, applying: 0, readyToVerify: 0, archived: 0, needsAttention: 0 },
+      },
+    });
+    vi.spyOn(manager as any, 'isCurrentScope').mockReturnValue(true);
+
+    await (manager as any).publishTaskProgressFromFile('same-change', undefined);
+    expect(getChangeStatus).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(800);
+    expect(getChangeStatus).toHaveBeenCalledTimes(1);
+    expect(getChangeStatus).toHaveBeenCalledWith('same-change', undefined);
+    vi.useRealTimers();
   });
 
   it('accepts an optional cache service dependency', () => {

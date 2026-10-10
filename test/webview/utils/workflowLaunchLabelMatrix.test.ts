@@ -19,7 +19,7 @@ function viewFrom(config: WorkflowLaunchConfigWithExplicit) {
 describe('workflow launch label matrix (host × M1–M10)', () => {
   beforeEach(() => setLocale('en'));
 
-  it('M1 default Cursor agent panel uses Open Cursor · Apply', () => {
+  it('M1 default Cursor agent panel uses Open Agent panel · Apply', () => {
     const config = viewFrom({
       workflowLaunchMode: 'adapter',
       preferredAgentAdapter: 'cursor',
@@ -29,7 +29,7 @@ describe('workflow launch label matrix (host × M1–M10)', () => {
       workflowLaunchModeExplicit: false,
       preferredAgentAdapterExplicit: false,
     });
-    expect(getWorkflowActionButtonLabel('Apply', config)).toBe('Open Cursor · Apply');
+    expect(getWorkflowActionButtonLabel('Apply', config)).toBe('Open Agent panel · Apply');
     expect(getWorkflowLaunchModeHint(config)).toBe('Opens Agent panel');
   });
 
@@ -73,7 +73,7 @@ describe('workflow launch label matrix (host × M1–M10)', () => {
     expect(getWorkflowActionButtonLabel('Apply', config)).toBe('Copy Apply');
   });
 
-  it('M8 agent panel matches M1 Open Cursor wording', () => {
+  it('M8 agent panel matches M1 Open Agent panel wording', () => {
     const config = viewFrom({
       workflowLaunchMode: 'adapter',
       preferredAgentAdapter: 'cursor',
@@ -83,10 +83,10 @@ describe('workflow launch label matrix (host × M1–M10)', () => {
       workflowLaunchModeExplicit: false,
       preferredAgentAdapterExplicit: false,
     });
-    expect(getWorkflowActionButtonLabel('Verify', config)).toBe('Open Cursor · Verify');
+    expect(getWorkflowActionButtonLabel('Verify', config)).toBe('Open Agent panel · Verify');
   });
 
-  it('M8d deeplink uses Open Cursor · Apply', () => {
+  it('M8d deeplink uses Open Agent panel · Apply', () => {
     const config = viewFrom({
       workflowLaunchMode: 'adapter',
       preferredAgentAdapter: 'cursor',
@@ -96,7 +96,7 @@ describe('workflow launch label matrix (host × M1–M10)', () => {
       workflowLaunchModeExplicit: false,
       preferredAgentAdapterExplicit: false,
     });
-    expect(getWorkflowActionButtonLabel('Apply', config)).toBe('Open Cursor · Apply');
+    expect(getWorkflowActionButtonLabel('Apply', config)).toBe('Open Agent panel · Apply');
   });
 
   it('M10 workflow clipboard uses Copy Verify', () => {

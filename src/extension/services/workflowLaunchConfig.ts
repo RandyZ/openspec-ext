@@ -1,12 +1,14 @@
 import * as vscode from 'vscode';
 import type {
+  AgentAutoSubmitMode,
   CursorLaunchMode,
   PreferredAgentAdapter,
   WorkflowLaunchConfig,
+  WorkflowLaunchConfigView,
   WorkflowLaunchConfigWithExplicit,
   WorkflowLaunchMode,
 } from '../../shared/workflowLaunchConfig';
-import { resolveWorkflowLaunchConfig } from '../../shared/workflowLaunchConfig';
+import { resolveWorkflowLaunchConfig, toWorkflowLaunchConfigView } from '../../shared/workflowLaunchConfig';
 import { isCursorHost } from '../utils/isCursorHost';
 export type {
   CursorLaunchMode,
@@ -97,4 +99,21 @@ export function getWorkflowLaunchConfig(): WorkflowLaunchConfig {
   return resolveWorkflowLaunchConfig(readRawWorkflowLaunchConfig(), {
     isCursorHost: isCursorHost(),
   });
+}
+
+/** Effective `openspec.agentAutoSubmit` (workspace folder → workspace → user → default). */
+export function getAgentAutoSubmitMode(resource?: vscode.Uri): AgentAutoSubmitMode {
+  const raw = vscode.workspace.getConfiguration('openspec', resource).get<string>('agentAutoSubmit');
+  if (raw === 'never' || raw === 'always' || raw === 'readOnly') {
+    return raw;
+  }
+  return 'readOnly';
+}
+
+/** Launch config pushed to webviews; includes the same auto-submit mode the host uses to launch. */
+export function getWorkflowLaunchConfigViewForUi(resource?: vscode.Uri): WorkflowLaunchConfigView {
+  return {
+    ...toWorkflowLaunchConfigView(getWorkflowLaunchConfig()),
+    agentAutoSubmit: getAgentAutoSubmitMode(resource),
+  };
 }

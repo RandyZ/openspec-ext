@@ -177,6 +177,61 @@ describe('ChangeDetailPanelManager scope binding', () => {
     });
   });
 
+  it('broadcasts task progress patches only to panels at the matching OpenSpec root', () => {
+    const localRoot = '/workspace/openspec';
+    const projectRoot = '/planning/project-a';
+    const panels = [createPanel(), createPanel()];
+    const localScope = {
+      id: `local:${localRoot}`,
+      label: 'Local',
+      rootPath: localRoot,
+      source: 'local',
+      capabilities: {},
+      diagnostics: [],
+    };
+    const projectBinding = {
+      projectId: '/projects/current',
+      commandCwd: '/projects/current',
+      rootPath: projectRoot,
+      rootSource: 'nearest',
+    };
+    const dataManager = {
+      resolveScope: vi.fn((scopeId?: string) => (
+        scopeId === localScope.id ? localScope : undefined
+      )),
+      getSelectedScope: vi.fn(() => localScope),
+      getDashboardData: vi.fn().mockResolvedValue({ changes: [], specs: [], lastRefresh: 1 }),
+      artifactExists: vi.fn().mockResolvedValue(true),
+    };
+    vi.mocked(vscode.window.createWebviewPanel)
+      .mockReturnValueOnce(panels[0] as any)
+      .mockReturnValueOnce(panels[1] as any);
+
+    const manager = new ChangeDetailPanelManager(dataManager as any, '/ext', {} as any);
+    manager.open('same-change', { scopeId: localScope.id });
+    manager.open('same-change', {
+      project: { id: 'p', label: 'P', projectPath: '/projects/current' },
+      binding: projectBinding,
+    });
+    panels.forEach((panel) => panel.webview.postMessage.mockClear());
+
+    manager.broadcastTaskProgressPatch({
+      type: 'changeTaskProgressPatch',
+      changeName: 'same-change',
+      scopeId: localScope.id,
+      changeRootPath: localRoot,
+      completedTasks: 2,
+      totalTasks: 3,
+      revisedAt: Date.now(),
+    });
+
+    expect(panels[0].webview.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'changeTaskProgressPatch',
+      completedTasks: 2,
+    }));
+    expect(panels[1].webview.postMessage).not.toHaveBeenCalled();
+  });
+
   it('invalidates only the same-named Project-bound panel with the matching root', async () => {
     const project = {
       id: '/projects/current',

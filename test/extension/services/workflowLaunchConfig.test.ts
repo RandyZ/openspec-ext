@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as vscode from 'vscode';
 import {
+  getAgentAutoSubmitMode,
   getCursorAgentModel,
   getWorkflowLaunchConfig,
+  getWorkflowLaunchConfigViewForUi,
 } from '@extension/services/workflowLaunchConfig';
 
 vi.mock('vscode', () => ({
@@ -130,5 +132,24 @@ describe('workflow launch config', () => {
     });
 
     expect(getCursorAgentModel()).toBe('legacy-model');
+  });
+
+  it('reads agentAutoSubmit from the effective configuration scope', () => {
+    getConfiguration.mockReturnValue({
+      get: vi.fn((key: string) => (key === 'agentAutoSubmit' ? 'never' : undefined)),
+      inspect: vi.fn(),
+    } as any);
+
+    expect(getAgentAutoSubmitMode()).toBe('never');
+    expect(getWorkflowLaunchConfigViewForUi().agentAutoSubmit).toBe('never');
+  });
+
+  it('includes workspace-scoped agentAutoSubmit in the UI launch config view', () => {
+    getConfiguration.mockReturnValue({
+      get: vi.fn((key: string) => (key === 'agentAutoSubmit' ? 'always' : undefined)),
+      inspect: vi.fn(),
+    } as any);
+
+    expect(getWorkflowLaunchConfigViewForUi().agentAutoSubmit).toBe('always');
   });
 });

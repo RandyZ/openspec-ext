@@ -50,6 +50,8 @@ interface ChangesSectionProps {
   allowPageClamp?: boolean;
   layout?: ChangesSectionLayout;
   compact?: boolean;
+  /** Opens the bound Changes explorer in an editor panel (Project Sidebar only). */
+  onOpenInEditor?: () => void;
 }
 
 function resolveEmptyMessage(
@@ -119,6 +121,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
   allowPageClamp = true,
   layout = 'auto',
   compact = false,
+  onOpenInEditor,
 }) => {
   const [internalState, dispatch] = useReducer(
     changesViewReducer,
@@ -196,12 +199,25 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
         `}</style>
       )}
       <div className="flex items-start justify-between gap-2 mb-2">
-        <h2
-          className="text-base font-semibold"
-          style={{ color: 'var(--vscode-foreground)' }}
-        >
-          {t('dashboard.changes', { count: changeStatusCounts.all })}
-        </h2>
+        <div className="flex min-w-0 items-center gap-1">
+          <h2
+            className="text-base font-semibold"
+            style={{ color: 'var(--vscode-foreground)' }}
+          >
+            {t('dashboard.changes', { count: changeStatusCounts.all })}
+          </h2>
+          {onOpenInEditor && (
+            <button
+              type="button"
+              data-open-changes-in-editor
+              className="codicon codicon-link-external shrink-0 rounded border border-transparent p-0.5 text-base opacity-70 hover:border-[var(--vscode-panel-border)] hover:bg-[var(--vscode-toolbar-hoverBackground)] hover:opacity-100 focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)]"
+              style={{ color: 'var(--vscode-icon-foreground)' }}
+              aria-label={t('action.openInEditor')}
+              title={t('action.openInEditor')}
+              onClick={onOpenInEditor}
+            />
+          )}
+        </div>
         {onRequestNewChange && state.lifecycleStatus !== 'archived' && (
           <button
             type="button"

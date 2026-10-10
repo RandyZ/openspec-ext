@@ -20,6 +20,8 @@ import type {
   ProjectSidebarData,
   ProjectSpecsExplorerData,
 } from '../../webview/types/messages';
+import type { ChangeTaskProgressPatch } from '../../shared/changeTaskProgressPatch';
+import { enrichChangeWithLifecycle } from '../../shared/changeLifecycle';
 import {
   handleWebviewMessage,
   getWebviewContent,
@@ -84,7 +86,6 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   private projectRequestGeneration = 0;
   /** Newest in-flight (or settled) Project Sidebar reload; lets a superseded caller follow the chain. */
   private latestProjectReload?: Promise<ProjectReloadOutcome>;
-  private skipNextProjectRefreshCallback = false;
   /** Ephemeral, process-local explicit Planning Store selector for the current Project. */
   private explicitProjectStoreId?: string;
   /** Single-flight lock: at most one Workset creation may run at a time. */
@@ -112,15 +113,86 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         return;
       }
       if (this.isProjectFirst()) {
-        if (this.skipNextProjectRefreshCallback) {
-          this.skipNextProjectRefreshCallback = false;
-          return;
-        }
-        void this.reloadProjectSidebarData();
+        this.mergeDashboardTaskProgressIntoProjectSidebar(data);
         return;
       }
       this.postDashboardData(data);
     });
+  }
+
+  public applyTaskProgressPatch(patch: ChangeTaskProgressPatch): void {
+    if (this.isProjectFirst()) {
+      this.patchProjectSidebarTaskProgress(patch);
+    }
+    const post = (webview: vscode.Webview | undefined) => {
+      webview?.postMessage(patch);
+    };
+    post(this._view?.webview);
+    post(this.dashboardPanel?.webview);
+    for (const panel of this.explorerPanels.values()) {
+      post(panel.webview);
+    }
+  }
+
+  private patchProjectSidebarTaskProgress(patch: ChangeTaskProgressPatch): void {
+    if (!this.cachedProjectSidebarData) return;
+    const index = this.cachedProjectSidebarData.changes.findIndex((c) => c.name === patch.changeName);
+    if (index < 0) return;
+    const current = this.cachedProjectSidebarData.changes[index];
+    const updated = enrichChangeWithLifecycle({
+      ...current,
+      completedTasks: patch.completedTasks,
+      totalTasks: patch.totalTasks,
+      status: patch.totalTasks === 0
+        ? 'draft'
+        : patch.completedTasks === patch.totalTasks
+          ? 'complete'
+          : 'in-progress',
+    });
+    const changes = [...this.cachedProjectSidebarData.changes];
+    changes[index] = updated;
+    this.cachedProjectSidebarData = {
+      ...this.cachedProjectSidebarData,
+      changes,
+    };
+  }
+
+  private mergeDashboardTaskProgressIntoProjectSidebar(data: DashboardData): void {
+    if (!this.cachedProjectSidebarData) {
+      void this.reloadProjectSidebarData();
+      return;
+    }
+    const incoming = data?.changes ?? [];
+    const cachedByName = new Map(
+      this.cachedProjectSidebarData.changes.map((change) => [change.name, change]),
+    );
+    const changes = incoming.map((fresh) => {
+      const cached = cachedByName.get(fresh.name);
+      const base = cached ?? fresh;
+      return enrichChangeWithLifecycle({
+        ...base,
+        completedTasks: fresh.completedTasks,
+        totalTasks: fresh.totalTasks,
+        status: fresh.status,
+        lifecycleStatus: fresh.lifecycleStatus ?? base.lifecycleStatus,
+        attention: fresh.attention ?? base.attention,
+        lastModified: fresh.lastModified ?? base.lastModified,
+      });
+    });
+    this.cachedProjectSidebarData = {
+      ...this.cachedProjectSidebarData,
+      changes,
+      archivedChanges: data.archivedChanges ?? this.cachedProjectSidebarData.archivedChanges,
+      lastRefresh: data.lastRefresh ?? this.cachedProjectSidebarData.lastRefresh,
+    };
+    this.publishProjectSnapshot(
+      this.cachedProjectSidebarData,
+      this._view?.webview,
+      'sidebar',
+      { source: 'memory', stale: false },
+      true,
+    );
+    this.publishChangesExplorerSnapshots(this.cachedProjectSidebarData);
   }
 
   /**
@@ -368,6 +440,24 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     post(targetWebview, targetSurface);
     post(this._view?.webview, 'sidebar');
     if (publishDashboard) post(this.dashboardPanel?.webview, 'dashboard');
+    this.publishChangesExplorerSnapshots(data);
+  }
+
+  private publishChangesExplorerSnapshots(data: ProjectSidebarData): void {
+    const key = this.explorerPanelKey('changesExplorer', data.binding);
+    const panel = this.explorerPanels.get(key);
+    if (!panel) return;
+    const explorerData: ProjectChangesExplorerData = {
+      project: data.project,
+      binding: data.binding,
+      changes: data.changes as ProjectChangesExplorerData['changes'],
+      archivedChanges: data.archivedChanges ?? [],
+    };
+    panel.webview.postMessage({
+      type: 'setContext',
+      view: 'changesExplorer',
+      data: explorerData,
+    });
   }
 
   private postProjectLoadFailure(
@@ -848,10 +938,17 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
    */
   private postPendingExplorerContext(webview: vscode.Webview): boolean {
     const pending = this.pendingExplorerContexts.get(webview);
-    if (!pending) return false;
+    if (!pending || pending.sent) return false;
     webview.postMessage(pending.message);
     pending.sent = true;
     return true;
+  }
+
+  private isExplorerPanelWebview(webview: vscode.Webview): boolean {
+    for (const panel of this.explorerPanels.values()) {
+      if (panel.webview === webview) return true;
+    }
+    return false;
   }
 
   private async handleMessage(
@@ -920,7 +1017,16 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         return;
       }
       if (explorerContextConsumed) return;
-      const surface = webview === this.dashboardPanel?.webview ? 'dashboard' : 'sidebar';
+      if (this.isExplorerPanelWebview(webview)) {
+        const pending = this.pendingExplorerContexts.get(webview);
+        if (pending?.sent) {
+          webview.postMessage(pending.message);
+        } else if (this.cachedProjectSidebarData) {
+          this.publishChangesExplorerSnapshots(this.cachedProjectSidebarData);
+        }
+        return;
+      }
+      const surface = this.resolveProjectSurface(webview);
       await this.postCachedProjectSidebarData(webview, surface);
       await this.reloadProjectSidebarData(webview, surface);
       return;
@@ -930,15 +1036,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         this.markAgentUnavailable(webview, getPrimaryWorkspacePath());
         return;
       }
-      this.skipNextProjectRefreshCallback = true;
       try {
         await this.dataManager.refresh();
       } catch (error) {
         logger.error('Project Sidebar refresh failed', error as Error);
-      } finally {
-        this.skipNextProjectRefreshCallback = false;
       }
-      const surface = webview === this.dashboardPanel?.webview ? 'dashboard' : 'sidebar';
+      const surface = this.resolveProjectSurface(webview);
       await this.reloadProjectSidebarData(webview, surface);
       return;
     }
@@ -1082,6 +1185,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       logger.warn('Rejected Project binding request', error as Error);
       return undefined;
     }
+  }
+
+  private resolveProjectSurface(webview: vscode.Webview): ProjectSurface {
+    if (webview === this.dashboardPanel?.webview) return 'dashboard';
+    return 'sidebar';
   }
 
   private explorerPanelKey(
@@ -1586,12 +1694,22 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     if (existing) {
       existing.reveal(vscode.ViewColumn.One);
       if (this.explorerPanels.get(key) === existing) {
-        existing.webview.postMessage(contextMessage);
+        if (
+          pageKind === 'changesExplorer'
+          && this.cachedProjectSidebarData
+          && this.sameBinding(this.cachedProjectSidebarData.binding, binding)
+        ) {
+          this.publishChangesExplorerSnapshots(this.cachedProjectSidebarData);
+        } else {
+          existing.webview.postMessage(contextMessage);
+        }
       }
       return;
     }
 
-    const title = pageKind === 'changesExplorer' ? 'OpenSpec Changes' : 'OpenSpec Specs';
+    const title = pageKind === 'changesExplorer'
+      ? t('explorer.changesPanelTitle')
+      : t('explorer.specsPanelTitle');
     const viewType = pageKind === 'changesExplorer'
       ? 'openspecChangesExplorer'
       : 'openspecSpecsExplorer';

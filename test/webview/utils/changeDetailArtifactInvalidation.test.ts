@@ -65,7 +65,7 @@ describe('changeDetailArtifactInvalidation', () => {
       expect(coordinator.isInFlight(fetchKey)).toBe(false);
     }
 
-    expect(verifyArchiveLoadingCount).toBe(3);
+    expect(verifyArchiveLoadingCount).toBe(0);
     vi.useRealTimers();
   });
 

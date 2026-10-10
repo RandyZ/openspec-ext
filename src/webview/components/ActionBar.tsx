@@ -35,6 +35,7 @@ function getReceiptLabel(status: string): string {
   const labels: Record<string, Parameters<typeof t>[0]> = {
     pending: 'workflow.receiptPending',
     delivered: 'workflow.receiptDelivered',
+    prefilled: 'workflow.receiptPrefilled',
     copied: 'workflow.receiptCopied',
     fallback: 'workflow.receiptFallback',
     failed: 'workflow.receiptFailed',
@@ -113,8 +114,15 @@ export const ActionBar: React.FC<ActionBarProps> = ({
               launching: pendingAction === recommendedAction.action,
             })}
           </button>
-          {launchModeHint && pendingAction !== recommendedAction.action && (
-            <span className="text-xs" style={{ color: 'var(--vscode-descriptionForeground)' }}>
+          {launchModeHint && (
+            <span
+              className="text-xs min-h-[1rem]"
+              style={{
+                color: 'var(--vscode-descriptionForeground)',
+                visibility: pendingAction === recommendedAction.action ? 'hidden' : 'visible',
+              }}
+              aria-hidden={pendingAction === recommendedAction.action}
+            >
               {launchModeHint}
             </span>
           )}

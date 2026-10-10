@@ -32,8 +32,11 @@ export interface WorkflowLaunchRuntimeContext {
 
 export type EffectiveWorkflowAdapterId = PreferredAgentAdapter | null;
 
+export type AgentAutoSubmitMode = 'never' | 'readOnly' | 'always';
+
 export interface WorkflowLaunchConfigView extends WorkflowLaunchConfig {
   effectiveAdapterId: EffectiveWorkflowAdapterId;
+  agentAutoSubmit?: AgentAutoSubmitMode;
 }
 
 /** User explicitly chose copy-only via settings (package defaults do not count). */
@@ -121,7 +124,9 @@ export function resolveWorkflowLabelLaunchConfig(
   hostSettingsConfig: WorkflowLaunchConfigView,
   uiConfig: WorkflowLaunchConfigView,
 ): WorkflowLaunchConfigView {
-  return isHostWorkflowLaunchCopyOnly(hostSettingsConfig) ? hostSettingsConfig : uiConfig;
+  const base = isHostWorkflowLaunchCopyOnly(hostSettingsConfig) ? hostSettingsConfig : uiConfig;
+  const agentAutoSubmit = hostSettingsConfig.agentAutoSubmit ?? uiConfig.agentAutoSubmit;
+  return agentAutoSubmit === undefined ? base : { ...base, agentAutoSubmit };
 }
 
 /** Label/intent: adapter mode with a non-clipboard preferred adapter uses Agent verbs. */

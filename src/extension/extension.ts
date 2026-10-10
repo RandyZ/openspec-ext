@@ -10,6 +10,7 @@ import { OpenSpecCacheService } from './services/openSpecCacheService';
 import { createProjectContext, ProjectDataGateway } from './services/projectDataGateway';
 import { setLocale, t } from '../i18n';
 import { AgentUnavailableViewProvider } from './providers/agentUnavailableViewProvider';
+import { configureAgentLaunchPrefillNotify } from './services/agentLaunchPrefillNotify';
 
 let dataManager: DataManager | null = null;
 
@@ -89,6 +90,7 @@ export async function activate(context: vscode.ExtensionContext) {
       extensionVersion: context.extension.packageJSON.version ?? '0.0.0',
     });
     dataManager = new DataManager(workspaceRoot, { cacheService, projectRoots });
+    configureAgentLaunchPrefillNotify(context);
     await dataManager.initialize();
 
     let dashboardViewProviderRef: DashboardViewProvider | null = null;
@@ -137,12 +139,20 @@ export async function activate(context: vscode.ExtensionContext) {
     );
 
     context.subscriptions.push(
+      dataManager.onTaskProgressPatch((patch) => {
+        changeDetailPanelManager.broadcastTaskProgressPatch(patch);
+        dashboardViewProvider.applyTaskProgressPatch(patch);
+      })
+    );
+
+    context.subscriptions.push(
       vscode.workspace.onDidChangeConfiguration((event) => {
         const launchConfigChanged =
           event.affectsConfiguration('openspec.workflowLaunchMode') ||
           event.affectsConfiguration('openspec.preferredAgentAdapter') ||
           event.affectsConfiguration('openspec.cursorLaunchMode') ||
-          event.affectsConfiguration('openspec.cursorAgentModel');
+          event.affectsConfiguration('openspec.cursorAgentModel') ||
+          event.affectsConfiguration('openspec.agentAutoSubmit');
         if (!launchConfigChanged) return;
         logger.info('[workflow] launch configuration changed; updating webviews');
         dashboardViewProvider.postWorkflowLaunchConfig();

@@ -152,6 +152,32 @@ describe('ChangeCard', () => {
   });
 });
 
+describe('ChangeCard zh-CN copy', () => {
+  beforeEach(() => setLocale('zh-cn'));
+
+  it('localizes recommended action text in the workflow summary', () => {
+    const html = renderToStaticMarkup(
+      <ChangeCard change={makeChange('ready-to-verify')} onClick={vi.fn()} onLaunchWorkflow={vi.fn()} />
+    );
+    expect(html).toContain(t('workflow.action.verify'));
+    expect(html).not.toContain('>Verify<');
+  });
+
+  it('localizes Continue planning in the workflow summary', () => {
+    const html = renderToStaticMarkup(
+      <ChangeCard change={makeChange('planning')} onClick={vi.fn()} onLaunchWorkflow={vi.fn()} />
+    );
+    expect(html).toContain(t('workflow.action.continuePlanning'));
+  });
+
+  it('localizes ready-to-verify lifecycle badge', () => {
+    const html = renderToStaticMarkup(
+      <ChangeCard change={makeChange('ready-to-verify')} onClick={vi.fn()} onLaunchWorkflow={vi.fn()} />
+    );
+    expect(html).toContain(t('dashboard.lifecycleReadyToVerify'));
+  });
+});
+
 describe('ChangeCard lifecycle badge', () => {
   beforeEach(() => {
     setLocale('en');
