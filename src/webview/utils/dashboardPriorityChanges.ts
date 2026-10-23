@@ -4,6 +4,7 @@ import {
   type WorkflowActionReceipt,
 } from '../../shared/changeWorkflow';
 import type { WorkflowAction } from '../../shared/workflowCommand';
+import { changeWorkflowResolutionContext } from './changeWorkflowResolutionContext';
 
 export function getDashboardPriorityChanges(
   changes: readonly ChangeInfo[],
@@ -23,11 +24,7 @@ export function getDashboardPriorityChanges(
   for (const change of changes) {
     const snapshot = change.workflowSnapshot;
     const resolved = snapshot
-      ? resolveWorkflowActions(snapshot, {
-        completedTasks: change.completedTasks,
-        totalTasks: change.totalTasks,
-        isArchived: change.lifecycleStatus === 'archived',
-      })
+      ? resolveWorkflowActions(snapshot, changeWorkflowResolutionContext(change))
       : undefined;
     const receipt = snapshot
       ? latestReceipts.get(`${change.name}\u0000${snapshot.bindingKey}`)
@@ -67,11 +64,10 @@ export function routeDashboardPriorityAction(
 
   const snapshot = change.workflowSnapshot;
   if (!snapshot) return;
-  const recommended = resolveWorkflowActions(snapshot, {
-    completedTasks: change.completedTasks,
-    totalTasks: change.totalTasks,
-    isArchived: change.lifecycleStatus === 'archived',
-  }).recommended;
+  const recommended = resolveWorkflowActions(
+    snapshot,
+    changeWorkflowResolutionContext(change),
+  ).recommended;
   if (!recommended) return;
   if (recommended.highImpact || recommended.action === 'archive') {
     if (recommended.action === 'verify') {

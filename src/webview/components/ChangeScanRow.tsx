@@ -2,6 +2,7 @@ import React from 'react';
 import type { ChangeInfo } from '../types/messages';
 import { localizeWorkflowActionDisplayLabel } from '../utils/workflowLaunchLabels';
 import { resolveWorkflowActions } from '../../shared/changeWorkflow';
+import { changeWorkflowResolutionContext } from '../utils/changeWorkflowResolutionContext';
 import { getScanHierarchyStatusLabel } from '../utils/dashboardScanHierarchy';
 import { t } from '../../i18n';
 
@@ -18,11 +19,7 @@ export const ChangeScanRow: React.FC<ChangeScanRowProps> = ({
 }) => {
   const statusLabel = getScanHierarchyStatusLabel(change);
   const resolved = change.workflowSnapshot
-    ? resolveWorkflowActions(change.workflowSnapshot, {
-      completedTasks: change.completedTasks,
-      totalTasks: change.totalTasks,
-      isArchived: change.lifecycleStatus === 'archived',
-    })
+    ? resolveWorkflowActions(change.workflowSnapshot, changeWorkflowResolutionContext(change))
     : undefined;
   const metaHint = change.attention?.required === true && resolved?.recommended
     ? localizeWorkflowActionDisplayLabel(resolved.recommended.label).toLowerCase()

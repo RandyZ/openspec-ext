@@ -10,6 +10,7 @@ import {
   type DashboardPriorityGroupKey,
   getDashboardPriorityChanges,
 } from './dashboardPriorityChanges';
+import { changeWorkflowResolutionContext } from './changeWorkflowResolutionContext';
 
 export type ScanHierarchyFocus = {
   change: ChangeInfo;
@@ -64,11 +65,7 @@ export function resolveRecommendedPrimaryAction(
   }
   const snapshot = change.workflowSnapshot;
   if (!snapshot) return null;
-  const resolved = resolveWorkflowActions(snapshot, {
-    completedTasks: change.completedTasks,
-    totalTasks: change.totalTasks,
-    isArchived: change.lifecycleStatus === 'archived',
-  });
+  const resolved = resolveWorkflowActions(snapshot, changeWorkflowResolutionContext(change));
   if (bucket === 'ready-to-verify') {
     return resolved.recommended?.action === 'verify'
       ? resolved.recommended
@@ -84,11 +81,7 @@ export function resolveRecommendedSecondaryAction(
 ): ResolvedWorkflowAction | null {
   const snapshot = change.workflowSnapshot;
   if (!snapshot) return null;
-  const resolved = resolveWorkflowActions(snapshot, {
-    completedTasks: change.completedTasks,
-    totalTasks: change.totalTasks,
-    isArchived: change.lifecycleStatus === 'archived',
-  });
+  const resolved = resolveWorkflowActions(snapshot, changeWorkflowResolutionContext(change));
   const candidates = [
     ...(resolved.recommended ? [resolved.recommended] : []),
     ...resolved.available,
