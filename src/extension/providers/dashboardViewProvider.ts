@@ -823,7 +823,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
     const panel = vscode.window.createWebviewPanel(
       'openspecDashboard',
-      'OpenSpec Dashboard',
+      t('dashboard.panelTitle'),
       vscode.ViewColumn.One,
       {
         enableScripts: true,
