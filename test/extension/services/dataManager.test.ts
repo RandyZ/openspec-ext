@@ -2094,7 +2094,7 @@ describe('DataManager workset create and open commands', () => {
     await manager.openWorkset('qa-ws2-pair');
 
     expect(runCommand).toHaveBeenNthCalledWith(1, ['workset', 'open', 'qa-ws2-pair']);
-    expect(runCommand).toHaveBeenNthCalledWith(2, ['workset', 'open', 'qa-ws2-pair', '--tool', 'vscode']);
+    expect(runCommand).toHaveBeenNthCalledWith(2, ['workset', 'open', 'qa-ws2-pair', '--tool', 'code']);
   });
 
   it('createWorkset without a tool repeats --member in input order and ends with --json', async () => {
