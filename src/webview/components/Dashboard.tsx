@@ -21,6 +21,7 @@ import { StoresAndWorksetsPanel } from './StoresAndWorksetsPanel';
 import { WorksetsPage } from './WorksetsPage';
 import { WorksetProjectPicker } from './WorksetProjectPicker';
 import { formatOpenSpecRootLabel } from '../utils/scopeLabels';
+import { deriveScopeBarHealth } from '../utils/referenceHealth';
 import { t } from '../../i18n';
 import {
   buildWorkflowCommand,
@@ -982,18 +983,15 @@ export const Dashboard: React.FC = () => {
             <ScopeBar
               scope={data.scope}
               scopes={data.scopes}
-              health={
-                data.relationships?.health?.root
-                  ? {
-                      status: data.relationships.health.root.healthy ? ('ok' as const) : ('warning' as const),
-                      label: t(
-                        data.relationships.health.root.healthy
-                          ? 'scope.health.ok'
-                          : 'scope.health.warning',
-                      ),
-                    }
-                  : undefined
-              }
+              health={(() => {
+                const derived = deriveScopeBarHealth(
+                  data.relationships?.health?.root?.healthy,
+                  data.relationships?.references,
+                );
+                return derived
+                  ? { status: derived.status, label: t(derived.labelKey) }
+                  : undefined;
+              })()}
               loading={loading}
               loadingReason={loadingReason}
               pendingScopeId={pendingScopeId}

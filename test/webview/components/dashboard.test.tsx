@@ -1497,6 +1497,37 @@ describe('Dashboard scope switching states', () => {
     expect(html).toContain('platform-reqs');
     expect(html).toContain('platform');
   });
+
+  it('warns on unresolved references without offering them as writable store roots', () => {
+    const html = renderDashboardWithData({
+      ...dashboardData,
+      scope: localScope,
+      scopes: [localScope],
+      relationships: {
+        health: { root: { path: '/workspace', healthy: true, status: [] } },
+        references: [
+          {
+            store_id: 'fixture-plans',
+            status: [
+              {
+                severity: 'warning',
+                code: 'reference_unresolved',
+                message: 'Store is not registered locally.',
+                fix: 'openspec store register /tmp/fixture-plans',
+              },
+            ],
+          },
+        ],
+      },
+      worksets: [],
+    });
+
+    expect(html).toContain('Unregistered reference');
+    expect(html).toContain('Reference not registered');
+    expect(html).toContain('fixture-plans');
+    expect(html).toContain('Copy recovery command');
+    expect(html).not.toContain('Store: fixture-plans');
+  });
 });
 
 describe('Dashboard primary action rail owns root context', () => {
