@@ -3,6 +3,7 @@ import * as path from 'path';
 import { realpath } from 'fs/promises';
 import { logger } from '../utils/logger';
 import { t } from '../../i18n';
+import { formatWorksetOpenFailure } from '../utils/worksetOpenFailure';
 import { DataManager, type CachedDashboardData, type DashboardData } from '../services/dataManager';
 import { ProjectDataGateway } from '../services/projectDataGateway';
 import type { OpenSpecCacheService, ProjectPageCacheKey } from '../services/openSpecCacheService';
@@ -257,6 +258,15 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
     const binding = this.currentProjectBinding;
     if (binding && isPathInWorkspaceFolders(binding.rootPath)) {
+      const webviews = [this._view?.webview, this.dashboardPanel?.webview].filter(
+        (webview): webview is vscode.Webview => webview != null,
+      );
+      for (const webview of webviews) {
+        void this.reloadProjectSidebarData(
+          webview,
+          webview === this.dashboardPanel?.webview ? 'dashboard' : 'sidebar',
+        );
+      }
       return;
     }
 
@@ -999,6 +1009,28 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       this.openInEditor();
       return;
     }
+    if (message.type === 'openWorkset' && this.isProjectFirst()) {
+      const worksetName = typeof message.name === 'string' ? message.name.trim() : '';
+      if (!worksetName) return;
+      const tool = typeof message.tool === 'string' && message.tool.trim()
+        ? message.tool.trim()
+        : undefined;
+      try {
+        if (tool) {
+          await this.dataManager.openWorkset(worksetName, tool);
+        } else {
+          await this.dataManager.openWorkset(worksetName);
+        }
+        await this.reloadProjectSidebarAfterWorksetOpen(webview);
+      } catch (error) {
+        logger.error('openWorkset message failed', error as Error);
+        webview.postMessage({
+          type: 'error',
+          message: formatWorksetOpenFailure(worksetName, error),
+        });
+      }
+      return;
+    }
 
     const projectSidebarScope = boundScope ?? this.projectSidebarBoundScope();
     if (
@@ -1145,6 +1177,24 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       this.interactiveTerminalManager,
       projectSidebarScope
     );
+  }
+
+  private async reloadProjectSidebarAfterWorksetOpen(triggerWebview: vscode.Webview): Promise<void> {
+    const webviews = [this._view?.webview, this.dashboardPanel?.webview].filter(
+      (webview): webview is vscode.Webview => webview != null,
+    );
+    for (const target of webviews) {
+      await this.reloadProjectSidebarData(
+        target,
+        target === this.dashboardPanel?.webview ? 'dashboard' : 'sidebar',
+      );
+    }
+    if (!webviews.includes(triggerWebview)) {
+      await this.reloadProjectSidebarData(
+        triggerWebview,
+        this.resolveProjectSurface(triggerWebview),
+      );
+    }
   }
 
   private async verifyProjectBinding(
@@ -1806,7 +1856,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         postSpecContent();
       }, 200);
     } catch (err) {
-      vscode.window.showErrorMessage(`Failed to open spec: ${specId}`);
+      const rootLabel = binding?.storeId
+        ? `Store ${binding.storeId}`
+        : binding?.rootPath ?? scope?.label ?? scope?.id ?? 'unknown root';
+      const detail = err instanceof Error ? err.message : String(err);
+      logger.error(`Failed to open spec ${specId} from ${rootLabel}`, err as Error);
+      vscode.window.showErrorMessage(
+        t('spec.openFailed', { id: specId, root: rootLabel, detail }),
+      );
     }
   }
 }
