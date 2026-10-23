@@ -444,6 +444,7 @@
 
   "spec.label": "Spec:",
   "spec.requirements": "{count} requirements",
+  "spec.openFailed": "Could not open spec \"{id}\" from {root}: {detail}",
 
   "extension.noWorkspace": "OpenSpec: No workspace folder found",
   "extension.emptyWorkspaceMessage": "Open a project folder to use OpenSpec",

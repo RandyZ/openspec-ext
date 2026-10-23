@@ -444,6 +444,7 @@
 
   "spec.label": "Spec:",
   "spec.requirements": "{count} 个需求",
+  "spec.openFailed": "无法从 {root} 打开 spec「{id}」：{detail}",
 
   "extension.noWorkspace": "OpenSpec：未找到工作区文件夹",
   "extension.emptyWorkspaceMessage": "请先打开项目文件夹以使用 OpenSpec",
