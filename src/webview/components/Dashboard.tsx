@@ -34,6 +34,11 @@ import {
   type WorkflowActionReceipt,
 } from '../../shared/changeWorkflow';
 import {
+  getDashboardPriorityChanges,
+  routeDashboardPriorityAction,
+  type DashboardPriorityGroupKey,
+} from '../utils/dashboardPriorityChanges';
+import {
   getWorkflowActionButtonLabel,
   type WorkflowLaunchConfigView,
 } from '../utils/workflowLaunchLabels';
@@ -102,84 +107,7 @@ export function getDashboardActionScopeId(
   return projectSidebar ? undefined : selectedScopeId;
 }
 
-export function getDashboardPriorityChanges(
-  changes: readonly ChangeInfo[],
-  receipts: readonly WorkflowActionReceipt[] = [],
-): {
-  needsAttention: ChangeInfo[];
-  readyToVerify: ChangeInfo[];
-  recommended: ChangeInfo[];
-} {
-  const latestReceipts = new Map<string, WorkflowActionReceipt>();
-  for (const receipt of receipts) {
-    latestReceipts.set(`${receipt.changeName}\u0000${receipt.bindingKey}`, receipt);
-  }
-  const readyToVerify: ChangeInfo[] = [];
-  const needsAttention: ChangeInfo[] = [];
-  const recommended: ChangeInfo[] = [];
-  for (const change of changes) {
-    const snapshot = change.workflowSnapshot;
-    const resolved = snapshot
-      ? resolveWorkflowActions(snapshot, {
-        completedTasks: change.completedTasks,
-        totalTasks: change.totalTasks,
-        isArchived: change.lifecycleStatus === 'archived',
-      })
-      : undefined;
-    const receipt = snapshot
-      ? latestReceipts.get(`${change.name}\u0000${snapshot.bindingKey}`)
-      : undefined;
-    const hasReceiptAttention = (receipt?.status === 'failed' || receipt?.status === 'fallback')
-      && receipt?.suppressPriorityAttention !== true;
-    const hasResolverAttention = resolved !== undefined && resolved.attentionReasons.length > 0;
-    if (change.attention?.required === true || hasReceiptAttention || hasResolverAttention) {
-      needsAttention.push(change);
-      continue;
-    }
-    if (resolved?.recommended?.action === 'verify') readyToVerify.push(change);
-    else if (resolved?.recommended) recommended.push(change);
-  }
-  return { needsAttention, readyToVerify, recommended };
-}
-
-type DashboardPriorityGroupKey = 'needs-attention' | 'ready-to-verify' | 'recommended';
-
-export function routeDashboardPriorityAction(
-  change: ChangeInfo,
-  groupKey: DashboardPriorityGroupKey,
-  handlers: {
-    onOpenChange: (changeName: string) => void;
-    onLaunchWorkflow: (action: WorkflowAction, changeName: string, bindingKey?: string) => void;
-  },
-): void {
-  const bindingKey = change.workflowSnapshot?.bindingKey;
-  if (groupKey === 'needs-attention') {
-    handlers.onOpenChange(change.name);
-    return;
-  }
-  if (groupKey === 'ready-to-verify') {
-    handlers.onLaunchWorkflow('verify', change.name, bindingKey);
-    return;
-  }
-
-  const snapshot = change.workflowSnapshot;
-  if (!snapshot) return;
-  const recommended = resolveWorkflowActions(snapshot, {
-    completedTasks: change.completedTasks,
-    totalTasks: change.totalTasks,
-    isArchived: change.lifecycleStatus === 'archived',
-  }).recommended;
-  if (!recommended) return;
-  if (recommended.highImpact || recommended.action === 'archive') {
-    if (recommended.action === 'verify') {
-      handlers.onLaunchWorkflow('verify', change.name, bindingKey);
-    } else {
-      handlers.onOpenChange(change.name);
-    }
-    return;
-  }
-  handlers.onLaunchWorkflow(recommended.action, change.name, bindingKey);
-}
+export { getDashboardPriorityChanges, routeDashboardPriorityAction } from '../utils/dashboardPriorityChanges';
 
 export function returnToCurrentProject(
   setProjectFirstView: (view: ProjectFirstTab) => void,
@@ -810,7 +738,7 @@ export const Dashboard: React.FC = () => {
           />
         )}
 
-        {priorityRows.length > 0 && (
+        {!projectSidebar && priorityRows.length > 0 && (
           <div className="mb-4 flex flex-col gap-1" aria-label={t('dashboard.workflowPriorities')} data-action-rail>
             {priorityRows.map(({ group, change }) => {
               const recommended = change.workflowSnapshot
@@ -931,6 +859,7 @@ export const Dashboard: React.FC = () => {
                       changes={[...projectChanges]}
                       changeStatusCounts={buildChangeStatusCounts(projectChanges, projectSidebar.archivedChanges ?? [])}
                       onOpenChange={handleOpenChange}
+                      onRequestNewChange={handleRequestNewChange}
                       onOpenArchivedChange={handleOpenArchivedChange}
                       archivedItems={[...(projectSidebar.archivedChanges ?? [])]}
                       onLaunchWorkflow={handleLaunchWorkflow}
@@ -944,6 +873,8 @@ export const Dashboard: React.FC = () => {
                         projectSidebar.binding,
                       )}
                       layout="narrow"
+                      scanHierarchy
+                      onRefresh={handleRefresh}
                     />
                   </div>
                 ) : (

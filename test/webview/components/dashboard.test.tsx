@@ -270,7 +270,7 @@ describe('Dashboard action priorities', () => {
 });
 
 describe('Dashboard recommended action rail', () => {
-  it('renders unique prioritized rows with a three-row limit and explicit CTAs', () => {
+  it('renders unique prioritized rows with a three-row limit and explicit CTAs on the wide dashboard', () => {
     const snapshot = (changeName: string, bindingKey = 'project-root', status: 'ready' | 'done' = 'ready') => ({
       changeName,
       schema: 'custom',
@@ -296,15 +296,12 @@ describe('Dashboard recommended action rail', () => {
     const recommended = hostChange('recommended-change', {
       workflowSnapshot: snapshot('recommended-change'),
     });
-    const html = renderProjectSidebar({
-      ...projectSidebarData,
-      changes: [
-        attention,
-        { ...attention },
-        verify,
-        recommended,
-      ],
-    });
+    const html = renderDashboardWithData(withHostChanges(dashboardData, [
+      attention,
+      { ...attention },
+      verify,
+      recommended,
+    ]));
     const rowNames = [...html.matchAll(/data-priority-row="([^"]+)"/g)].map((match) => match[1]);
     const ctaCount = (html.match(/data-priority-cta/g) ?? []).length;
 
@@ -327,6 +324,46 @@ describe('Dashboard recommended action rail', () => {
     expect(html).toContain('Copy Continue planning');
     expect(html).not.toContain('Archive Now');
     expect(html).not.toMatch(/data-priority-cta="[^"]+"[^>]*tabindex="-1"/);
+  });
+
+  it('renders A-2 scan rows and a bottom Recommended card in the Project-first Sidebar', () => {
+    const snapshot = (changeName: string, bindingKey = 'project-root', status: 'ready' | 'done' = 'ready') => ({
+      changeName,
+      schema: 'custom',
+      bindingKey,
+      artifacts: [{
+        id: 'proposal',
+        status,
+        requires: [],
+        missingDeps: [],
+        outputPath: 'proposal.md',
+        existingOutputPaths: ['proposal.md'],
+      }],
+    });
+    const html = renderProjectSidebar({
+      ...projectSidebarData,
+      changes: [
+        hostChange('ready-change', {
+          lifecycleStatus: 'ready-to-apply',
+          completedTasks: 4,
+          totalTasks: 6,
+          workflowSnapshot: snapshot('ready-change'),
+        }),
+        hostChange('attention-change', {
+          attention: { required: true, reasons: ['workflow-receipt-failed'] },
+          workflowSnapshot: snapshot('attention-change'),
+        }),
+      ],
+    });
+
+    expect(html).toContain('data-scan-change-list');
+    expect(html).toContain('data-change-scan-row="attention-change"');
+    expect(html).toContain('data-scan-highlighted="true"');
+    expect(html).toContain('data-recommended-card');
+    expect(html).toContain('data-recommended-hint');
+    expect(html).toContain('data-recommended-actions');
+    expect(html).toContain('flex-wrap');
+    expect(html).not.toContain('data-priority-row');
   });
 
   it('routes attention, verify, regular, and high-impact actions through safe handlers', () => {
@@ -394,7 +431,7 @@ describe('Dashboard recommended action rail', () => {
     expect(launchWorkflow).not.toHaveBeenCalledWith('archive', expect.anything(), expect.anything());
   });
 
-  it('uses translated priority reasons and accessible CTA names', () => {
+  it('uses translated scan hierarchy labels and Recommended card copy in zh-cn', () => {
     setLocale('zh-cn');
     const snapshot = (changeName: string, status: 'ready' | 'done' = 'ready') => ({
       changeName,
@@ -424,10 +461,9 @@ describe('Dashboard recommended action rail', () => {
       ],
     });
 
-    expect(html).toContain('aria-label="工作流优先级"');
-    expect(html).toContain('需要关注');
-    expect(html).toContain('可以验证');
-    expect(html).toContain('aria-label="审查并归档（change：attention-change）"');
+    expect(html).toContain('推荐下一步');
+    expect(html).toContain('需关注');
+    expect(html).toContain('data-recommended-primary');
     setLocale('en');
   });
 
@@ -771,7 +807,7 @@ describe('project page contract', () => {
       changes: [verify],
     });
 
-    expect(html).toMatch(/<button[^>]*data-priority-change="verify-change"/);
+    expect(html).toMatch(/data-change-scan-row="verify-change"/);
   });
 
   it('builds a dedicated Project Dashboard request instead of a list Explorer request', () => {
@@ -1034,7 +1070,9 @@ describe('project page contract', () => {
   it('keeps Specs launcher and Changes list title action when active work is empty', () => {
     const html = renderProjectSidebar({ ...projectSidebarData, changes: [] });
 
-    expect(html).toMatch(/No changes in this Root/i);
+    expect(html).toContain('data-empty-teaching');
+    expect(html).toContain('No changes yet');
+    expect(html).toContain('Propose with Agent');
     expect(html).toContain('Specs');
     expect(html).toContain('data-open-changes-in-editor');
     expect(html).toContain('New Change');
