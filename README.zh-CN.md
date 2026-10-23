@@ -1,12 +1,18 @@
 # OpenSpec 工作流
 
-> 面向 VS Code / Cursor 的项目优先 OpenSpec 工作台：集中查看 changes、specs，并安全推进工作流。
+> 面向 VS Code / Cursor 的项目优先 OpenSpec 工作台：看清下一步，一点交给 IDE 内 Agent，安全归档。
 
 [English](README.md) | 简体中文
 
 ## 概览
 
-OpenSpec 将 change 规划与执行带回编辑器：集中查看需要关注的事项、检查 specs 和 artifacts，并在不丢失上下文的情况下推进下一步工作流。
+OpenSpec Workflow 是面向 OpenSpec change 生命周期的**项目优先工作台**——不是只把上下文塞进 Chat 的 CodeLens 伴侣。
+
+- 在 Changes、Specs、Stores 与 Worksets 间看清需要关注的事项
+- 一键将 Verify / Apply 交给 **IDE Agent 面板**（Cursor）或预填 Chat（VS Code）
+- 安全默认：Archive 前确认；CLI 仍是 UI 背后的真实来源
+
+需要 [OpenSpec CLI](https://github.com/Fission-AI/OpenSpec#quick-start)。在叙事对齐期间，Open VSX 上的构建可能比 Marketplace 列表更新。
 
 ### 核心能力
 
