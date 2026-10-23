@@ -205,7 +205,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
 
   return (
     <div
-      className="mb-6"
+      className={scanHierarchy ? 'mb-6 flex min-h-0 flex-1 flex-col' : 'mb-6'}
       data-changes-section
       data-responsive={layout === 'auto' ? 'true' : undefined}
       style={{ containerType: 'inline-size' } as React.CSSProperties}
@@ -327,19 +327,21 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
           onSecondaryAction={scanHierarchy ? onRefresh : undefined}
         />
       ) : scanHierarchy ? (
-        <div data-scan-change-list>
-          {visibleItems.map((item) =>
-            item.kind === 'active' ? (
-              <ChangeScanRow
-                key={item.id}
-                change={item.change}
-                highlighted={scanFocus?.change.name === item.change.name
-                  && scanFocus?.change.workflowSnapshot?.bindingKey
-                    === item.change.workflowSnapshot?.bindingKey}
-                onOpen={onOpenChange}
-              />
-            ) : null,
-          )}
+        <div className="flex min-h-0 flex-1 flex-col" data-scan-change-list>
+          <div className="min-h-0 flex-1">
+            {visibleItems.map((item) =>
+              item.kind === 'active' ? (
+                <ChangeScanRow
+                  key={item.id}
+                  change={item.change}
+                  highlighted={scanFocus?.change.name === item.change.name
+                    && scanFocus?.change.workflowSnapshot?.bindingKey
+                      === item.change.workflowSnapshot?.bindingKey}
+                  onOpen={onOpenChange}
+                />
+              ) : null,
+            )}
+          </div>
           {scanFocus && onOpenChange && onLaunchWorkflow && (
             <DashboardRecommendedCard
               focus={scanFocus}

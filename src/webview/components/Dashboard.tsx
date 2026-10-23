@@ -321,6 +321,7 @@ export const Dashboard: React.FC = () => {
     message?: string;
   } | null>(null);
   const [isRetryingCli, setIsRetryingCli] = useState(false);
+  const [worksetsFullPageOpen, setWorksetsFullPageOpen] = useState(false);
 
   const { data, loading, loadingReason, pendingScopeId, activity, error } = state;
   const projectSidebar = state.projectSidebar;
@@ -685,7 +686,7 @@ export const Dashboard: React.FC = () => {
       background: 'var(--vscode-editor-background)',
       color: 'var(--vscode-foreground)'
     }}>
-      <div className="p-3">
+      <div className={`p-3 ${projectSidebar ? 'flex min-h-screen flex-col' : ''}`}>
         <Header
           onRefresh={handleRefresh}
           onNewChange={handleRequestNewChange}
@@ -830,7 +831,7 @@ export const Dashboard: React.FC = () => {
         )}
 
         {projectSidebar ? (
-          <>
+          <div className="flex min-h-0 flex-1 flex-col">
             {(projectSidebar.cache?.stale || state.stale || loading) && (
               <div
                 role="status"
@@ -840,7 +841,21 @@ export const Dashboard: React.FC = () => {
                 {t('dashboard.staleData')}
               </div>
             )}
-            {projectFirstTab === 'worksets' && projectSidebar.worksetNavigation ? (
+            {projectFirstTab === 'worksets' && worksetsFullPageOpen ? (
+              <WorksetsPage
+                worksets={data?.worksets ?? []}
+                onOpenWorkset={(name) => {
+                  postMessage(sendMessage.openWorkset(name));
+                }}
+                onRemoveWorkset={(name) => {
+                  postMessage(sendMessage.removeWorkset(name));
+                }}
+                onBack={() => setWorksetsFullPageOpen(false)}
+                currentRootLabel={projectSidebar?.binding?.rootPath}
+                worksetsSupported={projectSidebar.worksetCapabilityAvailable !== false}
+                storeRootPaths={[]}
+              />
+            ) : projectFirstTab === 'worksets' && projectSidebar.worksetNavigation ? (
               <WorksetProjectPicker
                 navigation={projectSidebar.worksetNavigation}
                 activeStoreId={getWorksetPickerActiveStoreId(projectSidebar)}
@@ -850,11 +865,22 @@ export const Dashboard: React.FC = () => {
                 pickedMembers={worksetPickedMembers}
                 createResult={worksetCreateResult}
                 onBackToCurrentProject={() => returnToCurrentProject(setProjectFirstTab, postMessage)}
+                onOpenWorksetsFullPage={getWorksetCreateAvailable(projectSidebar)
+                  ? () => {
+                    setWorksetsFullPageOpen(true);
+                    postMessage(sendMessage.getDashboardData());
+                  }
+                  : undefined}
               />
             ) : (
               <>
                 {projectFirstTab === 'changes' ? (
-                  <div id="project-first-changes-panel" role="tabpanel" aria-label={t('projectSidebar.allChanges')}>
+                  <div
+                    id="project-first-changes-panel"
+                    className="flex min-h-0 flex-1 flex-col"
+                    role="tabpanel"
+                    aria-label={t('projectSidebar.allChanges')}
+                  >
                     <ChangesSection
                       changes={[...projectChanges]}
                       changeStatusCounts={buildChangeStatusCounts(projectChanges, projectSidebar.archivedChanges ?? [])}
@@ -905,7 +931,7 @@ export const Dashboard: React.FC = () => {
                 )}
               </>
             )}
-          </>
+          </div>
         ) : data ? (
           <>
             {/* CLI / cache status row. Root selection now lives in the Header

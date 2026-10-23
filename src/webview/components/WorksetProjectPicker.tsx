@@ -88,6 +88,8 @@ export interface WorksetProjectPickerProps {
    * (legacy cached payloads) keeps the Create entry available.
    */
   createAvailable?: boolean;
+  /** §2A: open the machine-wide Worksets management page (full list). */
+  onOpenWorksetsFullPage?: () => void;
 }
 
 interface WorksetOneTimeOpenerEditorState {
@@ -739,6 +741,7 @@ export const WorksetProjectPicker: React.FC<WorksetProjectPickerProps> = ({
   initialScene,
   initialOpenerOpen,
   createAvailable,
+  onOpenWorksetsFullPage,
 }) => {
   const [selection, setSelection] = useState<WorksetPickerSelection>(() => ({
     projectKey: worksetPickerProjectKey(navigation.project),
@@ -1116,12 +1119,49 @@ export const WorksetProjectPicker: React.FC<WorksetProjectPickerProps> = ({
                   {t('worksetCreate.createAction')}
                 </button>
               );
+              if (navigation.worksets.length === 0 && createAvailable !== false) {
+                const emptyBorderColor =
+                  'var(--vscode-sideBarSectionHeader-border, var(--vscode-panel-border))';
+                return (
+                  <div
+                    data-workset-empty-group
+                    data-workset-empty-2a
+                    className="space-y-2 border-t pt-2"
+                    style={{ borderTopColor: emptyBorderColor }}
+                  >
+                    <h3 className="text-xs font-semibold">
+                      {t('worksetNavigation.empty2a.title')}
+                    </h3>
+                    <p
+                      data-workset-empty-list
+                      className="text-[11px] leading-snug whitespace-normal break-words"
+                      style={descriptionStyle}
+                    >
+                      {t('worksetNavigation.empty2a.body')}
+                    </p>
+                    {onOpenWorksetsFullPage ? (
+                      <button
+                        type="button"
+                        data-action="open-worksets-full-page"
+                        onClick={onOpenWorksetsFullPage}
+                        className={`px-2 py-1 text-xs whitespace-normal break-words ${primaryButtonClass}`}
+                      >
+                        {t('worksetNavigation.empty2a.openFullPage')}
+                      </button>
+                    ) : null}
+                    {createEntry}
+                  </div>
+                );
+              }
               if (navigation.worksets.length === 0) {
                 return (
                   <div
                     data-workset-empty-group
-                    className="space-y-2 rounded border p-2"
-                    style={{ borderColor: 'var(--vscode-panel-border)' }}
+                    className="space-y-2 border-t pt-2"
+                    style={{
+                      borderTopColor:
+                        'var(--vscode-sideBarSectionHeader-border, var(--vscode-panel-border))',
+                    }}
                   >
                     <p
                       data-workset-empty-list

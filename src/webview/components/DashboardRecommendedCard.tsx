@@ -74,16 +74,21 @@ export const DashboardRecommendedCard: React.FC<DashboardRecommendedCardProps> =
 
   if (!primaryLabel) return null;
 
+  const recommendedBorderColor =
+    'var(--vscode-sideBarSectionHeader-border, var(--vscode-panel-border))';
+
   return (
     <div
       data-recommended-card
-      className="mx-2 mb-2 mt-1 rounded border p-2"
-      style={{ borderColor: 'var(--vscode-panel-border)' }}
+      className="mt-auto w-full border-t px-2 pt-2 pb-2.5 sticky bottom-0"
+      style={{
+        borderTopColor: recommendedBorderColor,
+        background: 'var(--vscode-sideBar-background)',
+      }}
       aria-label={t('dashboard.recommendedTitle')}
     >
-      <div className="text-xs font-semibold mb-1">{t('dashboard.recommendedTitle')}</div>
       <div
-        className="text-[11px] mb-2"
+        className="mb-2 text-[11px] whitespace-normal break-words"
         style={{ color: 'var(--vscode-descriptionForeground)' }}
         data-recommended-hint
       >
@@ -96,7 +101,7 @@ export const DashboardRecommendedCard: React.FC<DashboardRecommendedCardProps> =
         <button
           type="button"
           data-recommended-primary
-          className="rounded px-2 py-1 text-xs focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)]"
+          className="rounded px-2 py-1 text-xs whitespace-normal break-words text-left focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)]"
           style={{
             background: 'var(--vscode-button-background)',
             color: 'var(--vscode-button-foreground)',
@@ -109,7 +114,7 @@ export const DashboardRecommendedCard: React.FC<DashboardRecommendedCardProps> =
           <button
             type="button"
             data-recommended-secondary
-            className="rounded px-2 py-1 text-xs focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)]"
+            className="rounded px-2 py-1 text-xs whitespace-normal break-words text-left focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)]"
             style={{
               background: 'var(--vscode-button-secondaryBackground)',
               color: 'var(--vscode-button-secondaryForeground)',

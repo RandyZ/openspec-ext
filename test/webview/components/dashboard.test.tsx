@@ -363,6 +363,9 @@ describe('Dashboard recommended action rail', () => {
     expect(html).toContain('data-recommended-hint');
     expect(html).toContain('data-recommended-actions');
     expect(html).toContain('flex-wrap');
+    expect(html).toContain('border-t');
+    expect(html).not.toMatch(/data-recommended-card[^>]*rounded border/);
+    expect(html).not.toContain('mx-2 mb-2 mt-1 rounded border p-2');
     expect(html).not.toContain('data-priority-row');
   });
 
