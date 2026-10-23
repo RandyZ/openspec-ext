@@ -1498,6 +1498,38 @@ describe('Dashboard scope switching states', () => {
     expect(html).toContain('platform');
   });
 
+  it('warns on unregistered references in project-first sidebar', () => {
+    const html = renderProjectSidebar({
+      ...projectSidebarData,
+      referenceIndex: [
+        {
+          store_id: 'fixture-plans',
+          status: [
+            {
+              severity: 'warning',
+              code: 'reference_unresolved',
+              message: 'Store is not registered locally.',
+              fix: 'openspec store setup fixture-plans --path /tmp/fixture-plans',
+            },
+          ],
+        },
+      ],
+      referencedStoreSpecs: [
+        {
+          storeId: 'fixture-plans',
+          specs: [],
+          error: 'Unable to load Specs for referenced Store "fixture-plans".',
+        },
+      ],
+    });
+
+    expect(html).toContain('Unregistered reference');
+    expect(html).toContain('Copy recovery command');
+    expect(html).toContain('fixture-plans');
+    expect(html).not.toContain('Unable to load Specs for referenced Store');
+    expect(html).not.toContain('Switch');
+  });
+
   it('warns on unresolved references without offering them as writable store roots', () => {
     const html = renderDashboardWithData({
       ...dashboardData,

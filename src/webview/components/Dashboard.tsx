@@ -22,6 +22,11 @@ import { WorksetsPage } from './WorksetsPage';
 import { WorksetProjectPicker } from './WorksetProjectPicker';
 import { formatOpenSpecRootLabel } from '../utils/scopeLabels';
 import { deriveScopeBarHealth } from '../utils/referenceHealth';
+import { UnregisteredReferenceAlerts } from './UnregisteredReferenceAlerts';
+import {
+  collectUnregisteredReferenceAlerts,
+  isUnregisteredReferencedStore,
+} from '../utils/unregisteredReferenceAlerts';
 import { t } from '../../i18n';
 import {
   buildWorkflowCommand,
@@ -745,6 +750,12 @@ export const Dashboard: React.FC = () => {
     .slice(0, 3);
   const priorityWorkflowConfig = workflowLaunchConfig ?? projectSidebar?.workflowLaunchConfig;
   const projectBinding = projectSidebar?.binding;
+  const unregisteredReferenceAlerts = projectSidebar
+    ? collectUnregisteredReferenceAlerts(
+      projectSidebar.referenceIndex,
+      projectSidebar.referencedStoreSpecs,
+    )
+    : [];
   const projectSpecsCount = projectSidebar
     ? (projectSidebar.projectSpecs?.length ?? 0)
       + (projectSidebar.referencedStoreSpecs ?? []).reduce(
@@ -904,6 +915,10 @@ export const Dashboard: React.FC = () => {
 
         {projectSidebar ? (
           <>
+            <UnregisteredReferenceAlerts
+              alerts={unregisteredReferenceAlerts}
+              onCopyRecovery={(command) => postMessage(sendMessage.copyToClipboard(command))}
+            />
             {(projectSidebar.cache?.stale || state.stale || loading) && (
               <div
                 role="status"
@@ -963,7 +978,11 @@ export const Dashboard: React.FC = () => {
                         specs={[...group.specs]}
                         heading={t('projectSidebar.referencedStoreSpecs', { storeId: group.storeId })}
                         emptyMessage={t('projectSidebar.emptyStoreSpecs', { storeId: group.storeId })}
-                        loadError={group.error}
+                        loadError={
+                          isUnregisteredReferencedStore(group.storeId, unregisteredReferenceAlerts)
+                            ? undefined
+                            : group.error
+                        }
                         sourceLabel={group.storeId}
                         readOnly
                         onOpenSpec={group.binding

@@ -20,6 +20,7 @@ import {
   type ProjectReferencedStoreSpecsData,
   type ProjectSidebarWorkspaceData,
   type ReferencedStoreSpecGroup,
+  type ReferenceIndexEntry,
   type WorksetGitMetadata,
   type WorksetNavigationEntry,
   type WorksetNavigationMember,
@@ -27,7 +28,7 @@ import {
 } from './types';
 
 type ProjectCli = Pick<OpenSpecCliService, 'getContext'> &
-  Partial<Pick<OpenSpecCliService, 'listChanges' | 'listSpecs' | 'listStores' | 'listWorksets'>>;
+  Partial<Pick<OpenSpecCliService, 'listChanges' | 'listSpecs' | 'listStores' | 'listWorksets' | 'getDoctor'>>;
 
 type BoundReaders = {
   readonly binding: OpenSpecRootBinding;
@@ -475,12 +476,13 @@ export class ProjectDataGateway {
         throw new Error('Bound CLI does not support Project Sidebar data');
       }
 
-      const [rawChanges, archivedChanges, projectSpecs, referencedStoreSpecs, worksetNavigation] = await Promise.all([
+      const [rawChanges, archivedChanges, projectSpecs, referencedStoreSpecs, worksetNavigation, referenceIndex] = await Promise.all([
         readers.cli.listChanges(readers.scope, binding),
         readers.contentAccess.listArchivedChanges(),
         readers.cli.listSpecs(readers.scope),
         this.loadReferencedStoreSpecsFromReaders(project, readers),
         this.loadWorksetNavigationFromCli(project, readers.cli).catch(() => undefined),
+        this.loadDoctorReferenceIndex(readers),
       ]);
 
       return {
@@ -494,6 +496,7 @@ export class ProjectDataGateway {
         archivedChanges,
         projectSpecs,
         referencedStoreSpecs,
+        ...(referenceIndex.length > 0 ? { referenceIndex } : {}),
         ...(worksetNavigation ? { worksetNavigation } : {}),
       };
     } catch (cause) {
@@ -504,6 +507,24 @@ export class ProjectDataGateway {
         binding ?? (cause instanceof ProjectDataAccessError ? cause.binding : undefined),
         cause
       );
+    }
+  }
+
+  private async loadDoctorReferenceIndex(readers: BoundReaders): Promise<readonly ReferenceIndexEntry[]> {
+    if (!readers.cli.getDoctor) {
+      return [];
+    }
+    try {
+      const payload = await readers.cli.getDoctor(readers.scope);
+      const references = payload.references ?? [];
+      return references.filter((entry): entry is ReferenceIndexEntry => (
+        Boolean(entry)
+        && typeof entry === 'object'
+        && typeof (entry as ReferenceIndexEntry).store_id === 'string'
+        && Array.isArray((entry as ReferenceIndexEntry).status)
+      ));
+    } catch {
+      return [];
     }
   }
 
