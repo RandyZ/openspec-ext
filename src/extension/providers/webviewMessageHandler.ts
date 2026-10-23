@@ -404,12 +404,12 @@ export async function handleWebviewMessage(
     case 'requestNewChange': {
       const { scope } = resolveScopeRoot(dataManager, message.scopeId, boundScope);
       const name = await vscode.window.showInputBox({
-        prompt: 'Enter change name',
-        placeHolder: 'e.g., add-authentication',
+        prompt: t('command.enterName'),
+        placeHolder: t('command.namePlaceholder'),
         validateInput: (value) => {
-          if (!value) return 'Change name is required';
+          if (!value) return t('command.nameRequired');
           if (!/^[a-z0-9-]+$/.test(value)) {
-            return 'Use lowercase letters, numbers, and hyphens only';
+            return t('command.nameFormat');
           }
           return null;
         },
@@ -1601,7 +1601,7 @@ export function getWebviewContent(
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource};">
-  <title>OpenSpec Dashboard</title>
+  <title>${t('dashboard.panelTitle')}</title>
   <link rel="stylesheet" href="${styleUri}">
   <link rel="preload" href="${fontUri}" as="font" type="font/ttf" crossorigin>
 </head>

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { logger } from '../utils/logger';
 import { DataManager } from '../services/dataManager';
+import { t } from '../../i18n';
 
 export class DashboardProvider {
   private static currentPanel: vscode.WebviewPanel | undefined;
@@ -24,7 +25,7 @@ export class DashboardProvider {
     // Create new webview panel
     const panel = vscode.window.createWebviewPanel(
       'openspecDashboard',
-      'OpenSpec Dashboard',
+      t('dashboard.panelTitle'),
       vscode.ViewColumn.One,
       {
         enableScripts: true,

@@ -175,7 +175,7 @@
       "openspec": [
         {
           "id": "openspec.dashboard",
-          "name": "Dashboard",
+          "name": "%view.openspec.dashboard.name%",
           "type": "webview",
           "visibility": "visible"
         }

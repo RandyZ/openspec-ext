@@ -1,5 +1,6 @@
 import React from 'react';
 import type { ReferenceIndexEntryView } from '../types/messages';
+import { t } from '../../i18n';
 
 export interface ReferencesPanelProps {
   references?: ReferenceIndexEntryView[];
@@ -18,7 +19,7 @@ export const ReferencesPanel: React.FC<ReferencesPanelProps> = ({
         className="text-base font-semibold mb-2"
         style={{ color: 'var(--vscode-foreground)' }}
       >
-        References
+        {t('references.title')}
       </h2>
       <div className="space-y-2">
         {references.map((ref) => {
@@ -72,7 +73,7 @@ export const ReferencesPanel: React.FC<ReferencesPanelProps> = ({
                     color: 'var(--vscode-button-secondaryForeground)',
                   }}
                 >
-                  Copy fetch command
+                  {t('references.copyFetchCommand')}
                 </button>
               )}
 
@@ -89,7 +90,7 @@ export const ReferencesPanel: React.FC<ReferencesPanelProps> = ({
                 >
                   {status.message}
                   {status.fix ? (
-                    <span className="ml-1">Fix: {status.fix}</span>
+                    <span className="ml-1">{t('references.fixHint', { fix: status.fix })}</span>
                   ) : null}
                 </div>
               ))}
