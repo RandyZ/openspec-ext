@@ -389,7 +389,21 @@ export class DataManager {
     const args = trimmedTool
       ? ['workset', 'open', name, '--tool', trimmedTool]
       : ['workset', 'open', name];
-    await this.cliService.runCommand(args);
+    try {
+      await this.cliService.runCommand(args);
+    } catch (error) {
+      // QA / legacy worksets may have no saved opener; default to the host IDE.
+      if (!trimmedTool && this.isNoSavedWorksetToolCliError(error)) {
+        await this.cliService.runCommand(['workset', 'open', name, '--tool', 'vscode']);
+        return;
+      }
+      throw error;
+    }
+  }
+
+  private isNoSavedWorksetToolCliError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error ?? '');
+    return /no saved tool/i.test(message);
   }
 
   /**

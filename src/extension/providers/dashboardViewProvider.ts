@@ -3,6 +3,7 @@ import * as path from 'path';
 import { realpath } from 'fs/promises';
 import { logger } from '../utils/logger';
 import { t } from '../../i18n';
+import { formatWorksetOpenFailure } from '../utils/worksetOpenFailure';
 import { DataManager, type CachedDashboardData, type DashboardData } from '../services/dataManager';
 import { ProjectDataGateway } from '../services/projectDataGateway';
 import type { OpenSpecCacheService, ProjectPageCacheKey } from '../services/openSpecCacheService';
@@ -1025,7 +1026,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         logger.error('openWorkset message failed', error as Error);
         webview.postMessage({
           type: 'error',
-          message: t('worksetsPage.openFailed', { name: worksetName }),
+          message: formatWorksetOpenFailure(worksetName, error),
         });
       }
       return;

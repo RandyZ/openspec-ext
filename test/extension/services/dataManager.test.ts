@@ -2080,6 +2080,18 @@ describe('DataManager workset create and open commands', () => {
     expect(runCommand).toHaveBeenCalledWith(['workset', 'open', 'platform']);
   });
 
+  it('openWorkset retries with the vscode opener when the CLI reports no saved tool', async () => {
+    const { manager, runCommand } = createManagerWithWorksetRunners();
+    runCommand
+      .mockRejectedValueOnce(new Error("Workset 'qa-ws2-pair' has no saved tool."))
+      .mockResolvedValueOnce(undefined);
+
+    await manager.openWorkset('qa-ws2-pair');
+
+    expect(runCommand).toHaveBeenNthCalledWith(1, ['workset', 'open', 'qa-ws2-pair']);
+    expect(runCommand).toHaveBeenNthCalledWith(2, ['workset', 'open', 'qa-ws2-pair', '--tool', 'vscode']);
+  });
+
   it('createWorkset without a tool repeats --member in input order and ends with --json', async () => {
     const { manager, runCommand, runJson } = createManagerWithWorksetRunners();
 

@@ -562,5 +562,5 @@
   "worksetsPage.removeConfirm": "Remove workset",
   "worksetsPage.removeSuccess": "Removed workset '{name}'.",
   "worksetsPage.removeFailed": "Failed to remove workset '{name}'.",
-  "worksetsPage.openFailed": "Failed to open whole Workset '{name}'."
+  "worksetsPage.openFailed": "Failed to open whole Workset '{name}': {detail}"
 }

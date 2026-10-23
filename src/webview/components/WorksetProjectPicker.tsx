@@ -887,7 +887,7 @@ export const WorksetProjectPicker: React.FC<WorksetProjectPickerProps> = ({
               <button
                 type="button"
                 data-action="open-workset"
-                onClick={(event) => runWorksetOpenAction(detail.name, onOpenWorkset, event)}
+                onClick={(event) => runWorksetOpenAction(detail.name, onOpenWorkset, event, detail.tool)}
                 aria-label={t('worksetsPage.openWholeWorkset', { name: detail.name })}
                 title={t('worksetsPage.openWholeWorkset', { name: detail.name })}
                 className={`px-2 py-1 text-xs ${primaryButtonClass}`}
@@ -1215,7 +1215,7 @@ export const WorksetProjectPicker: React.FC<WorksetProjectPickerProps> = ({
                           <button
                             type="button"
                             data-action="open-workset"
-                            onClick={(event) => runWorksetOpenAction(workset.name, onOpenWorkset, event)}
+                            onClick={(event) => runWorksetOpenAction(workset.name, onOpenWorkset, event, workset.tool)}
                             aria-label={t('worksetsPage.openWholeWorkset', { name: workset.name })}
                             title={t('worksetsPage.openWholeWorkset', { name: workset.name })}
                             className={`shrink-0 self-center px-2 py-0.5 text-xs ${primaryButtonClass}`}

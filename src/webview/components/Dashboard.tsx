@@ -11,6 +11,7 @@ import type {
   ProjectSidebarData,
   SpecInfo,
   WebviewMessage,
+  WorksetView,
 } from '../types/messages';
 import { Header } from './Header';
 import { ChangesSection } from './ChangesSection';
@@ -322,6 +323,8 @@ export const Dashboard: React.FC = () => {
   } | null>(null);
   const [isRetryingCli, setIsRetryingCli] = useState(false);
   const [worksetsFullPageOpen, setWorksetsFullPageOpen] = useState(false);
+  const [worksetsCatalog, setWorksetsCatalog] = useState<WorksetView[] | null>(null);
+  const [worksetsCatalogLoading, setWorksetsCatalogLoading] = useState(false);
 
   const { data, loading, loadingReason, pendingScopeId, activity, error } = state;
   const projectSidebar = state.projectSidebar;
@@ -391,6 +394,10 @@ export const Dashboard: React.FC = () => {
         if (message.data.workflowLaunchConfig) {
           setWorkflowLaunchConfig(message.data.workflowLaunchConfig);
         }
+      } else if (message.type === 'dashboardData' && projectFirst) {
+        setIsRetryingCli(false);
+        setWorksetsCatalog(message.data?.worksets ?? []);
+        setWorksetsCatalogLoading(false);
       } else if (message.type === 'dashboardData' && !projectFirst) {
         setIsRetryingCli(false);
         dispatch({ type: 'SET_DATA', payload: message.data, cache: message.cache });
@@ -842,19 +849,35 @@ export const Dashboard: React.FC = () => {
               </div>
             )}
             {projectFirstTab === 'worksets' && worksetsFullPageOpen ? (
-              <WorksetsPage
-                worksets={data?.worksets ?? []}
-                onOpenWorkset={(name) => {
-                  postMessage(sendMessage.openWorkset(name));
-                }}
-                onRemoveWorkset={(name) => {
-                  postMessage(sendMessage.removeWorkset(name));
-                }}
-                onBack={() => setWorksetsFullPageOpen(false)}
-                currentRootLabel={projectSidebar?.binding?.rootPath}
-                worksetsSupported={projectSidebar.worksetCapabilityAvailable !== false}
-                storeRootPaths={[]}
-              />
+              <>
+                {worksetsCatalogLoading && worksetsCatalog === null ? (
+                  <div
+                    role="status"
+                    className="mb-2 text-xs"
+                    style={{ color: 'var(--vscode-descriptionForeground)' }}
+                    data-worksets-catalog-loading
+                  >
+                    {t('header.loading')}
+                  </div>
+                ) : null}
+                <WorksetsPage
+                  worksets={worksetsCatalog ?? []}
+                  onOpenWorkset={(name) => {
+                    postMessage(sendMessage.openWorkset(name));
+                  }}
+                  onRemoveWorkset={(name) => {
+                    postMessage(sendMessage.removeWorkset(name));
+                  }}
+                  onBack={() => {
+                    setWorksetsFullPageOpen(false);
+                    setWorksetsCatalog(null);
+                    setWorksetsCatalogLoading(false);
+                  }}
+                  currentRootLabel={projectSidebar?.binding?.rootPath}
+                  worksetsSupported={projectSidebar.worksetCapabilityAvailable !== false}
+                  storeRootPaths={[]}
+                />
+              </>
             ) : projectFirstTab === 'worksets' && projectSidebar.worksetNavigation ? (
               <WorksetProjectPicker
                 navigation={projectSidebar.worksetNavigation}
@@ -868,6 +891,8 @@ export const Dashboard: React.FC = () => {
                 onOpenWorksetsFullPage={getWorksetCreateAvailable(projectSidebar)
                   ? () => {
                     setWorksetsFullPageOpen(true);
+                    setWorksetsCatalog(null);
+                    setWorksetsCatalogLoading(true);
                     postMessage(sendMessage.getDashboardData());
                   }
                   : undefined}

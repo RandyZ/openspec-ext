@@ -562,5 +562,5 @@
   "worksetsPage.removeConfirm": "移除工作集",
   "worksetsPage.removeSuccess": "已移除工作集「{name}」。",
   "worksetsPage.removeFailed": "移除工作集「{name}」失败。",
-  "worksetsPage.openFailed": "打开整个工作集「{name}」失败。"
+  "worksetsPage.openFailed": "打开整个工作集「{name}」失败：{detail}"
 }
