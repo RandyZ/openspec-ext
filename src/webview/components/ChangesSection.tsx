@@ -52,13 +52,16 @@ interface ChangesSectionProps {
   compact?: boolean;
   /** Opens the bound Changes explorer in an editor panel (Project Sidebar only). */
   onOpenInEditor?: () => void;
+  /** E3: CLI healthy and zero active changes — honest title + hint (not init/CLI failure). */
+  healthyActiveEmpty?: boolean;
 }
 
 function resolveEmptyMessage(
   state: ChangesViewState,
   rootLabel: string | undefined,
-  hasDataset: boolean
-): { message: string; offerCreate: boolean } {
+  hasDataset: boolean,
+  healthyActiveEmpty: boolean,
+): { message: string; hint?: string; offerCreate: boolean } {
   const hasQueryOrAttention = state.query.trim().length > 0 || state.attentionOnly;
 
   if (hasDataset && hasQueryOrAttention) {
@@ -87,6 +90,13 @@ function resolveEmptyMessage(
     case 'all':
     default:
       if (!hasDataset) {
+        if (healthyActiveEmpty && !hasQueryOrAttention) {
+          return {
+            message: t('projectSidebar.emptyActive'),
+            hint: t('projectSidebar.emptyActiveHint'),
+            offerCreate: false,
+          };
+        }
         return {
           message: rootLabel
             ? t('dashboard.emptyChangesInRoot', { root: rootLabel })
@@ -122,6 +132,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
   layout = 'auto',
   compact = false,
   onOpenInEditor,
+  healthyActiveEmpty = false,
 }) => {
   const [internalState, dispatch] = useReducer(
     changesViewReducer,
@@ -174,8 +185,12 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
   const isNarrowOnly = layout === 'narrow';
 
   const empty = compact && !hasDataset
-    ? { message: t('projectSidebar.emptyActive'), offerCreate: false }
-    : resolveEmptyMessage(state, rootLabel, hasDataset);
+    ? {
+      message: t('projectSidebar.emptyActive'),
+      hint: t('projectSidebar.emptyActiveHint'),
+      offerCreate: false,
+    }
+    : resolveEmptyMessage(state, rootLabel, hasDataset, healthyActiveEmpty);
 
   const setLifecycle = (lifecycleStatus: LifecycleFilterValue) => {
     applyAction({ type: 'SET_LIFECYCLE_FILTER', lifecycleStatus });
@@ -293,6 +308,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
       {pageResult.totalItems === 0 ? (
         <EmptyState
           message={empty.message}
+          hint={empty.hint}
           actionLabel={empty.offerCreate ? t('dashboard.createNew') : undefined}
           onAction={empty.offerCreate ? onRequestNewChange : undefined}
         />

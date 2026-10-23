@@ -24,7 +24,7 @@ const copyOnlyConfig: WorkflowLaunchConfigView = {
 };
 
 describe('TaskList next actions', () => {
-  it('renders Next with Agent on incomplete tasks and hides actions on completed tasks', () => {
+  it('renders Next on incomplete tasks and hides actions on completed tasks', () => {
     setLocale('en');
     const html = renderToStaticMarkup(
       <TaskList
@@ -37,7 +37,7 @@ describe('TaskList next actions', () => {
     );
 
     expect(html).toContain('1/3');
-    expect(html.match(/Next with Agent/g)?.length).toBe(1);
+    expect(html.match(/Next/g)?.length).toBe(1);
     expect(html).not.toContain('Done task</span><button');
   });
 
@@ -54,7 +54,7 @@ describe('TaskList next actions', () => {
     );
 
     expect(html).toContain('0/1');
-    expect(html).toContain('Next with Agent');
+    expect(html).toContain('Next');
     expect(html).toContain('data-task-in-progress="true"');
     expect(html).toContain('data-task-warning-dot="true"');
   });
@@ -72,7 +72,7 @@ describe('TaskList next actions', () => {
     );
 
     expect(html).toContain('data-task-warning-dot="true"');
-    expect(html.match(/Next with Agent/g)?.length).toBe(1);
+    expect(html.match(/Next/g)?.length).toBe(1);
     expect(html).toContain('Child');
   });
 
@@ -88,7 +88,7 @@ describe('TaskList next actions', () => {
       />,
     );
 
-    expect(html.match(/Next with Agent/g)?.length).toBe(1);
+    expect(html.match(/Next/g)?.length).toBe(1);
     expect(html).toContain('Child');
   });
 
@@ -112,7 +112,7 @@ describe('TaskList next actions', () => {
     );
 
     expect(html).toContain('Copy');
-    expect(html).not.toContain('Next with Agent');
+    expect(html).not.toContain('Next');
   });
 
   it('uses Copy label in copy-only mode', () => {
@@ -128,7 +128,7 @@ describe('TaskList next actions', () => {
     );
 
     expect(html).toContain('Copy');
-    expect(html).not.toContain('Next with Agent');
+    expect(html).not.toContain('Next');
   });
 
   it('hides next actions on blocked tasks while keeping the first task actionable', () => {
@@ -144,7 +144,7 @@ describe('TaskList next actions', () => {
       />,
     );
 
-    expect(html.match(/Next with Agent/g)?.length).toBe(1);
+    expect(html.match(/Next/g)?.length).toBe(1);
     expect(html).not.toContain('data-task-blocked-indicator="true"');
     expect(html).not.toContain('data-task-warning-dot="true"');
   });
@@ -162,7 +162,7 @@ describe('TaskList next actions', () => {
     );
 
     expect(html).toContain('data-task-warning-dot="true"');
-    expect(html.match(/Next with Agent/g)?.length).toBe(1);
+    expect(html.match(/Next/g)?.length).toBe(1);
   });
 
   it('does not render next actions for archived changes', () => {
@@ -178,7 +178,7 @@ describe('TaskList next actions', () => {
       />,
     );
 
-    expect(html).not.toContain('Next with Agent');
+    expect(html).not.toContain('Next');
     expect(html).not.toContain('Copy');
   });
 });

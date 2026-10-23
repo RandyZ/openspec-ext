@@ -12,5 +12,5 @@ export function getTaskNextButtonLabel(
   if (!config || !shouldUseAgentWorkflowLabels(config)) {
     return t('task.copy');
   }
-  return t('task.nextWithAgent');
+  return t('task.next');
 }
