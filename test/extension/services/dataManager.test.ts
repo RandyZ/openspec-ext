@@ -2081,9 +2081,14 @@ describe('DataManager workset create and open commands', () => {
   });
 
   it('openWorkset retries with the vscode opener when the CLI reports no saved tool', async () => {
+    const { OpenSpecCliError } = await import('@extension/services/types');
     const { manager, runCommand } = createManagerWithWorksetRunners();
     runCommand
-      .mockRejectedValueOnce(new Error("Workset 'qa-ws2-pair' has no saved tool."))
+      .mockRejectedValueOnce(new OpenSpecCliError(
+        'Command failed with code 1',
+        1,
+        "Workset 'qa-ws2-pair' has no saved tool.",
+      ))
       .mockResolvedValueOnce(undefined);
 
     await manager.openWorkset('qa-ws2-pair');
