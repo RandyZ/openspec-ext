@@ -272,6 +272,15 @@ export class OpenSpecCliService {
     return (await this.runJson(this.withStoreFlag(['context', '--json'], scope))) as OpenSpecContextResult;
   }
 
+  async getDoctor(scope?: ScopeOption | OpenSpecScope): Promise<{ references: unknown[] }> {
+    const payload = await this.runJson(this.withStoreFlag(['doctor', '--json'], scope));
+    if (!payload || typeof payload !== 'object') {
+      return { references: [] };
+    }
+    const references = (payload as { references?: unknown }).references;
+    return { references: Array.isArray(references) ? references : [] };
+  }
+
   /**
    * List machine-global Worksets. This probe is deliberately selector-free:
    * Worksets are not scoped to the currently selected Store.
