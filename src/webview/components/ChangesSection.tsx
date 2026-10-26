@@ -22,6 +22,12 @@ import type { WorkflowLaunchConfigView } from '../utils/workflowLaunchLabels';
 import type { WorkflowActionReceipt } from '../../shared/changeWorkflow';
 import { resolveChangeBindingKey } from '../utils/changeBindingKey';
 import type { OpenSpecRootBinding } from '../types/messages';
+import { ChangeScanRow } from './ChangeScanRow';
+import { DashboardRecommendedCard } from './DashboardRecommendedCard';
+import {
+  selectScanHierarchyFocus,
+  type ScanHierarchyFocus,
+} from '../utils/dashboardScanHierarchy';
 
 export type ChangesSectionLayout = 'wide' | 'narrow' | 'auto';
 
@@ -52,6 +58,9 @@ interface ChangesSectionProps {
   compact?: boolean;
   /** Opens the bound Changes explorer in an editor panel (Project Sidebar only). */
   onOpenInEditor?: () => void;
+  /** A-2 scan hierarchy: compact rows, bottom Recommended card, teaching empty state. */
+  scanHierarchy?: boolean;
+  onRefresh?: () => void;
   /** E3: CLI healthy and zero active changes — honest title + hint (not init/CLI failure). */
   healthyActiveEmpty?: boolean;
 }
@@ -132,6 +141,8 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
   layout = 'auto',
   compact = false,
   onOpenInEditor,
+  scanHierarchy = false,
+  onRefresh,
   healthyActiveEmpty = false,
 }) => {
   const [internalState, dispatch] = useReducer(
@@ -184,13 +195,24 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
   const showNarrow = !compact && (layout === 'narrow' || layout === 'auto');
   const isNarrowOnly = layout === 'narrow';
 
-  const empty = compact && !hasDataset
+  const scanFocus: ScanHierarchyFocus | null = scanHierarchy
+    ? selectScanHierarchyFocus(changes, workflowActionReceipts)
+    : null;
+
+  const empty = scanHierarchy && !hasDataset && !state.query.trim() && !state.attentionOnly
     ? {
-      message: t('projectSidebar.emptyActive'),
-      hint: t('projectSidebar.emptyActiveHint'),
-      offerCreate: false,
+      message: t('dashboard.emptyChangesTeaching'),
+      offerCreate: true,
+      teaching: true as const,
+      title: t('dashboard.emptyChangesTitle'),
     }
-    : resolveEmptyMessage(state, rootLabel, hasDataset, healthyActiveEmpty);
+    : compact && !hasDataset
+      ? {
+        message: t('projectSidebar.emptyActive'),
+        hint: t('projectSidebar.emptyActiveHint'),
+        offerCreate: false,
+      }
+      : resolveEmptyMessage(state, rootLabel, hasDataset, healthyActiveEmpty);
 
   const setLifecycle = (lifecycleStatus: LifecycleFilterValue) => {
     applyAction({ type: 'SET_LIFECYCLE_FILTER', lifecycleStatus });
@@ -198,12 +220,12 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
 
   return (
     <div
-      className="mb-6"
+      className={scanHierarchy ? 'mb-6 flex min-h-0 flex-1 flex-col' : 'mb-6'}
       data-changes-section
       data-responsive={layout === 'auto' ? 'true' : undefined}
       style={{ containerType: 'inline-size' } as React.CSSProperties}
     >
-      {!compact && layout === 'auto' && (
+      {!scanHierarchy && !compact && layout === 'auto' && (
         <style>{`
           [data-changes-section][data-responsive] [data-layout="wide"] { display: none; }
           [data-changes-section][data-responsive] [data-layout="narrow"] { display: block; }
@@ -216,8 +238,8 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex min-w-0 items-center gap-1">
           <h2
-            className="text-base font-semibold"
-            style={{ color: 'var(--vscode-foreground)' }}
+            className={`font-semibold uppercase tracking-wide ${scanHierarchy ? 'text-[11px]' : 'text-base'}`}
+            style={{ color: scanHierarchy ? 'var(--vscode-descriptionForeground)' : 'var(--vscode-foreground)' }}
           >
             {t('dashboard.changes', { count: changeStatusCounts.all })}
           </h2>
@@ -233,7 +255,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
             />
           )}
         </div>
-        {onRequestNewChange && state.lifecycleStatus !== 'archived' && (
+        {!scanHierarchy && onRequestNewChange && state.lifecycleStatus !== 'archived' && (
           <button
             type="button"
             className="px-2 py-1 text-xs rounded cursor-pointer border-none focus:outline-none focus:ring-1 shrink-0"
@@ -251,7 +273,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
         )}
       </div>
 
-      {showWide && (
+      {!scanHierarchy && showWide && (
         <div data-layout="wide">
           <ChangeStatusFilter
             variant="segments"
@@ -262,7 +284,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
         </div>
       )}
 
-      {showNarrow && (
+      {!scanHierarchy && showNarrow && (
         <div data-layout="narrow">
           <ChangeStatusFilter
             variant="compact"
@@ -273,7 +295,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
         </div>
       )}
 
-      {!compact && (hasDataset || state.query.length > 0 || state.attentionOnly) && (
+      {!scanHierarchy && !compact && (hasDataset || state.query.length > 0 || state.attentionOnly) && (
         <>
           <input
             type="search"
@@ -307,11 +329,46 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
 
       {pageResult.totalItems === 0 ? (
         <EmptyState
+          variant={'teaching' in empty && empty.teaching ? 'teaching' : 'default'}
+          title={'title' in empty ? empty.title : undefined}
           message={empty.message}
           hint={empty.hint}
-          actionLabel={empty.offerCreate ? t('dashboard.createNew') : undefined}
+          actionLabel={
+            empty.offerCreate
+              ? (scanHierarchy ? t('dashboard.proposeWithAgent') : t('dashboard.createNew'))
+              : undefined
+          }
           onAction={empty.offerCreate ? onRequestNewChange : undefined}
+          secondaryActionLabel={scanHierarchy && onRefresh ? t('action.refresh') : undefined}
+          onSecondaryAction={scanHierarchy ? onRefresh : undefined}
         />
+      ) : scanHierarchy ? (
+        <div className="flex min-h-0 flex-1 flex-col" data-scan-change-list>
+          <div className="min-h-0 flex-1">
+            {visibleItems.map((item) =>
+              item.kind === 'active' ? (
+                <ChangeScanRow
+                  key={item.id}
+                  change={item.change}
+                  highlighted={scanFocus?.change.name === item.change.name
+                    && scanFocus?.change.workflowSnapshot?.bindingKey
+                      === item.change.workflowSnapshot?.bindingKey}
+                  onOpen={onOpenChange}
+                />
+              ) : null,
+            )}
+          </div>
+          {scanFocus && onOpenChange && onLaunchWorkflow && (
+            <DashboardRecommendedCard
+              focus={scanFocus}
+              workflowLaunchConfig={workflowLaunchConfig}
+              workflowLaunchPendingKeys={workflowLaunchPendingKeys}
+              projectBinding={projectBinding}
+              onOpenChange={onOpenChange}
+              onLaunchWorkflow={onLaunchWorkflow}
+            />
+          )}
+        </div>
       ) : (
         <div className="space-y-2">
           {visibleItems.map((item) =>
@@ -349,7 +406,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
         </div>
       )}
 
-      {!compact && (
+      {!scanHierarchy && !compact && (
         <ChangePagination
           page={pageResult.page}
           pageSize={state.pageSize}

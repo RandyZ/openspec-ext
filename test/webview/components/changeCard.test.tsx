@@ -428,7 +428,7 @@ describe('Dashboard ready-to-verify Verify path', () => {
 
   it('routes the Ready to Verify priority entry through the bound Verify & Archive detail', () => {
     const source = readFileSync(
-      path.resolve(__dirname, '../../../src/webview/components/Dashboard.tsx'),
+      path.resolve(__dirname, '../../../src/webview/utils/dashboardPriorityChanges.ts'),
       'utf8'
     );
     expect(source).toContain("groupKey === 'ready-to-verify'");

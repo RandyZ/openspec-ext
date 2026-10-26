@@ -265,6 +265,17 @@
   "dashboard.staleData": "正在刷新，当前显示缓存数据...",
   "dashboard.refreshing": "正在刷新 OpenSpec 数据...",
   "dashboard.changes": "change ({count})",
+  "dashboard.emptyChangesTitle": "还没有 change",
+  "dashboard.emptyChangesTeaching": "先建一条 change，再回来让 Agent 做下一步。",
+  "dashboard.proposeWithAgent": "用 Agent 提出 change",
+  "dashboard.recommendedTitle": "推荐下一步",
+  "dashboard.recommendedHint": "{name} · {status}",
+  "dashboard.scanStatusReadyToApply": "可实施",
+  "dashboard.scanStatusReadyToVerify": "可验证",
+  "dashboard.scanStatusApplying": "实施中",
+  "dashboard.scanStatusInProposal": "提案中",
+  "dashboard.scanStatusNeedsAttention": "需关注",
+  "dashboard.scanTasksProgress": "任务 {completed}/{total}",
   "dashboard.emptyChanges": "此根目录中没有 change。",
   "dashboard.emptyChangesInRoot": "{root} 中没有 change。",
   "dashboard.createNew": "新建 change",
@@ -365,6 +376,10 @@
   "projectDashboard.stale": "正在刷新，当前显示缓存的项目数据...",
   "projectDashboard.empty": "项目 Dashboard 暂无数据。",
   "worksetNavigation.title": "工作集项目",
+  "worksetNavigation.empty2a.title": "本工程未加入 Workset",
+  "worksetNavigation.empty2a.body": "仅显示「成员包含本工程」的 Workset。可打开 Worksets 全页查看本机全部，或把本工程加入某个 Workset。",
+  "worksetNavigation.empty2a.openFullPage": "打开 Worksets 全页",
+  "worksetNavigation.empty2a.learn": "了解 Workset",
   "worksetNavigation.openWorksets": "打开工作集",
   "worksetNavigation.returnCurrent": "返回当前项目",
   "worksetNavigation.openProject": "打开项目 {name}",
@@ -434,6 +449,7 @@
 
   "spec.label": "Spec:",
   "spec.requirements": "{count} 个需求",
+  "spec.openFailed": "无法从 {root} 打开 spec「{id}」：{detail}",
 
   "extension.noWorkspace": "OpenSpec：未找到工作区文件夹",
   "extension.emptyWorkspaceMessage": "请先打开项目文件夹以使用 OpenSpec",
@@ -550,5 +566,5 @@
   "worksetsPage.removeConfirm": "移除工作集",
   "worksetsPage.removeSuccess": "已移除工作集「{name}」。",
   "worksetsPage.removeFailed": "移除工作集「{name}」失败。",
-  "worksetsPage.openFailed": "打开整个工作集「{name}」失败。"
+  "worksetsPage.openFailed": "打开整个工作集「{name}」失败：{detail}"
 }

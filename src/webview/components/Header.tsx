@@ -175,7 +175,7 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           <nav
-            className="flex flex-col gap-1"
+            className="flex flex-col"
             aria-label={t('projectSidebar.navigationLabel')}
             data-project-navigation
           >
