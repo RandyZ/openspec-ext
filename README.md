@@ -1,12 +1,18 @@
 # OpenSpec Workflow
 
-> A focused, project-first dashboard for OpenSpec changes, specs, and safe workflow actions in VS Code and Cursor.
+> Project-first OpenSpec workbench for VS Code and Cursor: see the next step, hand Verify/Apply to the IDE Agent, and archive safely.
 
 English | [简体中文](README.zh-CN.md)
 
 ## Overview
 
-OpenSpec brings change planning and execution into the editor. Review what needs attention, inspect specs and artifacts, and take the next workflow step without losing context.
+OpenSpec Workflow is a **project-first workbench** for the OpenSpec change lifecycle—not a CodeLens companion that only stuffs context into Chat.
+
+- See what needs attention across Changes, Specs, Stores, and Worksets
+- One click hands Verify / Apply to the **IDE Agent panel** (Cursor) or prefills Chat (VS Code)
+- Safe defaults: confirm before Archive; CLI stays the source of truth behind the UI
+
+Requires [OpenSpec CLI](https://github.com/Fission-AI/OpenSpec#quick-start). Open VSX users may see a newer build than the Marketplace listing while we keep narratives aligned.
 
 ### Highlights
 

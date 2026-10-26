@@ -1034,7 +1034,9 @@ describe('project page contract', () => {
   it('keeps Specs launcher and Changes list title action when active work is empty', () => {
     const html = renderProjectSidebar({ ...projectSidebarData, changes: [] });
 
-    expect(html).toMatch(/No changes in this Root/i);
+    expect(html).toContain('No active changes');
+    expect(html).toContain('Create a change with the CLI or ask Agent to propose one.');
+    expect(html).toContain('data-empty-state="healthy-active"');
     expect(html).toContain('Specs');
     expect(html).toContain('data-open-changes-in-editor');
     expect(html).toContain('New Change');
@@ -1496,6 +1498,69 @@ describe('Dashboard scope switching states', () => {
     expect(html).toContain('Store: team-plans');
     expect(html).toContain('platform-reqs');
     expect(html).toContain('platform');
+  });
+
+  it('warns on unregistered references in project-first sidebar', () => {
+    const html = renderProjectSidebar({
+      ...projectSidebarData,
+      referenceIndex: [
+        {
+          store_id: 'fixture-plans',
+          status: [
+            {
+              severity: 'warning',
+              code: 'reference_unresolved',
+              message: 'Store is not registered locally.',
+              fix: 'openspec store setup fixture-plans --path /tmp/fixture-plans',
+            },
+          ],
+        },
+      ],
+      referencedStoreSpecs: [
+        {
+          storeId: 'fixture-plans',
+          specs: [],
+          error: 'Unable to load Specs for referenced Store "fixture-plans".',
+        },
+      ],
+    });
+
+    expect(html).toContain('Unregistered reference');
+    expect(html).toContain('Copy recovery command');
+    expect(html).toContain('fixture-plans');
+    expect(html).not.toContain('Unable to load Specs for referenced Store');
+    expect(html).not.toContain('Switch');
+  });
+
+  it('warns on unresolved references without offering them as writable store roots', () => {
+    const html = renderDashboardWithData({
+      ...dashboardData,
+      scope: localScope,
+      scopes: [localScope],
+      relationships: {
+        health: { root: { path: '/workspace', healthy: true, status: [] } },
+        references: [
+          {
+            store_id: 'fixture-plans',
+            status: [
+              {
+                severity: 'warning',
+                code: 'reference_unresolved',
+                message: 'Store is not registered locally.',
+                fix: 'openspec store register /tmp/fixture-plans',
+              },
+            ],
+          },
+        ],
+      },
+      worksets: [],
+    });
+
+    expect(html).toContain('Unregistered reference');
+    expect(html).toContain('Reference not registered');
+    expect(html).toContain('fixture-plans');
+    expect(html).toContain('Copy recovery command');
+    expect(html).not.toContain('Store: fixture-plans');
   });
 });
 

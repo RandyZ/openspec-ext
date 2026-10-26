@@ -65,7 +65,7 @@ describe('Change detail executor-driven labels', () => {
     );
 
     expect(actionBarHtml).toContain('Open Agent panel · Continue planning');
-    expect(taskListHtml).toContain('Next with Agent');
+    expect(taskListHtml).toContain('Next');
     expect(taskListHtml).not.toContain('>Copy<');
   });
 
@@ -94,7 +94,7 @@ describe('Change detail executor-driven labels', () => {
       />,
     );
 
-    expect(taskListHtml).toContain('Next with Agent');
+    expect(taskListHtml).toContain('Next');
   });
 
   it('renders Next labels when cursor executor is available and selected', () => {

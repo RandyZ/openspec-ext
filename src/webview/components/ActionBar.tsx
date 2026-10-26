@@ -107,6 +107,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
+            className="max-w-full whitespace-normal break-words text-left"
             style={primaryStyle}
             title={getWorkflowActionTitle(recommendedAction.label, labelLaunchConfig)}
             aria-label={getWorkflowActionTitle(recommendedAction.label, labelLaunchConfig)}

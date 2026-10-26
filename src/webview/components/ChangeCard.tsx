@@ -273,7 +273,7 @@ export const ChangeCard: React.FC<ChangeCardProps> = ({
                   data-action
                   data-workflow-action={descriptor.action}
                   data-variant={descriptor.variant}
-                  className="px-2 py-0.5 text-xs rounded cursor-pointer border-none"
+                  className="max-w-full whitespace-normal break-words px-2 py-0.5 text-left text-xs rounded cursor-pointer border-none"
                   title={title}
                   aria-label={title}
                   style={{
