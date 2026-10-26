@@ -2,7 +2,10 @@ import React from 'react';
 import { type WorkflowState } from '../utils/workflowState';
 import type { ResolvedWorkflowActions } from '../../shared/changeWorkflow';
 import { t } from '../../i18n';
-import type { WorkflowAction as WorkflowCommandAction } from '../../shared/workflowCommand';
+import {
+  buildWorkflowCommand,
+  type WorkflowAction as WorkflowCommandAction,
+} from '../../shared/workflowCommand';
 import {
   getWorkflowActionButtonLabel,
   getWorkflowActionTitle,
@@ -181,20 +184,34 @@ const LegacyActionBar: React.FC<{
   isArchived: boolean;
   onCopyFf: (changeName: string) => void;
   onCopyApply: (changeName: string) => void;
-}> = ({ changeName, onCopyFf, onCopyApply }) => (
-  <div
-    className="flex flex-wrap items-center gap-2"
-    style={{
-      padding: '10px 16px',
-      borderBottom: '1px solid var(--vscode-panel-border)',
-      background: 'var(--vscode-editor-background)',
-    }}
-  >
-    <button type="button" style={secondaryStyle} onClick={() => onCopyFf(changeName)}>
-      Copy /opsx:ff
-    </button>
-    <button type="button" style={secondaryStyle} onClick={() => onCopyApply(changeName)}>
-      Copy /opsx:apply
-    </button>
-  </div>
-);
+}> = ({ changeName, onCopyFf, onCopyApply }) => {
+  const ffCommand = buildWorkflowCommand({ action: 'ff', changeName, target: 'clipboard' });
+  const applyCommand = buildWorkflowCommand({ action: 'apply', changeName, target: 'clipboard' });
+  return (
+    <div
+      className="flex flex-wrap items-center gap-2"
+      style={{
+        padding: '10px 16px',
+        borderBottom: '1px solid var(--vscode-panel-border)',
+        background: 'var(--vscode-editor-background)',
+      }}
+    >
+      <button
+        type="button"
+        style={secondaryStyle}
+        title={ffCommand}
+        onClick={() => onCopyFf(changeName)}
+      >
+        {t('workflow.button.copy', { action: t('workflow.action.ff') })}
+      </button>
+      <button
+        type="button"
+        style={secondaryStyle}
+        title={applyCommand}
+        onClick={() => onCopyApply(changeName)}
+      >
+        {t('workflow.button.copy', { action: t('workflow.action.apply') })}
+      </button>
+    </div>
+  );
+};

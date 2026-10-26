@@ -247,7 +247,7 @@ describe('Project-first Header', () => {
     expect(html).toContain('项目仪表盘');
     expect(html).toContain('Workset 项目');
     expect(html).toContain('title="浏览本地 Spec"');
-    expect(html).toContain('title="在编辑器中打开项目 Dashboard"');
+    expect(html).toContain('title="在编辑器中打开项目仪表盘"');
     expect(html).not.toContain('aria-label="Project navigation"');
   });
 });

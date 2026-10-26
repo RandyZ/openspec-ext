@@ -121,7 +121,16 @@ function getStatusSummary(
   return t('verifyArchive.statusArtifacts', { count: artifactCount });
 }
 
+const ARTIFACT_TAB_LABEL_KEYS: Record<string, Parameters<typeof t>[0]> = {
+  proposal: 'detail.artifact.proposal',
+  specs: 'detail.artifact.specs',
+  design: 'detail.artifact.design',
+  tasks: 'detail.artifact.tasks',
+};
+
 function artifactLabel(id: string): string {
+  const key = ARTIFACT_TAB_LABEL_KEYS[id];
+  if (key) return t(key);
   return id
     .replace(/[-_]+/g, ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase());
@@ -311,7 +320,7 @@ export const ChangeDetail: React.FC<ChangeDetailProps> = ({
         id: artifact.id,
         label: artifactLabel(artifact.id),
       })),
-      ...(showVerifyArchiveTab ? [{ id: 'verifyArchive', label: 'Verify & Archive' }] : []),
+      ...(showVerifyArchiveTab ? [{ id: 'verifyArchive', label: t('detail.verifyArchive') }] : []),
     ],
     [navigationArtifacts, showVerifyArchiveTab]
   );
