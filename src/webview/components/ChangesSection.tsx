@@ -61,13 +61,16 @@ interface ChangesSectionProps {
   /** A-2 scan hierarchy: compact rows, bottom Recommended card, teaching empty state. */
   scanHierarchy?: boolean;
   onRefresh?: () => void;
+  /** E3: CLI healthy and zero active changes — honest title + hint (not init/CLI failure). */
+  healthyActiveEmpty?: boolean;
 }
 
 function resolveEmptyMessage(
   state: ChangesViewState,
   rootLabel: string | undefined,
-  hasDataset: boolean
-): { message: string; offerCreate: boolean } {
+  hasDataset: boolean,
+  healthyActiveEmpty: boolean,
+): { message: string; hint?: string; offerCreate: boolean } {
   const hasQueryOrAttention = state.query.trim().length > 0 || state.attentionOnly;
 
   if (hasDataset && hasQueryOrAttention) {
@@ -96,6 +99,13 @@ function resolveEmptyMessage(
     case 'all':
     default:
       if (!hasDataset) {
+        if (healthyActiveEmpty && !hasQueryOrAttention) {
+          return {
+            message: t('projectSidebar.emptyActive'),
+            hint: t('projectSidebar.emptyActiveHint'),
+            offerCreate: false,
+          };
+        }
         return {
           message: rootLabel
             ? t('dashboard.emptyChangesInRoot', { root: rootLabel })
@@ -133,6 +143,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
   onOpenInEditor,
   scanHierarchy = false,
   onRefresh,
+  healthyActiveEmpty = false,
 }) => {
   const [internalState, dispatch] = useReducer(
     changesViewReducer,
@@ -196,8 +207,12 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
       title: t('dashboard.emptyChangesTitle'),
     }
     : compact && !hasDataset
-      ? { message: t('projectSidebar.emptyActive'), offerCreate: false }
-      : resolveEmptyMessage(state, rootLabel, hasDataset);
+      ? {
+        message: t('projectSidebar.emptyActive'),
+        hint: t('projectSidebar.emptyActiveHint'),
+        offerCreate: false,
+      }
+      : resolveEmptyMessage(state, rootLabel, hasDataset, healthyActiveEmpty);
 
   const setLifecycle = (lifecycleStatus: LifecycleFilterValue) => {
     applyAction({ type: 'SET_LIFECYCLE_FILTER', lifecycleStatus });
@@ -317,6 +332,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
           variant={'teaching' in empty && empty.teaching ? 'teaching' : 'default'}
           title={'title' in empty ? empty.title : undefined}
           message={empty.message}
+          hint={empty.hint}
           actionLabel={
             empty.offerCreate
               ? (scanHierarchy ? t('dashboard.proposeWithAgent') : t('dashboard.createNew'))

@@ -18,7 +18,7 @@ describe('resolveUiWorkflowLaunchConfig re-export', () => {
   it('keeps Agent labels when adapter mode prefers cursor even if runtime executor is clipboard', () => {
     setLocale('en');
     const uiConfig = resolveUiWorkflowLaunchConfig(cursorLaunchConfig, 'clipboard');
-    expect(getTaskNextButtonLabel(uiConfig)).toBe('Next with Agent');
+    expect(getTaskNextButtonLabel(uiConfig)).toBe('Next');
     expect(getWorkflowActionButtonLabel('Continue planning', uiConfig)).toBe('Open Agent panel · Continue planning');
   });
 });

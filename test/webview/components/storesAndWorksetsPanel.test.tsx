@@ -47,6 +47,41 @@ describe('StoresAndWorksetsPanel', () => {
     expect(html).toContain('Create Store');
   });
 
+  it('shows warning and recovery action for unregistered reference stores', () => {
+    const onCopyFetch = vi.fn();
+    const html = renderToStaticMarkup(
+      <StoresAndWorksetsPanel
+        scopes={[localScope]}
+        references={[
+          {
+            store_id: 'fixture-plans',
+            status: [
+              {
+                severity: 'warning',
+                code: 'reference_unresolved',
+                message: 'Store is not registered locally.',
+                fix: 'openspec store register /tmp/fixture-plans',
+              },
+            ],
+          },
+        ]}
+        worksets={[]}
+        onSelectStore={vi.fn()}
+        onRegisterStore={vi.fn()}
+        onSetupStore={vi.fn()}
+        onOpenWorkset={vi.fn()}
+        onCopyFetch={onCopyFetch}
+      />,
+    );
+
+    expect(html).toContain('fixture-plans');
+    expect(html).toContain('Reference not registered');
+    expect(html).toContain('Store is not registered locally.');
+    expect(html).toContain('Copy recovery command');
+    expect(html).not.toContain('Switch');
+    expect(html).not.toContain('Store: fixture-plans');
+  });
+
   it('presents references as read-only context', () => {
     const html = renderToStaticMarkup(
       <StoresAndWorksetsPanel

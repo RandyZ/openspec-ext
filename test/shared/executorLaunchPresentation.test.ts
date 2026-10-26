@@ -34,7 +34,7 @@ describe('buildExecutorLaunchPresentation', () => {
 
     expect(presentation.agentAdapters.currentId).toBe('clipboard');
     expect(presentation.uiWorkflowLaunchConfig.effectiveAdapterId).toBe('cursor');
-    expect(getTaskNextButtonLabel(presentation.uiWorkflowLaunchConfig)).toBe('Next with Agent');
+    expect(getTaskNextButtonLabel(presentation.uiWorkflowLaunchConfig)).toBe('Next');
     expect(getWorkflowActionButtonLabel('Continue planning', presentation.uiWorkflowLaunchConfig)).toBe('Open Agent panel · Continue planning');
     expect(getWorkflowLaunchModeHint(presentation.uiWorkflowLaunchConfig)).toBe('Opens Agent panel');
   });
@@ -50,7 +50,7 @@ describe('buildExecutorLaunchPresentation', () => {
       'cursor',
     );
 
-    expect(getTaskNextButtonLabel(presentation.uiWorkflowLaunchConfig)).toBe('Next with Agent');
+    expect(getTaskNextButtonLabel(presentation.uiWorkflowLaunchConfig)).toBe('Next');
     expect(getWorkflowActionButtonLabel('Continue planning', presentation.uiWorkflowLaunchConfig)).toBe('Open Agent panel · Continue planning');
   });
 });
@@ -70,7 +70,7 @@ describe('resolveUiWorkflowLaunchConfig', () => {
   it('maps executor=clipboard to Agent labels when adapter mode prefers cursor', () => {
     setLocale('en');
     const uiConfig = resolveUiWorkflowLaunchConfig(cursorSettingsConfig, 'clipboard');
-    expect(getTaskNextButtonLabel(uiConfig)).toBe('Next with Agent');
+    expect(getTaskNextButtonLabel(uiConfig)).toBe('Next');
   });
 });
 
@@ -85,7 +85,7 @@ describe('b663c24 regression: settings cursor + runtime clipboard only', () => {
   it('settings-only resolution keeps Agent labels even when runtime adapters are clipboard-only', () => {
     setLocale('en');
     const settingsOnly = resolveUiWorkflowLaunchConfig(cursorSettingsConfig, null, []);
-    expect(getTaskNextButtonLabel(settingsOnly)).toBe('Next with Agent');
+    expect(getTaskNextButtonLabel(settingsOnly)).toBe('Next');
     expect(getWorkflowActionButtonLabel('Continue planning', settingsOnly)).toBe('Open Agent panel · Continue planning');
 
     const presentation = buildExecutorLaunchPresentation(
@@ -93,7 +93,7 @@ describe('b663c24 regression: settings cursor + runtime clipboard only', () => {
       clipboardOnlyAvailable,
       'cursor',
     );
-    expect(getTaskNextButtonLabel(presentation.uiWorkflowLaunchConfig)).toBe('Next with Agent');
+    expect(getTaskNextButtonLabel(presentation.uiWorkflowLaunchConfig)).toBe('Next');
     expect(getWorkflowActionButtonLabel('Continue planning', presentation.uiWorkflowLaunchConfig)).toBe(
       'Open Agent panel · Continue planning',
     );

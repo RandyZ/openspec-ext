@@ -411,6 +411,31 @@ describe('Task 4.6 accessibility', () => {
   });
 });
 
+describe('B-3 healthy zero changes (E3)', () => {
+  it('shows emptyActive title and hint when healthyActiveEmpty is set', () => {
+    const html = renderSection(
+      {
+        changes: [],
+        archivedItems: [],
+        changeStatusCounts: {
+          all: 0,
+          planning: 0,
+          readyToApply: 0,
+          applying: 0,
+          readyToVerify: 0,
+          archived: 0,
+          needsAttention: 0,
+        },
+        healthyActiveEmpty: true,
+      },
+      { lifecycleStatus: 'all' },
+    );
+    expect(html).toContain('No active changes');
+    expect(html).toContain('Create a change with the CLI or ask Agent to propose one.');
+    expect(html).toContain('data-empty-state="healthy-active"');
+  });
+});
+
 describe('Task 4.7 filter empty states', () => {
   it('shows lifecycle-specific empty copy with New Change for non-archived filters', () => {
     const cases: Array<{ status: ChangesViewState['lifecycleStatus']; message: string }> = [

@@ -22,6 +22,12 @@ import { StoresAndWorksetsPanel } from './StoresAndWorksetsPanel';
 import { WorksetsPage } from './WorksetsPage';
 import { WorksetProjectPicker } from './WorksetProjectPicker';
 import { formatOpenSpecRootLabel } from '../utils/scopeLabels';
+import { deriveScopeBarHealth } from '../utils/referenceHealth';
+import { UnregisteredReferenceAlerts } from './UnregisteredReferenceAlerts';
+import {
+  collectUnregisteredReferenceAlerts,
+  isUnregisteredReferencedStore,
+} from '../utils/unregisteredReferenceAlerts';
 import { t } from '../../i18n';
 import {
   buildWorkflowCommand,
@@ -333,6 +339,7 @@ export const Dashboard: React.FC = () => {
     ?? (projectSidebar?.cliDiagnostic
       ? { diagnostic: projectSidebar.cliDiagnostic, mode: 'warning' as const }
       : null);
+  const healthyActiveEmpty = projectDiagnostic?.mode !== 'blocking';
 
   useEffect(() => {
     setProjectFirstTab('changes');
@@ -680,6 +687,12 @@ export const Dashboard: React.FC = () => {
     .slice(0, 3);
   const priorityWorkflowConfig = workflowLaunchConfig ?? projectSidebar?.workflowLaunchConfig;
   const projectBinding = projectSidebar?.binding;
+  const unregisteredReferenceAlerts = projectSidebar
+    ? collectUnregisteredReferenceAlerts(
+      projectSidebar.referenceIndex,
+      projectSidebar.referencedStoreSpecs,
+    )
+    : [];
   const projectSpecsCount = projectSidebar
     ? (projectSidebar.projectSpecs?.length ?? 0)
       + (projectSidebar.referencedStoreSpecs ?? []).reduce(
@@ -819,7 +832,7 @@ export const Dashboard: React.FC = () => {
                     <button
                       type="button"
                       data-priority-cta={change.name}
-                      className="shrink-0 rounded px-2 py-1 text-xs focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)]"
+                      className="max-w-full shrink-0 whitespace-normal break-words rounded px-2 py-1 text-left text-xs focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)]"
                       style={{
                         background: 'var(--vscode-button-secondaryBackground)',
                         color: 'var(--vscode-button-secondaryForeground)',
@@ -839,6 +852,10 @@ export const Dashboard: React.FC = () => {
 
         {projectSidebar ? (
           <div className="flex min-h-0 flex-1 flex-col">
+            <UnregisteredReferenceAlerts
+              alerts={unregisteredReferenceAlerts}
+              onCopyRecovery={(command) => postMessage(sendMessage.copyToClipboard(command))}
+            />
             {(projectSidebar.cache?.stale || state.stale || loading) && (
               <div
                 role="status"
@@ -926,6 +943,7 @@ export const Dashboard: React.FC = () => {
                       layout="narrow"
                       scanHierarchy
                       onRefresh={handleRefresh}
+                      healthyActiveEmpty={healthyActiveEmpty}
                     />
                   </div>
                 ) : (
@@ -944,7 +962,11 @@ export const Dashboard: React.FC = () => {
                         specs={[...group.specs]}
                         heading={t('projectSidebar.referencedStoreSpecs', { storeId: group.storeId })}
                         emptyMessage={t('projectSidebar.emptyStoreSpecs', { storeId: group.storeId })}
-                        loadError={group.error}
+                        loadError={
+                          isUnregisteredReferencedStore(group.storeId, unregisteredReferenceAlerts)
+                            ? undefined
+                            : group.error
+                        }
                         sourceLabel={group.storeId}
                         readOnly
                         onOpenSpec={group.binding
@@ -964,18 +986,15 @@ export const Dashboard: React.FC = () => {
             <ScopeBar
               scope={data.scope}
               scopes={data.scopes}
-              health={
-                data.relationships?.health?.root
-                  ? {
-                      status: data.relationships.health.root.healthy ? ('ok' as const) : ('warning' as const),
-                      label: t(
-                        data.relationships.health.root.healthy
-                          ? 'scope.health.ok'
-                          : 'scope.health.warning',
-                      ),
-                    }
-                  : undefined
-              }
+              health={(() => {
+                const derived = deriveScopeBarHealth(
+                  data.relationships?.health?.root?.healthy,
+                  data.relationships?.references,
+                );
+                return derived
+                  ? { status: derived.status, label: t(derived.labelKey) }
+                  : undefined;
+              })()}
               loading={loading}
               loadingReason={loadingReason}
               pendingScopeId={pendingScopeId}
@@ -1085,6 +1104,7 @@ export const Dashboard: React.FC = () => {
                   viewState={changesViewState}
                   onViewStateChange={persistChangesViewState}
                   allowPageClamp={allowPageClamp}
+                  healthyActiveEmpty={healthyActiveEmpty}
                 />
                 <SpecsSection
                   specs={data.specs}
