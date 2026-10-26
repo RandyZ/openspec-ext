@@ -3,6 +3,8 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import YAML from 'yaml';
 import { logger } from '../utils/logger';
+import { defaultHostWorksetOpenerTool } from '../utils/defaultHostWorksetOpenerTool';
+import { isNoSavedWorksetToolError } from '../utils/worksetOpenFailure';
 import { OpenSpecCliService } from './openspecCli';
 import { FileManagerService } from './fileManager';
 import { FileWatcherService, type FileChangeEvent } from './fileWatcher';
@@ -389,7 +391,22 @@ export class DataManager {
     const args = trimmedTool
       ? ['workset', 'open', name, '--tool', trimmedTool]
       : ['workset', 'open', name];
-    await this.cliService.runCommand(args);
+    try {
+      await this.cliService.runCommand(args);
+    } catch (error) {
+      // QA / legacy worksets may have no saved opener; default to the host IDE.
+      if (!trimmedTool && isNoSavedWorksetToolError(error)) {
+        await this.cliService.runCommand([
+          'workset',
+          'open',
+          name,
+          '--tool',
+          defaultHostWorksetOpenerTool(),
+        ]);
+        return;
+      }
+      throw error;
+    }
   }
 
   /**

@@ -95,6 +95,7 @@ function renderPicker(
     createAvailable?: boolean;
     pickedMembers?: Parameters<typeof WorksetProjectPicker>[0]['pickedMembers'];
     createResult?: Parameters<typeof WorksetProjectPicker>[0]['createResult'];
+    onOpenWorksetsFullPage?: () => void;
   } = {},
 ) {
   return renderToStaticMarkup(
@@ -114,6 +115,7 @@ function renderPicker(
       onPickMembers={vi.fn()}
       onCreateWorkset={vi.fn()}
       onBackToCurrentProject={vi.fn()}
+      onOpenWorksetsFullPage={overrides.onOpenWorksetsFullPage ?? vi.fn()}
     />,
   );
 }
@@ -872,7 +874,9 @@ describe('WorksetProjectPicker create form rendering', () => {
 
     expect(html).toContain('data-workset-scene="list"');
     expect(html).toContain('data-workset-empty-list');
-    expect(html).toContain('No Worksets yet');
+    expect(html).toContain('data-workset-empty-2a');
+    expect(html).toContain('This project isn’t in a Workset yet');
+    expect(html).toContain('data-action="open-worksets-full-page"');
     // The primary first-creation entry stays reachable from the empty list.
     expect(html).toContain('data-action="create-workset"');
     expect(html).not.toContain('data-workset-row=');

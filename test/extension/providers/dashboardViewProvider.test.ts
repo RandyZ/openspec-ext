@@ -3611,6 +3611,39 @@ describe('DashboardViewProvider', () => {
     expect(postMessage.mock.calls.some(([message]) => message.type === 'dashboardData')).toBe(false);
   });
 
+  it('Project-first openWorkset reloads sidebar data so Specs reflect new workspace folders', async () => {
+    vi.useFakeTimers();
+    const fixture = makeProjectFixture();
+    const payload = {
+      project: fixture.project,
+      binding: fixture.binding,
+      changes: [makeProjectChange('project-change')],
+      archivedChanges: [],
+      projectSpecs: [{ id: 'ai-gateway', requirementCount: 2 }],
+      referencedStoreSpecs: [],
+      lastRefresh: 1,
+    };
+    const gateway = {
+      loadProjectSidebarData: vi.fn().mockResolvedValue(payload),
+    };
+    const openWorkset = vi.fn().mockResolvedValue(undefined);
+    const dataManager = makeDataManager({ openWorkset });
+    const postMessage = vi.fn();
+    const webview = makeWebview(postMessage);
+    const provider = makeProjectProvider(dataManager, gateway, fixture);
+
+    provider.resolveWebviewView(makeWebviewView(webview) as any, {} as any, {} as any);
+    await vi.runAllTimersAsync();
+    const loadsBeforeOpen = gateway.loadProjectSidebarData.mock.calls.length;
+    expect(loadsBeforeOpen).toBeGreaterThanOrEqual(1);
+
+    const handler = vi.mocked(webview.onDidReceiveMessage).mock.calls[0]?.[0];
+    await handler?.({ type: 'openWorkset', name: 'platform' });
+
+    expect(openWorkset).toHaveBeenCalledWith('platform');
+    expect(gateway.loadProjectSidebarData.mock.calls.length).toBeGreaterThan(loadsBeforeOpen);
+  });
+
   it('Project cache renders cached data before a fresh refresh completes', async () => {
     vi.useFakeTimers();
     const fixture = makeProjectFixture();

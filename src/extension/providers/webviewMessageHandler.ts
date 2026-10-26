@@ -12,6 +12,7 @@ import type {
   WebviewMessage,
 } from '../../webview/types/messages';
 import { t } from '../../i18n';
+import { formatWorksetOpenFailure } from '../utils/worksetOpenFailure';
 import { buildWorkflowLaunchPayload } from '../../shared/workflowCommand';
 import type { WorkflowAction } from '../../shared/workflowCommand';
 import { getWorkflowLaunchConfigViewForUi } from '../services/workflowLaunchConfig';
@@ -1385,7 +1386,10 @@ export async function handleWebviewMessage(
         }
       } catch (error) {
         logger.error('openWorkset message failed', error as Error);
-        postError(error, t('worksetsPage.openFailed', { name: message.name }));
+        webview.postMessage({
+          type: 'error',
+          message: formatWorksetOpenFailure(message.name, error),
+        });
       }
       break;
     }

@@ -11,6 +11,7 @@ import type {
   ProjectSidebarData,
   SpecInfo,
   WebviewMessage,
+  WorksetView,
 } from '../types/messages';
 import { Header } from './Header';
 import { ChangesSection } from './ChangesSection';
@@ -39,6 +40,11 @@ import {
   resolveWorkflowActions,
   type WorkflowActionReceipt,
 } from '../../shared/changeWorkflow';
+import {
+  getDashboardPriorityChanges,
+  routeDashboardPriorityAction,
+  type DashboardPriorityGroupKey,
+} from '../utils/dashboardPriorityChanges';
 import {
   getWorkflowActionButtonLabel,
   type WorkflowLaunchConfigView,
@@ -108,84 +114,7 @@ export function getDashboardActionScopeId(
   return projectSidebar ? undefined : selectedScopeId;
 }
 
-export function getDashboardPriorityChanges(
-  changes: readonly ChangeInfo[],
-  receipts: readonly WorkflowActionReceipt[] = [],
-): {
-  needsAttention: ChangeInfo[];
-  readyToVerify: ChangeInfo[];
-  recommended: ChangeInfo[];
-} {
-  const latestReceipts = new Map<string, WorkflowActionReceipt>();
-  for (const receipt of receipts) {
-    latestReceipts.set(`${receipt.changeName}\u0000${receipt.bindingKey}`, receipt);
-  }
-  const readyToVerify: ChangeInfo[] = [];
-  const needsAttention: ChangeInfo[] = [];
-  const recommended: ChangeInfo[] = [];
-  for (const change of changes) {
-    const snapshot = change.workflowSnapshot;
-    const resolved = snapshot
-      ? resolveWorkflowActions(snapshot, {
-        completedTasks: change.completedTasks,
-        totalTasks: change.totalTasks,
-        isArchived: change.lifecycleStatus === 'archived',
-      })
-      : undefined;
-    const receipt = snapshot
-      ? latestReceipts.get(`${change.name}\u0000${snapshot.bindingKey}`)
-      : undefined;
-    const hasReceiptAttention = (receipt?.status === 'failed' || receipt?.status === 'fallback')
-      && receipt?.suppressPriorityAttention !== true;
-    const hasResolverAttention = resolved !== undefined && resolved.attentionReasons.length > 0;
-    if (change.attention?.required === true || hasReceiptAttention || hasResolverAttention) {
-      needsAttention.push(change);
-      continue;
-    }
-    if (resolved?.recommended?.action === 'verify') readyToVerify.push(change);
-    else if (resolved?.recommended) recommended.push(change);
-  }
-  return { needsAttention, readyToVerify, recommended };
-}
-
-type DashboardPriorityGroupKey = 'needs-attention' | 'ready-to-verify' | 'recommended';
-
-export function routeDashboardPriorityAction(
-  change: ChangeInfo,
-  groupKey: DashboardPriorityGroupKey,
-  handlers: {
-    onOpenChange: (changeName: string) => void;
-    onLaunchWorkflow: (action: WorkflowAction, changeName: string, bindingKey?: string) => void;
-  },
-): void {
-  const bindingKey = change.workflowSnapshot?.bindingKey;
-  if (groupKey === 'needs-attention') {
-    handlers.onOpenChange(change.name);
-    return;
-  }
-  if (groupKey === 'ready-to-verify') {
-    handlers.onLaunchWorkflow('verify', change.name, bindingKey);
-    return;
-  }
-
-  const snapshot = change.workflowSnapshot;
-  if (!snapshot) return;
-  const recommended = resolveWorkflowActions(snapshot, {
-    completedTasks: change.completedTasks,
-    totalTasks: change.totalTasks,
-    isArchived: change.lifecycleStatus === 'archived',
-  }).recommended;
-  if (!recommended) return;
-  if (recommended.highImpact || recommended.action === 'archive') {
-    if (recommended.action === 'verify') {
-      handlers.onLaunchWorkflow('verify', change.name, bindingKey);
-    } else {
-      handlers.onOpenChange(change.name);
-    }
-    return;
-  }
-  handlers.onLaunchWorkflow(recommended.action, change.name, bindingKey);
-}
+export { getDashboardPriorityChanges, routeDashboardPriorityAction } from '../utils/dashboardPriorityChanges';
 
 export function returnToCurrentProject(
   setProjectFirstView: (view: ProjectFirstTab) => void,
@@ -399,6 +328,9 @@ export const Dashboard: React.FC = () => {
     message?: string;
   } | null>(null);
   const [isRetryingCli, setIsRetryingCli] = useState(false);
+  const [worksetsFullPageOpen, setWorksetsFullPageOpen] = useState(false);
+  const [worksetsCatalog, setWorksetsCatalog] = useState<WorksetView[] | null>(null);
+  const [worksetsCatalogLoading, setWorksetsCatalogLoading] = useState(false);
 
   const { data, loading, loadingReason, pendingScopeId, activity, error } = state;
   const projectSidebar = state.projectSidebar;
@@ -469,6 +401,10 @@ export const Dashboard: React.FC = () => {
         if (message.data.workflowLaunchConfig) {
           setWorkflowLaunchConfig(message.data.workflowLaunchConfig);
         }
+      } else if (message.type === 'dashboardData' && projectFirst) {
+        setIsRetryingCli(false);
+        setWorksetsCatalog(message.data?.worksets ?? []);
+        setWorksetsCatalogLoading(false);
       } else if (message.type === 'dashboardData' && !projectFirst) {
         setIsRetryingCli(false);
         dispatch({ type: 'SET_DATA', payload: message.data, cache: message.cache });
@@ -770,7 +706,7 @@ export const Dashboard: React.FC = () => {
       background: 'var(--vscode-editor-background)',
       color: 'var(--vscode-foreground)'
     }}>
-      <div className="p-3">
+      <div className={`p-3 ${projectSidebar ? 'flex min-h-screen flex-col' : ''}`}>
         <Header
           onRefresh={handleRefresh}
           onNewChange={handleRequestNewChange}
@@ -823,7 +759,7 @@ export const Dashboard: React.FC = () => {
           />
         )}
 
-        {priorityRows.length > 0 && (
+        {!projectSidebar && priorityRows.length > 0 && (
           <div className="mb-4 flex flex-col gap-1" aria-label={t('dashboard.workflowPriorities')} data-action-rail>
             {priorityRows.map(({ group, change }) => {
               const recommended = change.workflowSnapshot
@@ -915,7 +851,7 @@ export const Dashboard: React.FC = () => {
         )}
 
         {projectSidebar ? (
-          <>
+          <div className="flex min-h-0 flex-1 flex-col">
             <UnregisteredReferenceAlerts
               alerts={unregisteredReferenceAlerts}
               onCopyRecovery={(command) => postMessage(sendMessage.copyToClipboard(command))}
@@ -929,7 +865,37 @@ export const Dashboard: React.FC = () => {
                 {t('dashboard.staleData')}
               </div>
             )}
-            {projectFirstTab === 'worksets' && projectSidebar.worksetNavigation ? (
+            {projectFirstTab === 'worksets' && worksetsFullPageOpen ? (
+              <>
+                {worksetsCatalogLoading && worksetsCatalog === null ? (
+                  <div
+                    role="status"
+                    className="mb-2 text-xs"
+                    style={{ color: 'var(--vscode-descriptionForeground)' }}
+                    data-worksets-catalog-loading
+                  >
+                    {t('header.loading')}
+                  </div>
+                ) : null}
+                <WorksetsPage
+                  worksets={worksetsCatalog ?? []}
+                  onOpenWorkset={(name) => {
+                    postMessage(sendMessage.openWorkset(name));
+                  }}
+                  onRemoveWorkset={(name) => {
+                    postMessage(sendMessage.removeWorkset(name));
+                  }}
+                  onBack={() => {
+                    setWorksetsFullPageOpen(false);
+                    setWorksetsCatalog(null);
+                    setWorksetsCatalogLoading(false);
+                  }}
+                  currentRootLabel={projectSidebar?.binding?.rootPath}
+                  worksetsSupported={projectSidebar.worksetCapabilityAvailable !== false}
+                  storeRootPaths={[]}
+                />
+              </>
+            ) : projectFirstTab === 'worksets' && projectSidebar.worksetNavigation ? (
               <WorksetProjectPicker
                 navigation={projectSidebar.worksetNavigation}
                 activeStoreId={getWorksetPickerActiveStoreId(projectSidebar)}
@@ -939,15 +905,29 @@ export const Dashboard: React.FC = () => {
                 pickedMembers={worksetPickedMembers}
                 createResult={worksetCreateResult}
                 onBackToCurrentProject={() => returnToCurrentProject(setProjectFirstTab, postMessage)}
+                onOpenWorksetsFullPage={getWorksetCreateAvailable(projectSidebar)
+                  ? () => {
+                    setWorksetsFullPageOpen(true);
+                    setWorksetsCatalog(null);
+                    setWorksetsCatalogLoading(true);
+                    postMessage(sendMessage.getDashboardData());
+                  }
+                  : undefined}
               />
             ) : (
               <>
                 {projectFirstTab === 'changes' ? (
-                  <div id="project-first-changes-panel" role="tabpanel" aria-label={t('projectSidebar.allChanges')}>
+                  <div
+                    id="project-first-changes-panel"
+                    className="flex min-h-0 flex-1 flex-col"
+                    role="tabpanel"
+                    aria-label={t('projectSidebar.allChanges')}
+                  >
                     <ChangesSection
                       changes={[...projectChanges]}
                       changeStatusCounts={buildChangeStatusCounts(projectChanges, projectSidebar.archivedChanges ?? [])}
                       onOpenChange={handleOpenChange}
+                      onRequestNewChange={handleRequestNewChange}
                       onOpenArchivedChange={handleOpenArchivedChange}
                       archivedItems={[...(projectSidebar.archivedChanges ?? [])]}
                       onLaunchWorkflow={handleLaunchWorkflow}
@@ -961,6 +941,8 @@ export const Dashboard: React.FC = () => {
                         projectSidebar.binding,
                       )}
                       layout="narrow"
+                      scanHierarchy
+                      onRefresh={handleRefresh}
                       healthyActiveEmpty={healthyActiveEmpty}
                     />
                   </div>
@@ -996,7 +978,7 @@ export const Dashboard: React.FC = () => {
                 )}
               </>
             )}
-          </>
+          </div>
         ) : data ? (
           <>
             {/* CLI / cache status row. Root selection now lives in the Header

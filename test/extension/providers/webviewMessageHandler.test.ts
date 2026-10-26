@@ -1885,7 +1885,7 @@ describe('handleWebviewMessage toggleTask', () => {
 
     expect(webview.postMessage).toHaveBeenCalledWith({
       type: 'error',
-      message: 'No tool is available',
+      message: "Failed to open whole Workset 'platform': No tool is available",
     });
   });
 });

@@ -609,6 +609,23 @@ describe('Task 7 root-scoped view state clamp', () => {
     expect(html).not.toContain('No changes match');
   });
 
+  it('renders A-2 scan hierarchy rows, Recommended card, and teaching empty state', () => {
+    const html = renderSection({
+      changes: [],
+      archivedItems: [],
+      changeStatusCounts: { ...HOST_COUNTS, all: 0 },
+      scanHierarchy: true,
+      onRequestNewChange: vi.fn(),
+      onRefresh: vi.fn(),
+    });
+
+    expect(html).toContain('data-empty-teaching');
+    expect(html).toContain('No changes yet');
+    expect(html).toContain('data-empty-primary');
+    expect(html).toContain('data-empty-secondary');
+    expect(html).not.toContain('Search changes');
+  });
+
   it('computes a clamped page update that preserves filters for matching-scope data', () => {
     const state = {
       ...DEFAULT_CHANGES_VIEW_STATE,
