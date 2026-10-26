@@ -335,6 +335,7 @@
   "projectSidebar.cardWorksetsSupporting": "Browse Workset Projects",
   "projectSidebar.cardDashboardSupporting": "Open Project Dashboard in Editor",
   "projectSidebar.emptyActive": "No active changes",
+  "projectSidebar.emptyActiveHint": "Create a change with the CLI or ask Agent to propose one.",
   "projectSidebar.projectSpecs": "Project Specs",
   "projectSidebar.emptyProjectSpecs": "No project specs",
   "projectSidebar.referencedStoreSpecs": "Referenced Store Specs: {storeId}",

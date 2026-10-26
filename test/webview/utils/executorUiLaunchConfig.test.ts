@@ -56,7 +56,7 @@ describe('executorUiLaunchConfig', () => {
 
     expect(uiConfig.workflowLaunchMode).toBe('adapter');
     expect(uiConfig.preferredAgentAdapter).toBe('cursor');
-    expect(getTaskNextButtonLabel(uiConfig)).toBe('Next with Agent');
+    expect(getTaskNextButtonLabel(uiConfig)).toBe('Next');
     expect(getWorkflowActionButtonLabel('Continue planning', uiConfig)).toBe('Open Agent panel · Continue planning');
     expect(getExecutorUiModeLabel(uiConfig)).toBe('cursor');
   });
@@ -75,7 +75,7 @@ describe('executorUiLaunchConfig', () => {
       uiWorkflowLaunchConfig: cursorSettingsConfig,
     });
 
-    expect(getTaskNextButtonLabel(uiConfig)).toBe('Next with Agent');
+    expect(getTaskNextButtonLabel(uiConfig)).toBe('Next');
     expect(resolveExecutorSelectValue({
       available: [
         { id: 'vscode-chat', displayName: 'VS Code Chat' },

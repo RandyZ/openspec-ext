@@ -337,6 +337,7 @@
   "projectSidebar.cardWorksetsSupporting": "浏览 Workset 项目",
   "projectSidebar.cardDashboardSupporting": "在编辑器中打开项目 Dashboard",
   "projectSidebar.emptyActive": "暂无进行中的 change",
+  "projectSidebar.emptyActiveHint": "可用 CLI 创建 change，或让 Agent 提出一个。",
   "projectSidebar.projectSpecs": "项目 Spec",
   "projectSidebar.emptyProjectSpecs": "暂无项目 Spec",
   "projectSidebar.referencedStoreSpecs": "引用 Store Spec：{storeId}",

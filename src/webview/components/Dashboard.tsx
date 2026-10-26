@@ -407,6 +407,7 @@ export const Dashboard: React.FC = () => {
     ?? (projectSidebar?.cliDiagnostic
       ? { diagnostic: projectSidebar.cliDiagnostic, mode: 'warning' as const }
       : null);
+  const healthyActiveEmpty = projectDiagnostic?.mode !== 'blocking';
 
   useEffect(() => {
     setProjectFirstTab('changes');
@@ -895,7 +896,7 @@ export const Dashboard: React.FC = () => {
                     <button
                       type="button"
                       data-priority-cta={change.name}
-                      className="shrink-0 rounded px-2 py-1 text-xs focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)]"
+                      className="max-w-full shrink-0 whitespace-normal break-words rounded px-2 py-1 text-left text-xs focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--vscode-focusBorder)]"
                       style={{
                         background: 'var(--vscode-button-secondaryBackground)',
                         color: 'var(--vscode-button-secondaryForeground)',
@@ -960,6 +961,7 @@ export const Dashboard: React.FC = () => {
                         projectSidebar.binding,
                       )}
                       layout="narrow"
+                      healthyActiveEmpty={healthyActiveEmpty}
                     />
                   </div>
                 ) : (
@@ -1120,6 +1122,7 @@ export const Dashboard: React.FC = () => {
                   viewState={changesViewState}
                   onViewStateChange={persistChangesViewState}
                   allowPageClamp={allowPageClamp}
+                  healthyActiveEmpty={healthyActiveEmpty}
                 />
                 <SpecsSection
                   specs={data.specs}
