@@ -163,6 +163,18 @@ export interface ProjectArchivedChangesData {
   readonly archivedChanges: readonly ArchivedChangeInfo[];
 }
 
+export interface ReferenceIndexEntry {
+  readonly store_id: string;
+  readonly specs?: readonly { id: string; summary?: string }[];
+  readonly fetch?: string;
+  readonly status: readonly {
+    severity: string;
+    code: string;
+    message: string;
+    fix?: string;
+  }[];
+}
+
 export interface ReferencedStoreSpecGroup {
   readonly storeId: string;
   /** Host-resolved binding for this referenced Store; absent only when resolution failed. */
@@ -193,6 +205,8 @@ export interface ProjectSidebarWorkspaceData {
   readonly archivedChanges?: readonly ArchivedChangeInfo[];
   readonly projectSpecs?: readonly SpecInfo[];
   readonly referencedStoreSpecs?: readonly ReferencedStoreSpecGroup[];
+  /** Doctor reference index for config `references:` (read-only upstream stores). */
+  readonly referenceIndex?: readonly ReferenceIndexEntry[];
   readonly worksetNavigation?: ProjectWorksetNavigationData;
   /**
    * Host-resolved Workset capability fact (from DataManager.getCapabilities()).

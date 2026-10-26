@@ -6,6 +6,10 @@ import type {
   WorksetView,
 } from '../types/messages';
 import { formatOpenSpecRootLabel } from '../utils/scopeLabels';
+import {
+  isUnresolvedReference,
+  referenceWarningStatuses,
+} from '../utils/referenceHealth';
 
 export interface StoresAndWorksetsPanelProps {
   scopes?: OpenSpecScopeView[];
@@ -158,21 +162,74 @@ export const StoresAndWorksetsPanel: React.FC<StoresAndWorksetsPanelProps> = ({
           {references.length === 0 ? (
             <p style={{ color: 'var(--vscode-descriptionForeground)' }}>{t('storesWorksets.noReferences')}</p>
           ) : (
-            references.map((ref) => (
-              <div key={ref.store_id} className="rounded border p-2" style={{ borderColor: 'var(--vscode-panel-border)' }}>
-                <div className="font-medium">{ref.store_id}</div>
-                {(ref.specs ?? []).map((spec) => (
-                  <div key={spec.id} style={{ color: 'var(--vscode-descriptionForeground)' }}>
-                    {spec.id}{spec.summary ? ` - ${spec.summary}` : ''}
+            references.map((ref) => {
+              const unresolved = isUnresolvedReference(ref);
+              const warnings = referenceWarningStatuses(ref);
+              const recoveryCommand = warnings.find((s) => s.fix)?.fix;
+
+              return (
+                <div
+                  key={ref.store_id}
+                  className="rounded border p-2"
+                  style={{ borderColor: 'var(--vscode-panel-border)' }}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium">{ref.store_id}</span>
+                    {unresolved ? (
+                      <span
+                        role="status"
+                        className="rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide"
+                        style={{
+                          color: 'var(--vscode-editorWarning-foreground, var(--vscode-editorWarningForeground, var(--vscode-foreground)))',
+                          border: '1px solid var(--vscode-editorWarning-border, var(--vscode-panel-border))',
+                        }}
+                      >
+                        {t('references.unregisteredBadge')}
+                      </span>
+                    ) : null}
                   </div>
-                ))}
-                {ref.fetch && (
-                  <button type="button" onClick={() => onCopyFetch(ref.fetch!)} className="mt-1 rounded px-2 py-0.5 text-xs">
-                    {t('references.copyFetchCommand')}
-                  </button>
-                )}
-              </div>
-            ))
+                  {(ref.specs ?? []).map((spec) => (
+                    <div key={spec.id} style={{ color: 'var(--vscode-descriptionForeground)' }}>
+                      {spec.id}{spec.summary ? ` - ${spec.summary}` : ''}
+                    </div>
+                  ))}
+                  {warnings.map((status) => (
+                    <div
+                      key={status.code}
+                      role="alert"
+                      className="mt-1 leading-snug"
+                      style={{
+                        color:
+                          status.severity === 'error'
+                            ? 'var(--vscode-errorForeground)'
+                            : 'var(--vscode-editorWarning-foreground, var(--vscode-descriptionForeground))',
+                      }}
+                    >
+                      {status.message}
+                      {!status.fix ? (
+                        <span className="ml-1">{t('references.unresolvedFix')}</span>
+                      ) : null}
+                    </div>
+                  ))}
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {recoveryCommand ? (
+                      <button
+                        type="button"
+                        onClick={() => onCopyFetch(recoveryCommand)}
+                        className="rounded px-2 py-0.5 text-xs"
+                      >
+                        {t('references.copyRecoveryCommand')}
+                      </button>
+                    ) : null}
+                    {ref.fetch && !unresolved ? (
+                      <button type="button" onClick={() => onCopyFetch(ref.fetch!)} className="rounded px-2 py-0.5 text-xs">
+                        {t('references.copyFetchCommand')}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })
           )}
         </div>
 

@@ -121,6 +121,53 @@ describe('ProjectDashboard summary', () => {
 });
 
 describe('ProjectDashboard surface', () => {
+  it('surfaces unregistered reference warnings on the project dashboard page', () => {
+    const html = renderToStaticMarkup(
+      <AppProvider initialState={{
+        data: null,
+        projectSidebar: {
+          ...data,
+          referenceIndex: [
+            {
+              store_id: 'fixture-plans',
+              status: [
+                {
+                  severity: 'warning',
+                  code: 'reference_unresolved',
+                  message: 'Store is not registered locally.',
+                  fix: 'openspec store setup fixture-plans --path /tmp/fixture-plans',
+                },
+              ],
+            },
+          ],
+          referencedStoreSpecs: [
+            {
+              storeId: 'fixture-plans',
+              specs: [],
+              error: 'Unable to load Specs for referenced Store "fixture-plans".',
+            },
+          ],
+        },
+        page: 'dashboard',
+        projectFirst: true,
+        loading: false,
+        activity: { kind: 'idle' },
+        stale: false,
+        error: null,
+        selectedChange: null,
+        debug: false,
+        cliDiagnostic: null,
+      } as AppState}>
+        <ProjectDashboard />
+      </AppProvider>,
+    );
+
+    expect(html).toContain('Unregistered reference');
+    expect(html).toContain('Copy recovery command');
+    expect(html).toContain('fixture-plans');
+    expect(html).not.toContain('Unable to load Specs for referenced Store');
+  });
+
   it('formats recent update timestamps as relative labels instead of raw ISO strings', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-08-23T12:00:00.000Z'));

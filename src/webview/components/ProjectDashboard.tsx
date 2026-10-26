@@ -5,6 +5,8 @@ import type { ChangeInfo, ProjectSidebarData } from '../types/messages';
 import { useVscode } from '../hooks/useVscode';
 import { sendMessage } from '../types/messages';
 import { formatRelativeDateLabel } from '../utils/dateLabels';
+import { UnregisteredReferenceAlerts } from './UnregisteredReferenceAlerts';
+import { collectUnregisteredReferenceAlerts } from '../utils/unregisteredReferenceAlerts';
 
 export type ProjectDashboardLifecycle =
   | 'planning'
@@ -135,6 +137,10 @@ export const ProjectDashboard: React.FC = () => {
     );
   }
 
+  const unregisteredReferenceAlerts = collectUnregisteredReferenceAlerts(
+    data.referenceIndex,
+    data.referencedStoreSpecs,
+  );
   const summary = deriveProjectDashboardSummary(data);
   const completionRate = summary.activeTaskCompletionRate === null
     ? '—'
@@ -148,6 +154,11 @@ export const ProjectDashboard: React.FC = () => {
         <h1 className="text-xl font-semibold">{t('projectDashboard.title')}</h1>
         <p className="text-sm" style={{ color: 'var(--vscode-descriptionForeground)' }}>{data.project.label}</p>
       </header>
+
+      <UnregisteredReferenceAlerts
+        alerts={unregisteredReferenceAlerts}
+        onCopyRecovery={(command) => postMessage(sendMessage.copyToClipboard(command))}
+      />
 
       {stale && (
         <p role="status" className="mb-4 text-sm" style={{ color: 'var(--vscode-descriptionForeground)' }}>
