@@ -2,7 +2,7 @@
   "name": "openspec-workflow",
   "displayName": "OpenSpec Workflow",
   "description": "Project-first OpenSpec workbench for VS Code and Cursor: see the next step, hand Verify/Apply to the IDE Agent, and archive safely.",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "publisher": "randysss",
   "license": "MIT",
   "engines": {
