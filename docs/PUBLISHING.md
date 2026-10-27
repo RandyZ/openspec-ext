@@ -2,10 +2,11 @@
 
 This document describes how to package and publish the extension to **Open VSX** and **VS Code Marketplace**.
 
-**Current release status (2026-09-22):**
+**Current release status (2026-10-27):**
 
-- **Open VSX**: [OpenSpec Workflow 0.2.2](https://open-vsx.org/extension/randysss/openspec-workflow) is published (publisher `randysss`, extension id `openspec-workflow`). **0.2.3** is prepared in-repo and pending publish after merge and tag.
-- **VS Code Marketplace**: Listing is **publishing in progress** — not live on marketplace.visualstudio.com yet. Use Open VSX until the Marketplace listing is available. **0.2.3** will follow the same release flow once tagged.
+- **In repo**: **0.2.5** release PR (changelog + version bump only); after merge, tag and publish as follow-up steps. **0.2.4** (2026-10-10) was the prior formal in-repo release.
+- **Open VSX**: Publisher `randysss`, extension id `openspec-workflow`. Registry version may lag **0.2.5** until `ovsx publish` runs after tag; see [Open VSX listing](https://open-vsx.org/extension/randysss/openspec-workflow) for the live version.
+- **VS Code Marketplace**: Listing may still be **in progress** or behind Open VSX; do not assume marketplace.visualstudio.com shows **0.2.5** until `vsce publish` completes after tag.
 
 Ensure `package.json` version is bumped and changes are committed before publishing.
 

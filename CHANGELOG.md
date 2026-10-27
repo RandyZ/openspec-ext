@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-10-27
+
+### Added
+
+- **A-1 (#26)**: Marketplace and extension README narrative aligned to the design-approved **project-first OpenSpec Workflow workbench** story (`displayName` remains **OpenSpec Workflow**).
+- **D3-1 (#27)**: Unregistered `references` entries surface as a **Warning** with a copyable recovery command and badge; they are not shown as a connected Store.
+- **A-2 (#29)**: Project Dashboard **scan hierarchy** (priority → recent → teaching empty states); Workset open flows use CLI-backed `code` / `cursor` openers (not `vscode`).
+
+### Changed
+
+- **B (#28)**: Agent workbench **density** — clearer CTA vs Agent semantics, launch-feedback discipline regression fixes, honest empty states, and **260px** sidebar CTA wrap (no clipped labels).
+- **A-3 (#30)**: zh-CN release debt **D1/D2/D10** — workflow hints use the real change name; Chinese action labels; sidebar and nav i18n polish.
+
 ## [0.2.4] - 2026-10-10
 
 ### Added
@@ -228,7 +241,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Workspace and bundled path resolution for extension resources.
 
-[Unreleased]: https://github.com/RandyZ/openspec-ext/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/RandyZ/openspec-ext/compare/v0.2.5...HEAD
+[0.2.5]: https://github.com/RandyZ/openspec-ext/compare/v0.2.4...v0.2.5
+[0.2.4]: https://github.com/RandyZ/openspec-ext/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/RandyZ/openspec-ext/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/RandyZ/openspec-ext/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/RandyZ/openspec-ext/compare/v0.2.0...v0.2.1

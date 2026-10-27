@@ -12,7 +12,7 @@ OpenSpec Workflow is a **project-first workbench** for the OpenSpec change lifec
 - One click hands Verify / Apply to the **IDE Agent panel** (Cursor) or prefills Chat (VS Code)
 - Safe defaults: confirm before Archive; CLI stays the source of truth behind the UI
 
-Requires [OpenSpec CLI](https://github.com/Fission-AI/OpenSpec#quick-start). Open VSX users may see a newer build than the Marketplace listing while we keep narratives aligned.
+Requires [OpenSpec CLI](https://github.com/Fission-AI/OpenSpec#quick-start). Published registry versions may trail the in-repo release until publish completes; see [CHANGELOG.md](CHANGELOG.md) for the latest version.
 
 ### Highlights
 
@@ -157,7 +157,7 @@ Open Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`):
 ---
 <!-- Below: development/contributing only; above: user-facing (packaged as extension README) -->
 
-[![Version](https://img.shields.io/badge/version-0.2.3-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.2.5-blue)](CHANGELOG.md)
 [![Open VSX](https://img.shields.io/badge/Open%20VSX-available-green)](https://open-vsx.org/extension/randysss/openspec-workflow)
 
 ## 🏗️ Architecture
@@ -211,7 +211,7 @@ pnpm run watch      # Watch mode
 
 ### Publishing
 
-Open VSX **0.2.2** is published; **0.2.3** is prepared in-repo pending release. VS Code Marketplace listing is in progress. To package locally or publish to Open VSX (and eventually VS Code Marketplace), see **[docs/PUBLISHING.md](docs/PUBLISHING.md)** for publisher setup, tokens, and release steps.
+**0.2.5** is prepared in-repo (A+B track); **0.2.4** was the prior formal release. Registry publish (Open VSX / VS Code Marketplace) follows merge and tag — see **[docs/PUBLISHING.md](docs/PUBLISHING.md)** for publisher setup, tokens, and release steps.
 
 ### Project Structure
 
@@ -332,6 +332,6 @@ MIT — see [LICENSE](LICENSE)
 
 ***
 
-**Version**: 0.2.3  
-**Last Updated**: 2026-09  
-**Status**: 🟡 0.2.3 prepared in-repo; Open VSX 0.2.2 live; VS Code Marketplace publishing in progress
+**Version**: 0.2.5  
+**Last Updated**: 2026-10  
+**Status**: 🟡 0.2.5 prepared in-repo; tag and registry publish are follow-up after merge
